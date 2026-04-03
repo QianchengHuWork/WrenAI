@@ -72,6 +72,8 @@ export default function PreparationSteps(
   const retrievedTables = preparedTask?.retrievedTables || [];
   const sqlGenerationReasoning =
     preparedTask?.sqlGenerationReasoning || askingStreamTask || '';
+  const toolCalls = preparedTask?.toolCalls || [];
+  const semanticFiles = preparedTask?.semanticFiles || [];
 
   // loadings
   const retrieving = processState === PROCESS_STATE.SEARCHING;
@@ -112,6 +114,8 @@ export default function PreparationSteps(
             generating={generating}
             correcting={correcting}
             loading={wrapping}
+            toolCalls={toolCalls}
+            semanticFiles={semanticFiles}
           />
         </Timeline.Item>
       )}

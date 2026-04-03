@@ -89,6 +89,13 @@ export interface DUCKDB_CONNECTION_INFO {
   configurations: Record<string, any>;
 }
 
+export interface DENODO_MCP_CONNECTION_INFO {
+  baseUrl: string;
+  databaseName: string;
+  username: string;
+  password: string;
+}
+
 export interface ATHENA_CONNECTION_INFO {
   database: string;
   schema: string;
@@ -147,6 +154,7 @@ export type DATABRICKS_CONNECTION_INFO =
 export type WREN_AI_CONNECTION_INFO =
   | ATHENA_CONNECTION_INFO
   | BIG_QUERY_CONNECTION_INFO
+  | DENODO_MCP_CONNECTION_INFO
   | POSTGRES_CONNECTION_INFO
   | MYSQL_CONNECTION_INFO
   | ORACLE_CONNECTION_INFO

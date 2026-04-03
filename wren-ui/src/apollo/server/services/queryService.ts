@@ -1,5 +1,7 @@
 import { DataSourceName } from '@server/types';
 import { Manifest } from '@server/mdl/type';
+import { toIbisConnectionInfo } from '@server/dataSource';
+import { IDenodoMcpAdaptor } from '../adaptors';
 import { IWrenEngineAdaptor } from '../adaptors/wrenEngineAdaptor';
 import {
   SupportedDataSource,
@@ -9,8 +11,12 @@ import {
   IbisResponse,
 } from '../adaptors/ibisAdaptor';
 import { getLogger } from '@server/utils';
-import { Project } from '../repositories';
+import { DENODO_MCP_CONNECTION_INFO, Project } from '../repositories';
 import { PostHogTelemetry, TelemetryEvent } from '../telemetry/telemetry';
+import {
+  toDenodoNativeSql,
+  toDenodoPreviewData,
+} from '@server/utils/denodoMcp';
 
 const logger = getLogger('QueryService');
 logger.level = 'debug';
@@ -78,18 +84,22 @@ export interface IQueryService {
 
 export class QueryService implements IQueryService {
   private readonly ibisAdaptor: IIbisAdaptor;
+  private readonly denodoMcpAdaptor: IDenodoMcpAdaptor;
   private readonly wrenEngineAdaptor: IWrenEngineAdaptor;
   private readonly telemetry: PostHogTelemetry;
 
   constructor({
+    denodoMcpAdaptor,
     ibisAdaptor,
     wrenEngineAdaptor,
     telemetry,
   }: {
+    denodoMcpAdaptor: IDenodoMcpAdaptor;
     ibisAdaptor: IIbisAdaptor;
     wrenEngineAdaptor: IWrenEngineAdaptor;
     telemetry: PostHogTelemetry;
   }) {
+    this.denodoMcpAdaptor = denodoMcpAdaptor;
     this.ibisAdaptor = ibisAdaptor;
     this.wrenEngineAdaptor = wrenEngineAdaptor;
     this.telemetry = telemetry;
@@ -108,6 +118,33 @@ export class QueryService implements IQueryService {
       cacheEnabled,
     } = options;
     const { type: dataSource, connectionInfo } = project;
+    if (dataSource === DataSourceName.DENODO_MCP) {
+      const denodoConnectionInfo = toIbisConnectionInfo(
+        dataSource,
+        connectionInfo,
+      ) as DENODO_MCP_CONNECTION_INFO;
+      const nativeSql = toDenodoNativeSql(sql, mdl);
+      if (dryRun) {
+        await this.denodoMcpAdaptor.runSqlQuery(
+          nativeSql,
+          denodoConnectionInfo,
+        );
+        return true;
+      }
+
+      const toolResult = await this.denodoMcpAdaptor.runSqlQuery(
+        nativeSql,
+        denodoConnectionInfo,
+      );
+      const result = toDenodoPreviewData(toolResult);
+      const previewLimit = limit ?? DEFAULT_PREVIEW_LIMIT;
+
+      return {
+        correlationId: 'denodo-mcp',
+        columns: result.columns,
+        data: result.data.slice(0, previewLimit),
+      } as PreviewDataResponse;
+    }
     if (this.useEngine(dataSource)) {
       if (dryRun) {
         logger.debug('Using wren engine to dry run');
@@ -162,6 +199,12 @@ export class QueryService implements IQueryService {
     parameters: Record<string, any>,
   ): Promise<ValidateResponse> {
     const { type: dataSource, connectionInfo } = project;
+    if (dataSource === DataSourceName.DENODO_MCP) {
+      logger.debug(
+        `Skip query validation for Denodo MCP. rule: ${rule}, parameters: ${JSON.stringify(parameters)}`,
+      );
+      return { valid: true };
+    }
     const res = await this.ibisAdaptor.validate(
       dataSource,
       rule,

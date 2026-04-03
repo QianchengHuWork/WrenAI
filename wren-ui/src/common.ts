@@ -21,6 +21,7 @@ import {
   DashboardItemRefreshJobRepository,
 } from '@server/repositories';
 import {
+  DenodoMcpAdaptor,
   WrenEngineAdaptor,
   WrenAIAdaptor,
   IbisAdaptor,
@@ -86,13 +87,16 @@ export const initComponents = () => {
   const ibisAdaptor = new IbisAdaptor({
     ibisServerEndpoint: serverConfig.ibisServerEndpoint,
   });
+  const denodoMcpAdaptor = new DenodoMcpAdaptor();
 
   // services
   const metadataService = new DataSourceMetadataService({
+    denodoMcpAdaptor,
     ibisAdaptor,
     wrenEngineAdaptor,
   });
   const queryService = new QueryService({
+    denodoMcpAdaptor,
     ibisAdaptor,
     wrenEngineAdaptor,
     telemetry,
@@ -201,6 +205,7 @@ export const initComponents = () => {
     wrenEngineAdaptor,
     wrenAIAdaptor,
     ibisAdaptor,
+    denodoMcpAdaptor,
 
     // services
     metadataService,

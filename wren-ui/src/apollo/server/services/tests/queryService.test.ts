@@ -3,12 +3,17 @@ import { DataSourceName } from '../../types';
 import { QueryService } from '../queryService';
 
 describe('QueryService', () => {
+  let mockDenodoMcpAdaptor;
   let mockIbisAdaptor;
   let mockWrenEngineAdaptor;
   let mockTelemetry;
   let queryService;
 
   beforeEach(() => {
+    mockDenodoMcpAdaptor = {
+      getDatabaseSchema: jest.fn(),
+      runSqlQuery: jest.fn(),
+    };
     mockIbisAdaptor = {
       query: jest.fn(),
       dryRun: jest.fn(),
@@ -17,6 +22,7 @@ describe('QueryService', () => {
     mockTelemetry = new MockTelemetry();
 
     queryService = new QueryService({
+      denodoMcpAdaptor: mockDenodoMcpAdaptor,
       ibisAdaptor: mockIbisAdaptor,
       wrenEngineAdaptor: mockWrenEngineAdaptor,
       telemetry: mockTelemetry,

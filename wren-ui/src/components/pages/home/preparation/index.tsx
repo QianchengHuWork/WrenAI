@@ -39,6 +39,8 @@ export default function Preparation(props: Props) {
       invalidSql: '',
       retrievedTables: payload?.retrievedTables || [],
       sqlGenerationReasoning: payload?.sqlGenerationReasoning || '',
+      toolCalls: payload?.toolCalls || [],
+      semanticFiles: payload?.semanticFiles || [],
       isAdjustment: !!adjustmentTask,
       ...(askingTask || {}),
       ...(adjustmentTask || {}),
@@ -88,12 +90,12 @@ export default function Preparation(props: Props) {
               <Typography.Title level={5} className="gray-8 text-medium mb-0">
                 <Image
                   src="/images/icon/message-ai.svg"
-                  alt="Answer Preparation Steps"
+                  alt="回答准备步骤"
                   width={24}
                   height={24}
                   className="mr-1"
                 />
-                Answer preparation steps
+                回答准备步骤
               </Typography.Title>
               <PreparationStatus {...props} preparedTask={preparedTask} />
             </div>

@@ -36,6 +36,10 @@ import DataSourceSchemaDetector, {
 } from '@server/managers/dataSourceSchemaDetector';
 import { encryptConnectionInfo } from '../dataSource';
 import { TelemetryEvent } from '../telemetry/telemetry';
+import {
+  toDenodoCompactTables,
+  writeDenodoSemanticArtifacts,
+} from '@server/utils/denodoMcp';
 
 const logger = getLogger('DataSourceResolver');
 logger.level = 'debug';
@@ -294,6 +298,29 @@ export class ProjectResolver {
           extensions: connectionInfo.extensions,
           configurations: connectionInfo.configurations,
         });
+      } else if (type === DataSourceName.DENODO_MCP) {
+        const rawSchema = await ctx.denodoMcpAdaptor.getDatabaseSchema(
+          connectionInfo as any,
+        );
+        const compactTables = toDenodoCompactTables(rawSchema);
+        const version =
+          await ctx.projectService.getProjectDataSourceVersion(project);
+        await ctx.projectService.updateProject(project.id, {
+          version,
+        });
+        await this.overwriteModelsAndColumns(
+          compactTables.map((table) => table.name),
+          ctx,
+          project,
+          compactTables,
+        );
+        const { manifest } = await ctx.mdlService.makeCurrentModelMDL();
+        await writeDenodoSemanticArtifacts({
+          projectId: project.id,
+          rawSchema,
+          manifest,
+        });
+        await this.deploy(ctx);
       } else {
         // handle other data source
         await ctx.projectService.getProjectDataSourceTables(project);
@@ -694,14 +721,18 @@ export class ProjectResolver {
     tables: string[],
     ctx: IContext,
     project: Project,
+    compactTables?: CompactTable[],
   ) {
     // delete existing models and columns
     await ctx.modelService.deleteAllModelsByProjectId(project.id);
 
-    const compactTables: CompactTable[] =
-      await ctx.projectService.getProjectDataSourceTables(project);
+    const sourceTables =
+      compactTables ||
+      ((await ctx.projectService.getProjectDataSourceTables(
+        project,
+      )) as CompactTable[]);
 
-    const selectedTables = compactTables.filter((table) =>
+    const selectedTables = sourceTables.filter((table) =>
       tables.includes(table.name),
     );
 

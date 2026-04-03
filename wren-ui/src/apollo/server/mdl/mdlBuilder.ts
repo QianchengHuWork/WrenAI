@@ -498,6 +498,8 @@ export class MDLBuilder implements IMDLBuilder {
         return WrenEngineDataSourceType.BIGQUERY;
       case DataSourceName.DUCKDB:
         return WrenEngineDataSourceType.DUCKDB;
+      case DataSourceName.DENODO_MCP:
+        return WrenEngineDataSourceType.POSTGRES;
       case DataSourceName.POSTGRES:
         return WrenEngineDataSourceType.POSTGRES;
       case DataSourceName.MYSQL:

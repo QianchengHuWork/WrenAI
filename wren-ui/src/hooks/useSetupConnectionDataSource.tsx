@@ -43,6 +43,10 @@ export default function useSetupConnectionDataSource() {
   );
 
   const completedDataSourceSave = useCallback(async () => {
+    if (selected === DataSourceName.DENODO_MCP) {
+      router.push(Path.Modeling);
+      return;
+    }
     router.push(Path.OnboardingModels);
   }, [selected, router]);
 

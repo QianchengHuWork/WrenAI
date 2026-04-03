@@ -3862,6 +3862,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/pegjs@npm:^0.10.0":
+  version: 0.10.6
+  resolution: "@types/pegjs@npm:0.10.6"
+  checksum: 10c0/ee4a31cf07679ae5422fec95e499ad059483a9ab2815af1ada0ee858a00af6c7e6579a8e172810c1c9db04005941bef96d0dd2c28648769211f57df330f9c30f
+  languageName: node
+  linkType: hard
+
 "@types/pg-cursor@npm:^2.7.0":
   version: 2.7.2
   resolution: "@types/pg-cursor@npm:2.7.2"
@@ -5168,6 +5175,13 @@ __metadata:
     node-gyp: "npm:latest"
     prebuild-install: "npm:^7.1.1"
   checksum: 10c0/efc8b1440388ff0ada7bd1d41021dd5a5a9cfa440d3e66a661e3f89c8d72229de939887aa0a9b24695843f88710ff79b34c5990aaf951b55a00858801a3b134c
+  languageName: node
+  linkType: hard
+
+"big-integer@npm:^1.6.48":
+  version: 1.6.52
+  resolution: "big-integer@npm:1.6.52"
+  checksum: 10c0/9604224b4c2ab3c43c075d92da15863077a9f59e5d4205f4e7e76acd0cd47e8d469ec5e5dba8d9b32aa233951893b29329ca56ac80c20ce094b4a647a66abae0
   languageName: node
   linkType: hard
 
@@ -11476,6 +11490,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"node-sql-parser@npm:^5.3.8":
+  version: 5.4.0
+  resolution: "node-sql-parser@npm:5.4.0"
+  dependencies:
+    "@types/pegjs": "npm:^0.10.0"
+    big-integer: "npm:^1.6.48"
+  checksum: 10c0/fb62be3f5b960e3ce41440e6f2b4060f0f0df7b3734f7aefe169d245fc250773a43d49c811e0dda9b7e24e44ace54df6765be0cf4d7dad4eb9e6855eeef63b8e
+  languageName: node
+  linkType: hard
+
 "nopt@npm:^5.0.0":
   version: 5.0.0
   resolution: "nopt@npm:5.0.0"
@@ -15976,6 +16000,7 @@ __metadata:
     micro-cors: "npm:^0.1.1"
     next: "npm:14.2.35"
     next-with-less: "npm:^3.0.1"
+    node-sql-parser: "npm:^5.3.8"
     pg: "npm:^8.8.0"
     pg-cursor: "npm:^2.7.4"
     posthog-js: "npm:^1.205.0"

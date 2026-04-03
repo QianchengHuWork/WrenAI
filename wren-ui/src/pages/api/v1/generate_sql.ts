@@ -15,6 +15,7 @@ import {
   transformHistoryInput,
 } from '@/apollo/server/utils/apiUtils';
 import { DataSourceName } from '@server/types';
+import { toDenodoNativeSql } from '@server/utils/denodoMcp';
 
 const logger = getLogger('API_GENERATE_SQL');
 logger.level = 'debug';
@@ -79,6 +80,7 @@ export default async function handler(
     const task = await wrenAIAdaptor.ask({
       query: question,
       deployId: lastDeploy.hash,
+      projectId: project.id,
       histories: transformHistoryInput(histories) as any,
       configurations: {
         language:
@@ -123,6 +125,8 @@ export default async function handler(
           manifest: lastDeploy.manifest,
           modelingOnly: false,
         });
+      } else if (project.type === DataSourceName.DENODO_MCP) {
+        nativeSql = toDenodoNativeSql(sql, lastDeploy.manifest);
       } else {
         nativeSql = await ibisAdaptor.getNativeSql({
           dataSource: project.type,

@@ -6,6 +6,7 @@ export {
 export enum DATA_SOURCES {
   BIG_QUERY = 'BIG_QUERY',
   DUCKDB = 'DUCKDB',
+  DENODO_MCP = 'DENODO_MCP',
   POSTGRES = 'POSTGRES',
   MYSQL = 'MYSQL',
   ORACLE = 'ORACLE',

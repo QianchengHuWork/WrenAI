@@ -30,6 +30,7 @@
     "micro": "^9.4.1",
     "micro-cors": "^0.1.1",
     "next": "14.2.35",
+    "node-sql-parser": "^5.3.8",
     "pg": "^8.8.0",
     "pg-cursor": "^2.7.4",
     "posthog-node": "^4.3.2",

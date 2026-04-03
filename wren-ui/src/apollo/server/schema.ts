@@ -61,6 +61,7 @@ export const typeDefs = gql`
     ATHENA
     BIG_QUERY
     DUCKDB
+    DENODO_MCP
     POSTGRES
     MYSQL
     ORACLE
@@ -665,6 +666,8 @@ export const typeDefs = gql`
     intentReasoning: String
     sqlGenerationReasoning: String
     retrievedTables: [String!]
+    toolCalls: [String!]
+    semanticFiles: [String!]
     invalidSql: String
     traceId: String
     queryId: String

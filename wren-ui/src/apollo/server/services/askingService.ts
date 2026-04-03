@@ -592,6 +592,7 @@ export class AskingService implements IAskingService {
     threadResponseId?: number,
   ): Promise<Task> {
     const { threadId, language } = payload;
+    const { id: projectId } = await this.projectService.getCurrentProject();
     const deployId = await this.getDeployId();
 
     // if it's a follow-up question, then the input will have a threadId
@@ -602,6 +603,7 @@ export class AskingService implements IAskingService {
       : null;
     const response = await this.askingTaskTracker.createAskingTask({
       query: input.question,
+      projectId,
       histories,
       deployId,
       configurations: { language },

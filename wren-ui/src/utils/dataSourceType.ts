@@ -1,6 +1,7 @@
 import { DATA_SOURCES } from '@/utils/enum';
 import BigQueryProperties from '@/components/pages/setup/dataSources/BigQueryProperties';
 import DuckDBProperties from '@/components/pages/setup/dataSources/DuckDBProperties';
+import DenodoMcpProperties from '@/components/pages/setup/dataSources/DenodoMcpProperties';
 import MySQLProperties from '@/components/pages/setup/dataSources/MySQLProperties';
 import OracleProperties from '@/components/pages/setup/dataSources/OracleProperties';
 import PostgreSQLProperties from '@/components/pages/setup/dataSources/PostgreSQLProperties';
@@ -18,6 +19,8 @@ export const getDataSourceImage = (dataSource: DATA_SOURCES | string) => {
       return '/images/dataSource/bigQuery.svg';
     case DATA_SOURCES.POSTGRES:
       return '/images/dataSource/postgreSql.svg';
+    case DATA_SOURCES.DENODO_MCP:
+      return '/images/dataSource/denodoMcp.jpg';
     case DATA_SOURCES.MYSQL:
       return '/images/dataSource/mysql.svg';
     case DATA_SOURCES.ORACLE:
@@ -49,6 +52,8 @@ export const getDataSourceName = (dataSource: DATA_SOURCES | string) => {
       return 'BigQuery';
     case DATA_SOURCES.POSTGRES:
       return 'PostgreSQL';
+    case DATA_SOURCES.DENODO_MCP:
+      return 'Denodo MCP';
     case DATA_SOURCES.MYSQL:
       return 'MySQL';
     case DATA_SOURCES.ORACLE:
@@ -80,6 +85,8 @@ export const getDataSourceProperties = (dataSource: DATA_SOURCES | string) => {
       return BigQueryProperties;
     case DATA_SOURCES.POSTGRES:
       return PostgreSQLProperties;
+    case DATA_SOURCES.DENODO_MCP:
+      return DenodoMcpProperties;
     case DATA_SOURCES.MYSQL:
       return MySQLProperties;
     case DATA_SOURCES.ORACLE:

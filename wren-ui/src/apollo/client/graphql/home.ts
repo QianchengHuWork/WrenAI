@@ -82,6 +82,8 @@ const COMMON_ASKING_TASK = gql`
     intentReasoning
     sqlGenerationReasoning
     retrievedTables
+    toolCalls
+    semanticFiles
     invalidSql
     traceId
     queryId

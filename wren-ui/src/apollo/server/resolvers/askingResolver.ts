@@ -7,13 +7,13 @@ import {
   ChartAdjustmentOption,
   AskFeedbackStatus,
 } from '@server/models/adaptor';
+import { DataSourceName, IContext } from '../types';
 import { Thread } from '../repositories/threadRepository';
 import {
   DetailStep,
   ThreadResponse,
 } from '../repositories/threadResponseRepository';
 import { reduce } from 'lodash';
-import { IContext } from '../types';
 import { getLogger } from '@server/utils';
 import { safeFormatSQL } from '@server/utils/sqlFormat';
 import {
@@ -28,6 +28,12 @@ import {
 } from '../data';
 import { TelemetryEvent, WrenService } from '../telemetry/telemetry';
 import { TrackedAskingResult } from '../services';
+import {
+  buildDenodoMcpQueryToolName,
+  getDenodoManifestPath,
+  getDenodoRawSchemaPath,
+} from '@server/utils/denodoMcp';
+import { DENODO_MCP_CONNECTION_INFO } from '@server/repositories';
 
 const logger = getLogger('AskingResolver');
 logger.level = 'debug';
@@ -60,6 +66,8 @@ export interface AskingTask {
   intentReasoning?: string;
   sqlGenerationReasoning?: string;
   retrievedTables?: string[];
+  toolCalls?: string[];
+  semanticFiles?: string[];
   invalidSql?: string;
   traceId?: string;
   queryId?: string;
@@ -782,6 +790,7 @@ export class AskingResolver {
     askingTask: TrackedAskingResult,
     ctx: IContext,
   ): Promise<AskingTask> {
+    const project = await ctx.projectService.getCurrentProject();
     // construct candidates from response
     const candidates = await Promise.all(
       (askingTask.response || []).map(async (response) => {
@@ -806,6 +815,24 @@ export class AskingResolver {
       askingTask?.status === AskResultStatus.STOPPED && !askingTask.type
         ? AskResultType.TEXT_TO_SQL
         : askingTask.type;
+
+    const toolCalls =
+      project.type === DataSourceName.DENODO_MCP
+        ? [
+            `call MCP tool: ${buildDenodoMcpQueryToolName(
+              (project.connectionInfo as DENODO_MCP_CONNECTION_INFO)
+                .databaseName,
+            )}`,
+          ]
+        : [];
+    const semanticFiles =
+      project.type === DataSourceName.DENODO_MCP
+        ? [
+            `read semantic file: ${getDenodoRawSchemaPath(project.id)}`,
+            `read semantic file: ${getDenodoManifestPath(project.id)}`,
+          ]
+        : [];
+
     return {
       type,
       status: askingTask.status,
@@ -816,6 +843,8 @@ export class AskingResolver {
       intentReasoning: askingTask.intentReasoning,
       sqlGenerationReasoning: askingTask.sqlGenerationReasoning,
       retrievedTables: askingTask.retrievedTables,
+      toolCalls,
+      semanticFiles,
       invalidSql: askingTask.invalidSql
         ? safeFormatSQL(askingTask.invalidSql)
         : null,

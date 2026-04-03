@@ -1,14 +1,16 @@
-/** 
+/**
     This class is responsible for handling the retrieval of metadata from the data source.
     For DuckDB, we control the access logic and directly query the WrenEngine.
     For PostgreSQL and BigQuery, we will use the Ibis server API.
  */
 
-import { IIbisAdaptor } from '../adaptors/ibisAdaptor';
+import { IDenodoMcpAdaptor, IIbisAdaptor } from '../adaptors';
 import { IWrenEngineAdaptor } from '../adaptors/wrenEngineAdaptor';
+import { toIbisConnectionInfo } from '../dataSource';
 import { Project } from '../repositories';
 import { DataSourceName } from '../types';
 import { getLogger } from '@server/utils';
+import { toDenodoCompactTables } from '@server/utils/denodoMcp';
 
 const logger = getLogger('MetadataService');
 logger.level = 'debug';
@@ -53,15 +55,19 @@ export interface IDataSourceMetadataService {
 
 export class DataSourceMetadataService implements IDataSourceMetadataService {
   private readonly ibisAdaptor: IIbisAdaptor;
+  private readonly denodoMcpAdaptor: IDenodoMcpAdaptor;
   private readonly wrenEngineAdaptor: IWrenEngineAdaptor;
 
   constructor({
+    denodoMcpAdaptor,
     ibisAdaptor,
     wrenEngineAdaptor,
   }: {
+    denodoMcpAdaptor: IDenodoMcpAdaptor;
     ibisAdaptor: IIbisAdaptor;
     wrenEngineAdaptor: IWrenEngineAdaptor;
   }) {
+    this.denodoMcpAdaptor = denodoMcpAdaptor;
     this.ibisAdaptor = ibisAdaptor;
     this.wrenEngineAdaptor = wrenEngineAdaptor;
   }
@@ -71,6 +77,16 @@ export class DataSourceMetadataService implements IDataSourceMetadataService {
     if (dataSource === DataSourceName.DUCKDB) {
       const tables = await this.wrenEngineAdaptor.listTables();
       return tables;
+    }
+    if (dataSource === DataSourceName.DENODO_MCP) {
+      const denodoConnectionInfo = toIbisConnectionInfo(
+        dataSource,
+        connectionInfo,
+      );
+      const schema = await this.denodoMcpAdaptor.getDatabaseSchema(
+        denodoConnectionInfo as any,
+      );
+      return toDenodoCompactTables(schema);
     }
     return await this.ibisAdaptor.getTables(dataSource, connectionInfo);
   }
@@ -82,11 +98,17 @@ export class DataSourceMetadataService implements IDataSourceMetadataService {
     if (dataSource === DataSourceName.DUCKDB) {
       return [];
     }
+    if (dataSource === DataSourceName.DENODO_MCP) {
+      return [];
+    }
     return await this.ibisAdaptor.getConstraints(dataSource, connectionInfo);
   }
 
   public async getVersion(project: Project): Promise<string> {
     const { type: dataSource, connectionInfo } = project;
+    if (dataSource === DataSourceName.DENODO_MCP) {
+      return 'Denodo MCP';
+    }
     return await this.ibisAdaptor.getVersion(dataSource, connectionInfo);
   }
 }

@@ -1,6 +1,7 @@
 export enum DataSourceName {
   BIG_QUERY = 'BIG_QUERY',
   DUCKDB = 'DUCKDB',
+  DENODO_MCP = 'DENODO_MCP',
   POSTGRES = 'POSTGRES',
   MYSQL = 'MYSQL',
   ORACLE = 'ORACLE',
@@ -26,6 +27,7 @@ export interface SampleDatasetData {
 export type DataSourceProperties = { displayName: string } & Partial<
   BigQueryDataSourceProperties &
     DuckDBDataSourceProperties &
+    DenodoMcpDataSourceProperties &
     PGDataSourceProperties
 >;
 
@@ -41,6 +43,14 @@ export interface DuckDBDataSourceProperties {
   initSql: string;
   extensions: string[];
   configurations: Record<string, any>;
+}
+
+export interface DenodoMcpDataSourceProperties {
+  displayName: string;
+  baseUrl: string;
+  databaseName: string;
+  username: string;
+  password: string;
 }
 
 export interface PGDataSourceProperties {

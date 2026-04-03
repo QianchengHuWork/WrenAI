@@ -1,5 +1,6 @@
 import { IConfig } from '@server/config';
 import {
+  IDenodoMcpAdaptor,
   IIbisAdaptor,
   IWrenAIAdaptor,
   IWrenEngineAdaptor,
@@ -48,6 +49,7 @@ export interface IContext {
   wrenEngineAdaptor: IWrenEngineAdaptor;
   ibisServerAdaptor: IIbisAdaptor;
   wrenAIAdaptor: IWrenAIAdaptor;
+  denodoMcpAdaptor: IDenodoMcpAdaptor;
 
   // services
   projectService: IProjectService;

@@ -16,6 +16,7 @@ import {
 import { getLogger, transformInvalidColumnName } from '@server/utils';
 import { DeployResponse } from '../services/deployService';
 import { safeFormatSQL } from '@server/utils/sqlFormat';
+import { toDenodoNativeSql } from '@server/utils/denodoMcp';
 import { isEmpty, isNil } from 'lodash';
 import { replaceAllowableSyntax, validateDisplayName } from '../utils/regex';
 import { Model, ModelColumn } from '../repositories';
@@ -979,6 +980,9 @@ export class ModelResolver {
         manifest,
         modelingOnly: false,
       });
+    } else if (project.type === DataSourceName.DENODO_MCP) {
+      logger.info(`Getting native sql for Denodo MCP`);
+      nativeSql = toDenodoNativeSql(response.sql, manifest);
     } else {
       logger.info(`Getting native sql from ibis server`);
       nativeSql = await ctx.ibisServerAdaptor.getNativeSql({

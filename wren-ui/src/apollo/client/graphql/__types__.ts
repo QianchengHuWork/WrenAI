@@ -104,8 +104,10 @@ export type AskingTask = {
   queryId?: Maybe<Scalars['String']>;
   rephrasedQuestion?: Maybe<Scalars['String']>;
   retrievedTables?: Maybe<Array<Scalars['String']>>;
+  semanticFiles?: Maybe<Array<Scalars['String']>>;
   sqlGenerationReasoning?: Maybe<Scalars['String']>;
   status: AskingTaskStatus;
+  toolCalls?: Maybe<Array<Scalars['String']>>;
   traceId?: Maybe<Scalars['String']>;
   type?: Maybe<AskingTaskType>;
 };
@@ -331,6 +333,7 @@ export enum DataSourceName {
   BIG_QUERY = 'BIG_QUERY',
   CLICK_HOUSE = 'CLICK_HOUSE',
   DATABRICKS = 'DATABRICKS',
+  DENODO_MCP = 'DENODO_MCP',
   DUCKDB = 'DUCKDB',
   MSSQL = 'MSSQL',
   MYSQL = 'MYSQL',

@@ -67,6 +67,11 @@ export const DATA_SOURCE_OPTIONS = {
     guide: 'https://docs.getwren.ai/oss/guide/connect/duckdb',
     disabled: false,
   },
+  [DATA_SOURCES.DENODO_MCP]: {
+    ...getDataSourceConfig(DATA_SOURCES.DENODO_MCP),
+    guide: 'https://community.denodo.com/docs/html/document/denodoconnects/9.4/en/Denodo%20MCP%20Server%20-%20User%20Manual',
+    disabled: false,
+  },
   [DATA_SOURCES.POSTGRES]: {
     ...getDataSourceConfig(DATA_SOURCES.POSTGRES),
     guide: 'https://docs.getwren.ai/oss/guide/connect/postgresql',
@@ -121,12 +126,12 @@ export const DATA_SOURCE_OPTIONS = {
 
 export const TEMPLATE_OPTIONS = {
   [SampleDatasetName.ECOMMERCE]: {
-    label: 'E-commerce',
+    label: '电商',
     IconComponent: ShoppingCartOutlined,
     guide: 'https://docs.getwren.ai/oss/getting_started/sample_data/ecommerce',
   },
   [SampleDatasetName.HR]: {
-    label: 'Human Resource',
+    label: '人力资源',
     IconComponent: IdCardOutlined,
     guide: 'https://docs.getwren.ai/oss/getting_started/sample_data/hr',
   },
@@ -155,16 +160,15 @@ export const getPostgresErrorMessage = (error: Record<string, any>) => {
     return (
       <div>
         {error.message}. <br />
-        If you are having trouble connecting to your PostgreSQL database, please
-        refer to our{' '}
+        如果你在连接 PostgreSQL 数据库时遇到问题，请参考我们的{' '}
         <a
           href="https://docs.getwren.ai/oss/guide/connect/postgresql#connect"
           target="_blank"
           rel="noopener noreferrer"
         >
-          documentation
+          文档
         </a>{' '}
-        for detailed instructions.
+        获取详细说明。
       </div>
     );
   }

@@ -2,7 +2,11 @@ import crypto from 'crypto';
 import * as fs from 'fs';
 import path from 'path';
 import { getLogger } from '@server/utils';
-import { IProjectRepository, WREN_AI_CONNECTION_INFO } from '../repositories';
+import {
+  DENODO_MCP_CONNECTION_INFO,
+  IProjectRepository,
+  WREN_AI_CONNECTION_INFO,
+} from '../repositories';
 import { Project } from '../repositories';
 import {
   CompactTable,
@@ -217,8 +221,13 @@ export class ProjectService implements IProjectService {
     const projectValue = {
       displayName: projectData.displayName,
       type: projectData.type,
-      catalog: 'wrenai',
-      schema: 'public',
+      catalog:
+        projectData.type === DataSourceName.DENODO_MCP ? 'denodo' : 'wrenai',
+      schema:
+        projectData.type === DataSourceName.DENODO_MCP
+          ? (projectData.connectionInfo as DENODO_MCP_CONNECTION_INFO)
+              .databaseName
+          : 'public',
       connectionInfo: encryptConnectionInfo(
         projectData.type,
         projectData.connectionInfo,

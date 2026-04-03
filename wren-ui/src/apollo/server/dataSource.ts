@@ -14,6 +14,7 @@ import {
 import {
   ATHENA_CONNECTION_INFO,
   BIG_QUERY_CONNECTION_INFO,
+  DENODO_MCP_CONNECTION_INFO,
   DUCKDB_CONNECTION_INFO,
   MYSQL_CONNECTION_INFO,
   POSTGRES_CONNECTION_INFO,
@@ -145,6 +146,21 @@ const dataSource = {
   } as IDataSourceConnectionInfo<
     BIG_QUERY_CONNECTION_INFO,
     IbisBigQueryConnectionInfo
+  >,
+
+  // Denodo MCP
+  [DataSourceName.DENODO_MCP]: {
+    sensitiveProps: ['password'],
+    toIbisConnectionInfo(connectionInfo) {
+      const decryptedConnectionInfo = decryptConnectionInfo(
+        DataSourceName.DENODO_MCP,
+        connectionInfo,
+      );
+      return decryptedConnectionInfo;
+    },
+  } as IDataSourceConnectionInfo<
+    DENODO_MCP_CONNECTION_INFO,
+    DENODO_MCP_CONNECTION_INFO
   >,
 
   // Postgres
