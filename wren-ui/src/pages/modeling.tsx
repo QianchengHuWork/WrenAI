@@ -96,7 +96,7 @@ export default function Modeling() {
       getBaseOptions({
         onError: null,
         onCompleted: () => {
-          message.success('Successfully created calculated field.');
+          message.success('计算字段创建成功。');
         },
       }),
     );
@@ -106,7 +106,7 @@ export default function Modeling() {
       getBaseOptions({
         onError: null,
         onCompleted: () => {
-          message.success('Successfully updated calculated field.');
+          message.success('计算字段更新成功。');
         },
       }),
     );
@@ -114,7 +114,7 @@ export default function Modeling() {
   const [deleteCalculatedField] = useDeleteCalculatedFieldMutation(
     getBaseOptions({
       onCompleted: () => {
-        message.success('Successfully deleted calculated field.');
+        message.success('计算字段删除成功。');
       },
     }),
   );
@@ -123,7 +123,7 @@ export default function Modeling() {
     useCreateModelMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully created model.');
+          message.success('模型创建成功。');
         },
         refetchQueries: refetchQueriesForModel,
       }),
@@ -132,7 +132,7 @@ export default function Modeling() {
   const [deleteModelMutation] = useDeleteModelMutation(
     getBaseOptions({
       onCompleted: () => {
-        message.success('Successfully deleted model.');
+        message.success('模型删除成功。');
       },
       refetchQueries: refetchQueriesForModel,
     }),
@@ -142,7 +142,7 @@ export default function Modeling() {
     useUpdateModelMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully updated model.');
+          message.success('模型更新成功。');
         },
         refetchQueries: refetchQueriesForModel,
       }),
@@ -151,7 +151,7 @@ export default function Modeling() {
   const [deleteViewMutation] = useDeleteViewMutation(
     getBaseOptions({
       onCompleted: () => {
-        message.success('Successfully deleted view.');
+        message.success('视图删除成功。');
       },
     }),
   );
@@ -160,7 +160,7 @@ export default function Modeling() {
     useUpdateModelMetadataMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully updated model metadata.');
+          message.success('模型元数据更新成功。');
         },
       }),
     );
@@ -169,7 +169,7 @@ export default function Modeling() {
     useCreateRelationshipMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully created relationship.');
+          message.success('关系创建成功。');
         },
       }),
     );
@@ -177,7 +177,7 @@ export default function Modeling() {
   const [deleteRelationshipMutation] = useDeleteRelationshipMutation(
     getBaseOptions({
       onCompleted: () => {
-        message.success('Successfully deleted relationship.');
+        message.success('关系删除成功。');
       },
     }),
   );
@@ -186,7 +186,7 @@ export default function Modeling() {
     useUpdateRelationshipMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully updated relationship.');
+          message.success('关系更新成功。');
         },
       }),
     );
@@ -195,7 +195,7 @@ export default function Modeling() {
     useUpdateViewMetadataMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully updated view metadata.');
+          message.success('视图元数据更新成功。');
         },
       }),
     );

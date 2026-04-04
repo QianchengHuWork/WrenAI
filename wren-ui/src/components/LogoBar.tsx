@@ -1,12 +1,22 @@
-import Image from 'next/image';
+import styled from 'styled-components';
+
+const BrandText = styled.div`
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  font-family:
+    'IBM Plex Sans',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+`;
 
 export default function LogoBar() {
-  return (
-    <Image
-      src="/images/logo-white-with-text.svg"
-      alt="Wren AI"
-      width={125}
-      height={30}
-    />
-  );
+  return <BrandText>Zen-SmartBI</BrandText>;
 }

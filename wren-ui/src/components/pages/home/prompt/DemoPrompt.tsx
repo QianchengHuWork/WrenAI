@@ -39,7 +39,7 @@ export default function DemoPrompt(props: Props) {
   const { demo, onSelect } = props;
   return (
     <div className="gray-8" style={{ width: 580 }}>
-      <div className="text-center mt-3 mb-2">Try asking...</div>
+      <div className="text-center mt-3 mb-2">试着这样提问...</div>
       <Row gutter={16}>
         <DemoColumnIterator data={demo} onSelect={onSelect} />
       </Row>

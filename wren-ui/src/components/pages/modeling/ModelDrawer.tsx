@@ -9,7 +9,7 @@ type Props = DrawerAction & {
 
 const getDrawerTitle = (formMode: FORM_MODE, name?: string) =>
   ({
-    [FORM_MODE.CREATE]: 'Create a data model',
+    [FORM_MODE.CREATE]: '创建数据模型',
     [FORM_MODE.EDIT]: name,
   })[formMode];
 
@@ -46,7 +46,7 @@ export default function ModelDrawer(props: Props) {
       footer={
         <Space className="d-flex justify-end">
           <Button onClick={onClose} disabled={submitting}>
-            Cancel
+            取消
           </Button>
           <Button
             type="primary"
@@ -54,7 +54,7 @@ export default function ModelDrawer(props: Props) {
             loading={submitting}
             disabled={submitting}
           >
-            Submit
+            提交
           </Button>
         </Space>
       }

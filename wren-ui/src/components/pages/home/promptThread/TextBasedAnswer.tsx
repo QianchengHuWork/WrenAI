@@ -173,7 +173,7 @@ export default function TextBasedAnswer(props: AnswerResultProps) {
         icon={<EditOutlined />}
         onClick={(event) => event.stopPropagation()}
       >
-        Adjust the answer
+        调整回答
         <CaretDownOutlined
           className="ml-1"
           rotate={adjustResultsDropdown.visible ? 180 : 0}
@@ -216,10 +216,10 @@ export default function TextBasedAnswer(props: AnswerResultProps) {
               icon={<ReloadOutlined />}
               size="small"
               type="link"
-              title="Regenerate answer"
+              title="重新生成回答"
               onClick={onRegenerateAnswer}
             >
-              Regenerate
+              重新生成
             </Button>
           </div>
         )}
@@ -240,14 +240,13 @@ export default function TextBasedAnswer(props: AnswerResultProps) {
               data-ph-capture="true"
               data-ph-capture-attribute-name="cta_text-answer_preview_data"
             >
-              View results
+              查看结果
             </Button>
 
             <div className="mt-2 mb-3" data-guideid="text-answer-preview-data">
               {hasPreviewData && (
                 <Text type="secondary" className="text-sm">
-                  Considering the limit of the context window, we retrieve up to
-                  500 rows of results to generate the answer.
+                  受上下文窗口限制，最多会提取 500 行结果用于生成回答。
                 </Text>
               )}
               <PreviewData
@@ -263,8 +262,7 @@ export default function TextBasedAnswer(props: AnswerResultProps) {
               <Alert
                 message={
                   <>
-                    Click <b>View SQL</b> to review the step-by-step query logic
-                    and verify why the data is unavailable.
+                    请点击 <b>查看 SQL</b>，检查逐步查询逻辑并确认数据不可用的原因。
                   </>
                 }
                 type="info"

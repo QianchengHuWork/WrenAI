@@ -31,13 +31,13 @@ const defaultDescriptiveContentRender = (content: Record<string, any>) => {
     <Space style={{ width: '100%' }} size={[0, 16]} direction="vertical">
       <div>
         <div style={{ marginBottom: 4 }}>
-          <b>Description</b>
+          <b>说明</b>
         </div>
         {content?.description || '-'}
       </div>
       <div>
         <div style={{ marginBottom: 4 }}>
-          <b>Example</b>
+          <b>示例</b>
         </div>
         {content?.example ? (
           <div className="describeBox-codeBlock">{content?.example}</div>

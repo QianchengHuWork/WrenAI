@@ -126,10 +126,10 @@ export const getLineageOptions = (data: {
     let invalidTypeMessage = '';
     if (!checkStringFunctionAllowType(expression, value)) {
       isInvalidType = true;
-      invalidTypeMessage = 'Please select a string type field.';
+      invalidTypeMessage = '请选择字符串类型字段。';
     } else if (!checkNumberFunctionAllowType(expression, value)) {
       isInvalidType = true;
-      invalidTypeMessage = 'Please select a number type field.';
+      invalidTypeMessage = '请选择数值类型字段。';
     }
 
     const disabled =
@@ -142,14 +142,14 @@ export const getLineageOptions = (data: {
     let title = undefined;
     if (isSourceModelFieldsWithAggregation) {
       title =
-        "Aggregation functions don't allow selecting from source model fields to prevent unexpected outcomes.";
+        '聚合函数不支持直接选择源模型字段，以避免产生不符合预期的结果。';
     } else if (isRelationshipWithoutPrimaryKey) {
       title =
-        'Please set a primary key within this model to use it in a calculated field.';
+        '请先为该模型设置主键，之后才能在计算字段中使用该关系。';
     } else if (isSourceModelCalculatedField) {
-      title = 'Calculated field from the source model is not supported.';
+      title = '暂不支持直接使用源模型中的计算字段。';
     } else if (isInUsedRelationship) {
-      title = 'This relationship is in use.';
+      title = '该关系已被使用。';
     } else if (isInvalidType) {
       title = invalidTypeMessage;
     }
@@ -181,10 +181,10 @@ export const getLineageOptions = (data: {
   return compact([
     ...fields,
     calculatedFields.length
-      ? { label: 'Calculated fields', options: calculatedFields }
+      ? { label: '计算字段', options: calculatedFields }
       : undefined,
     relationships.length
-      ? { label: 'Relationships', options: relationships }
+      ? { label: '关系', options: relationships }
       : undefined,
   ]);
 };

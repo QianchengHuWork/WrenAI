@@ -46,27 +46,27 @@ export default function ModelMetadata(props: Props) {
       <Row className="mb-6">
         <Col span={12} data-testid="metadata__name">
           <Typography.Text className="d-block gray-7 mb-2">
-            Name
+            名称
           </Typography.Text>
           <div>{referenceName || '-'}</div>
         </Col>
         <Col span={12} data-testid="metadata__alias">
           <Typography.Text className="d-block gray-7 mb-2">
-            Alias
+            别名
           </Typography.Text>
           <div>{displayName || '-'}</div>
         </Col>
       </Row>
       <div className="mb-6" data-testid="metadata__description">
         <Typography.Text className="d-block gray-7 mb-2">
-          Description
+          描述
         </Typography.Text>
         <div>{description || '-'}</div>
       </div>
 
       <div className="mb-6" data-testid="metadata__columns">
         <Typography.Text className="d-block gray-7 mb-2">
-          Columns ({fields.length})
+          字段（{fields.length}）
         </Typography.Text>
         <FieldTable dataSource={fields} showExpandable />
       </div>
@@ -74,7 +74,7 @@ export default function ModelMetadata(props: Props) {
       {!!calculatedFields.length && (
         <div className="mb-6" data-testid="metadata__calculated-fields">
           <Typography.Text className="d-block gray-7 mb-2">
-            Calculated fields ({calculatedFields.length})
+            计算字段（{calculatedFields.length}）
           </Typography.Text>
           <CalculatedFieldTable dataSource={calculatedFields} showExpandable />
         </div>
@@ -83,7 +83,7 @@ export default function ModelMetadata(props: Props) {
       {!!relationFields.length && (
         <div className="mb-6" data-testid="metadata__relationships">
           <Typography.Text className="d-block gray-7 mb-2">
-            Relationships ({relationFields.length})
+            关系（{relationFields.length}）
           </Typography.Text>
           <RelationTable dataSource={relationFields} showExpandable />
         </div>
@@ -91,13 +91,13 @@ export default function ModelMetadata(props: Props) {
 
       <div className="mb-6" data-testid="metadata__preview-data">
         <Typography.Text className="d-block gray-7 mb-2">
-          Data preview (100 rows)
+          数据预览（100 行）
         </Typography.Text>
         <Button
           onClick={onPreviewData}
           loading={previewModelDataResult.loading}
         >
-          Preview data
+          预览数据
         </Button>
         <div className="my-3">
           <PreviewData

@@ -70,7 +70,7 @@ export default function ManageInstructions() {
     useCreateInstructionMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully created instruction.');
+          message.success('指令创建成功。');
         },
       }),
     );
@@ -79,7 +79,7 @@ export default function ManageInstructions() {
     useUpdateInstructionMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully updated instruction.');
+          message.success('指令更新成功。');
         },
       }),
     );
@@ -87,7 +87,7 @@ export default function ManageInstructions() {
   const [deleteInstructionMutation] = useDeleteInstructionMutation(
     getBaseOptions({
       onCompleted: () => {
-        message.success('Successfully deleted instruction.');
+        message.success('指令删除成功。');
       },
     }),
   );
@@ -107,7 +107,7 @@ export default function ManageInstructions() {
 
   const columns: TableColumnsType<Instruction> = [
     {
-      title: 'Instruction details',
+      title: '指令内容',
       dataIndex: 'instruction',
       render: (instruction) => (
         <Paragraph title={instruction} ellipsis={{ rows: 3 }}>
@@ -116,7 +116,7 @@ export default function ManageInstructions() {
       ),
     },
     {
-      title: 'Matching questions',
+      title: '匹配问题',
       dataIndex: 'questions',
       width: '50%',
       render: (questions, record) => {
@@ -139,7 +139,7 @@ export default function ManageInstructions() {
             ))}
             {moreCount > 0 && (
               <div className="text-sm gray-7 pl-1">
-                +{moreCount} more question{moreCount > 1 ? 's' : ''}
+                还有 {moreCount} 个问题
               </div>
             )}
           </StyledQuestionsBlock>
@@ -147,7 +147,7 @@ export default function ManageInstructions() {
       },
     },
     {
-      title: 'Created time',
+      title: '创建时间',
       dataIndex: 'createdAt',
       width: 130,
       render: (time) => <Text className="gray-7">{getCompactTime(time)}</Text>,
@@ -171,27 +171,25 @@ export default function ManageInstructions() {
         title={
           <>
             <StyledInstructionsIcon className="mr-2 gray-8" />
-            Manage instruction
+            管理指令
           </>
         }
         titleExtra={
           <Button type="primary" onClick={() => instructionModal.openModal()}>
-            Add an instruction
+            新增指令
           </Button>
         }
         description={
           <>
-            On this page, you can manage saved instructions that guide Wren AI
-            in generating SQL queries. These instructions help Wren AI
-            understand your data model and business rules, improving query
-            accuracy and reducing the need for manual refinements.{' '}
+            你可以在这里管理用于指导 Zen-SmartBI 生成 SQL 的指令。这些指令可帮助
+            Zen-SmartBI 理解你的数据模型和业务规则，提升查询准确性，减少手动调整。{' '}
             <Link
               className="gray-8 underline"
               href="https://docs.getwren.ai/oss/guide/knowledge/instructions"
               rel="noopener noreferrer"
               target="_blank"
             >
-              Learn more.
+              了解更多
             </Link>
           </>
         }

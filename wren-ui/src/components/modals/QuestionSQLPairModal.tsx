@@ -45,7 +45,7 @@ const Toolbar = (props: { dataSource: string; onClick: () => void }) => {
       </span>
       <Button className="px-0" type="link" size="small" onClick={onClick}>
         <SelectOutlined />
-        Import from {name} SQL
+        从 {name} SQL 导入
       </Button>
     </div>
   );
@@ -123,7 +123,7 @@ export default function QuestionSQLPairModal(props: Props) {
 
   const handleError = (error) => {
     const graphQLError = parseGraphQLError(error);
-    setError({ ...graphQLError, shortMessage: 'Invalid SQL syntax' });
+    setError({ ...graphQLError, shortMessage: 'SQL 语法无效' });
     console.error(graphQLError);
   };
 
@@ -191,7 +191,7 @@ export default function QuestionSQLPairModal(props: Props) {
   return (
     <>
       <Modal
-        title={`${isCreateMode ? 'Add' : 'Update'} question-SQL pair`}
+        title={`${isCreateMode ? '新增' : '编辑'}问题-SQL 对`}
         centered
         closable
         confirmLoading={confirmLoading}
@@ -214,26 +214,26 @@ export default function QuestionSQLPairModal(props: Props) {
                 type="secondary"
                 className="text-sm gray-7 text-left"
               >
-                The SQL statement used here follows <b>Wren SQL</b>, which is
-                based on ANSI SQL and optimized for Wren AI.{` `}
+                这里使用的 SQL 语句遵循 <b>Wren SQL</b>，它基于 ANSI SQL
+                并针对语义建模场景做了优化。{` `}
                 <Typography.Link
                   type="secondary"
                   href="https://docs.getwren.ai/oss/guide/home/wren_sql"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Learn more about the syntax.
+                  了解语法说明
                 </Typography.Link>
               </Typography.Text>
             </div>
             <div>
-              <Button onClick={onClose}>Cancel</Button>
+              <Button onClick={onClose}>取消</Button>
               <Button
                 type="primary"
                 onClick={onSubmitButton}
                 loading={confirmLoading}
               >
-                Submit
+                提交
               </Button>
             </div>
           </div>
@@ -247,9 +247,9 @@ export default function QuestionSQLPairModal(props: Props) {
                 className="d-flex justify-space-between"
                 style={{ width: '100%' }}
               >
-                <span>Question</span>
+                <span>问题</span>
                 <div className="gray-8 text-sm">
-                  Let AI create a matching question for this SQL statement.
+                  让 AI 为这条 SQL 生成匹配的问题。
                   <Button
                     className="ml-2"
                     size="small"
@@ -257,7 +257,7 @@ export default function QuestionSQLPairModal(props: Props) {
                     onClick={onGenerateQuestion}
                     disabled={disabled}
                   >
-                    <span className="text-sm">Generate question</span>
+                    <span className="text-sm">生成问题</span>
                   </Button>
                 </div>
               </div>
@@ -275,7 +275,7 @@ export default function QuestionSQLPairModal(props: Props) {
             <Input />
           </Form.Item>
           <Form.Item
-            label="SQL statement"
+            label="SQL 语句"
             name="sql"
             required
             rules={[
@@ -305,14 +305,14 @@ export default function QuestionSQLPairModal(props: Props) {
         </StyledForm>
         <div className="my-3">
           <Typography.Text className="d-block gray-7 mb-2">
-            Data preview (50 rows)
+            数据预览（50 行）
           </Typography.Text>
           <Button
             onClick={onPreviewData}
             loading={previewing}
             disabled={disabled}
           >
-            Preview data
+            预览数据
           </Button>
           {showPreview && (
             <div className="my-3">

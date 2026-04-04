@@ -85,7 +85,7 @@ export default function EditModelMetadata(props: Props) {
 
       <div className="mb-6">
         <Typography.Text className="d-block gray-7 mb-2">
-          Columns ({fields.length})
+          字段（{fields.length}）
         </Typography.Text>
         <FieldEditableTable
           dataSource={fields}
@@ -120,7 +120,7 @@ export default function EditModelMetadata(props: Props) {
       {!!calculatedFields.length && (
         <div className="mb-6">
           <Typography.Text className="d-block gray-7 mb-2">
-            Calculated fields ({calculatedFields.length})
+            计算字段（{calculatedFields.length}）
           </Typography.Text>
           <CalculatedFieldEditableTable
             dataSource={calculatedFields}
@@ -137,7 +137,7 @@ export default function EditModelMetadata(props: Props) {
       {!!relationFields.length && (
         <div className="mb-6">
           <Typography.Text className="d-block gray-7 mb-2">
-            Relationships ({relationFields.length})
+            关系（{relationFields.length}）
           </Typography.Text>
           <RelationshipEditableTable
             dataSource={relationFields}

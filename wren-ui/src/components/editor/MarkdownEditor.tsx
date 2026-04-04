@@ -212,10 +212,10 @@ export default function MarkdownEditor(props: Props) {
         <div className="adm-markdown-editor-length gray-6 text-sm mr-2">
           {maxLength ? (
             <>
-              {value?.length} / {maxLength} characters
+              {value?.length} / {maxLength} 个字符
             </>
           ) : (
-            <>{value?.length} characters</>
+            <>{value?.length} 个字符</>
           )}
         </div>
         <LinkButton
@@ -224,7 +224,7 @@ export default function MarkdownEditor(props: Props) {
           size="small"
           onClick={() => setIsPreviewMode(!isPreviewMode)}
         >
-          {isPreviewMode ? 'Edit mode' : 'Read mode'}
+          {isPreviewMode ? '编辑模式' : '预览模式'}
         </LinkButton>
       </div>
       <OverflowContainer className={clsx({ 'p-4': isPreviewMode })}>

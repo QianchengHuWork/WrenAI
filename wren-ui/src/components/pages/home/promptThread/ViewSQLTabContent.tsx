@@ -3,7 +3,6 @@ import Image from 'next/image';
 import { useEffect } from 'react';
 import styled from 'styled-components';
 import {
-  Alert,
   Button,
   Divider,
   Empty,
@@ -92,12 +91,10 @@ export default function ViewSQLTabContent(props: AnswerResultProps) {
     if (!nativeSQLResult.nativeSQLMode) {
       message.success(
         <>
-          You copied Wren SQL. This dialect is for the Wren Engine and may not
-          run directly on your database.
+          你复制的是 Wren SQL。该方言用于 Wren Engine，可能无法直接在你的数据库中运行。
           {hasNativeSQL && (
             <>
-              {' '}
-              Click “<b>Show original SQL</b>” to get the executable version.
+              请点击“<b>显示原始 SQL</b>”获取可执行版本。
             </>
           )}
         </>,
@@ -107,26 +104,6 @@ export default function ViewSQLTabContent(props: AnswerResultProps) {
 
   return (
     <div className="text-md gray-10 p-6 pb-4">
-      <Alert
-        banner
-        className="mb-3 adm-alert-info"
-        message={
-          <>
-            You’re viewing Wren SQL by default. If you want to run this query on
-            your own database, click “Show original SQL” to get the exact
-            syntax.
-            <Typography.Link
-              className="underline ml-1"
-              href="https://docs.getwren.ai/oss/guide/home/wren_sql"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learn more about Wren SQL
-            </Typography.Link>
-          </>
-        }
-        type="info"
-      />
       <StyledPre className="p-0 mb-3">
         <StyledToolBar className="d-flex align-center justify-space-between text-family-base">
           <div>
@@ -167,7 +144,7 @@ export default function ViewSQLTabContent(props: AnswerResultProps) {
                   loading={nativeSQLResult.loading}
                 />
                 <Text className="gray-8 text-medium text-base">
-                  Show original SQL
+                  显示原始 SQL
                 </Text>
               </div>
             )}
@@ -179,7 +156,7 @@ export default function ViewSQLTabContent(props: AnswerResultProps) {
               size="small"
               onClick={() => onOpenAdjustSQLModal({ sql, responseId: id })}
             >
-              Adjust SQL
+              调整 SQL
             </Button>
           </Space>
         </StyledToolBar>
@@ -208,7 +185,7 @@ export default function ViewSQLTabContent(props: AnswerResultProps) {
           data-ph-capture="true"
           data-ph-capture-attribute-name="view_sql_preview_data"
         >
-          View results
+          查看结果
         </Button>
         {previewDataResult?.data?.previewData && (
           <div className="mt-2 mb-3">
@@ -220,13 +197,13 @@ export default function ViewSQLTabContent(props: AnswerResultProps) {
                 emptyText: (
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="Sorry, we couldn't find any records that match your search criteria."
+                    description="未找到符合当前筛选条件的记录。"
                   />
                 ),
               }}
             />
             <div className="text-right">
-              <Text className="text-base gray-6">Showing up to 500 rows</Text>
+              <Text className="text-base gray-6">最多展示 500 行</Text>
             </div>
           </div>
         )}

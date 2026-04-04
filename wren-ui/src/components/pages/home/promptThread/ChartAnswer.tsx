@@ -96,7 +96,7 @@ export default function ChartAnswer(props: AnswerResultProps) {
   const [createDashboardItem] = useCreateDashboardItemMutation({
     onError: (error) => console.error(error),
     onCompleted: () => {
-      message.success('Successfully pinned chart to dashboard.');
+      message.success('图表已成功固定到仪表板。');
     },
   });
 
@@ -169,7 +169,7 @@ export default function ChartAnswer(props: AnswerResultProps) {
 
   const onReload = () => {
     Modal.confirm({
-      title: 'Are you sure you want to regenerate the chart?',
+      title: '确定要重新生成图表吗？',
       onOk: onRegenerate,
     });
   };
@@ -180,8 +180,8 @@ export default function ChartAnswer(props: AnswerResultProps) {
 
   const onPin = () => {
     Modal.confirm({
-      title: 'Are you sure you want to pin this chart to the dashboard?',
-      okText: 'Save',
+      title: '确定要将此图表固定到仪表板吗？',
+      okText: '保存',
       onOk: async () =>
         await createDashboardItem({
           variables: {
@@ -211,7 +211,7 @@ export default function ChartAnswer(props: AnswerResultProps) {
   const regenerateBtn = (
     <div className="text-center mt-4">
       <Button icon={<ReloadOutlined />} onClick={onReload}>
-        Regenerate
+        重新生成
       </Button>
     </div>
   );

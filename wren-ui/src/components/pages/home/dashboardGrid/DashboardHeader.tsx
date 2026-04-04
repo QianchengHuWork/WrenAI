@@ -60,12 +60,12 @@ export default function DashboardHeader(props: Props) {
                     title={
                       <>
                         <div>
-                          <span className="gray-6">Next schedule:</span>{' '}
+                          <span className="gray-6">下次调度：</span>{' '}
                           {getCompactTime(nextScheduleTime)}
                         </div>
                         {schedule.cron && (
                           <div>
-                            <span className="gray-6">Cron expression:</span>{' '}
+                            <span className="gray-6">Cron 表达式：</span>{' '}
                             {schedule.cron}
                           </div>
                         )}

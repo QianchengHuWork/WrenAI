@@ -8,6 +8,8 @@ from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 from pydantic import BaseModel, Field
 
+from src.utils import loads_llm_json
+
 logger = logging.getLogger("wren-ai-service")
 
 
@@ -291,13 +293,13 @@ class ChartGenerationPostProcessor:
         remove_data_from_chart_schema: Optional[bool] = True,
     ):
         try:
-            generation_result = orjson.loads(replies[0])
+            generation_result = loads_llm_json(replies[0])
             reasoning = generation_result.get("reasoning", "")
             chart_type = generation_result.get("chart_type", "")
             if chart_schema := generation_result.get("chart_schema", {}):
                 # sometimes the chart_schema is still in string format
                 if isinstance(chart_schema, str):
-                    chart_schema = orjson.loads(chart_schema)
+                    chart_schema = loads_llm_json(chart_schema)
 
                 chart_schema[
                     "$schema"

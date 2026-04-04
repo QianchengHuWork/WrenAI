@@ -17,26 +17,26 @@ export default function InstructionDrawer(props: Props) {
       closable
       destroyOnClose
       onClose={onClose}
-      title="View instruction"
+      title="查看指令"
       visible={visible}
       width={760}
     >
       <div className="mb-6">
         <Typography.Text className="gray-7 mb-2">
-          Instruction details
+          指令内容
         </Typography.Text>
         <div>{defaultValue?.instruction || '-'}</div>
       </div>
       <div className="mb-6">
         <Typography.Text className="gray-7 mb-2">
-          Matching questions
+          匹配问题
         </Typography.Text>
         <div>
           {defaultValue?.isDefault ? (
             <>
               <GlobalLabel />
               <Text className="gray-7 ml-2" type="secondary">
-                (applies to all questions)
+                （适用于所有问题）
               </Text>
             </>
           ) : (
@@ -52,7 +52,7 @@ export default function InstructionDrawer(props: Props) {
         </div>
       </div>
       <div className="mb-6">
-        <Typography.Text className="gray-7 mb-2">Created time</Typography.Text>
+        <Typography.Text className="gray-7 mb-2">创建时间</Typography.Text>
         <div>
           {defaultValue?.createdAt
             ? getCompactTime(defaultValue.createdAt)

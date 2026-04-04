@@ -130,14 +130,14 @@ export default function FieldSelect(props: IterableComponent<Props>) {
       </FieldHeader>
 
       {selectedValue?.nodeType === NODE_TYPE.RELATION && (
-        <div className="gray-7 text-sm px-3 pt-1">Relationships</div>
+        <div className="gray-7 text-sm px-3 pt-1">关系</div>
       )}
 
       <StyledSelector
         bordered={false}
         options={options}
         optionLabelProp="label"
-        placeholder="Select field"
+        placeholder="请选择字段"
         suffixIcon={null}
         value={selectedValue}
         dropdownClassName="adm-model-field-select-dropdown"

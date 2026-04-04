@@ -73,7 +73,7 @@ export default function PromptInput(props: Props) {
         onClick={handleAsk}
         disabled={isDisabled}
       >
-        Ask
+        提问
       </PromptButton>
     </>
   );

@@ -92,34 +92,30 @@ const playDataModelingGuide = (
                 alt="data-modeling-guide"
               />
             </div>
-            Data modeling guide
+            数据建模指南
           </div>,
         ),
         description: renderToString(
           <>
-            Data modeling adds a logical layer over your original data schema,
-            organizing relationships, semantics, and calculations. This helps AI
-            align with business logic, retrieve precise data, and generate
-            meaningful insights.{' '}
+            数据建模会在原始数据结构之上增加一层逻辑语义层，用于组织关系、业务含义和计算规则。这能帮助系统更贴近业务逻辑，检索更准确的数据，并生成更有意义的洞察。{' '}
             <a
               href="https://docs.getwren.ai/oss/guide/modeling/overview"
               target="_blank"
               rel="noopener noreferrer"
             >
-              More details
+              了解更多
             </a>
             <br />
             <br />
             {isSampleDataset ? (
               <>
-                We use {sampleDatasetInfo.label} Dataset to present the guide.
-                To know more, please visit{' '}
+                本指南使用 {sampleDatasetInfo.label} 数据集进行演示。如需了解更多，请查看{' '}
                 <a
                   href={sampleDatasetInfo.guide}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  about the {sampleDatasetInfo.label} Dataset.
+                  {sampleDatasetInfo.label} 数据集说明。
                 </a>
               </>
             ) : null}
@@ -143,11 +139,11 @@ const playDataModelingGuide = (
             <div className="mb-1">
               <ModelIcon style={{ fontSize: 24 }} />
             </div>
-            Create a model
+            创建模型
           </>,
         ),
         description: renderToString(
-          <>Click the add icon to start create your first model.</>,
+          <>点击新增图标，开始创建你的第一个模型。</>,
         ),
       },
     },
@@ -163,11 +159,11 @@ const playDataModelingGuide = (
                 alt="edit-model"
               />
             </div>
-            Edit a model
+            编辑模型
           </>,
         ),
         description: renderToString(
-          <>Click the more icon to update the columns of model or delete it.</>,
+          <>点击更多图标，可以更新模型字段或删除模型。</>,
         ),
       },
     },
@@ -183,13 +179,12 @@ const playDataModelingGuide = (
                 alt="edit-metadata"
               />
             </div>
-            Edit metadata
+            编辑元数据
           </>,
         ),
         description: renderToString(
           <>
-            You could edit alias (alternative name) and descriptions of models
-            and columns.
+            你可以编辑模型和字段的别名以及描述信息。
           </>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
@@ -209,11 +204,11 @@ const playDataModelingGuide = (
                 alt="deploy-modeling"
               />
             </div>
-            Deploy modeling
+            发布建模
           </>,
         ),
         description: renderToString(
-          <>After editing the models, remember to deploy the changes.</>,
+          <>完成模型编辑后，记得发布这些变更。</>,
         ),
       },
     },
@@ -228,19 +223,18 @@ const playDataModelingGuide = (
                 alt="ask-question"
               />
             </div>
-            Ask questions
+            开始提问
           </>,
         ),
         description: renderToString(
           <>
-            When you finish editing your models, you can visit “Home” and start
-            asking questions.
+            完成模型编辑后，你可以前往“首页”开始提问。
           </>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
           resetPopoverStyle(popoverDom, 720);
         },
-        doneBtnText: 'Go to Home',
+        doneBtnText: '前往首页',
         onNextClick: () => {
           router.push(Path.Home);
           $driver.destroy();
@@ -265,7 +259,7 @@ const LanguageSwitcher = (props: { defaultValue: ProjectLanguage }) => {
 
   return (
     <>
-      <label className="d-block mb-2">Project language</label>
+      <label className="d-block mb-2">项目语言</label>
       <Select
         showSearch
         style={{ width: '100%' }}
@@ -300,17 +294,16 @@ const playSwitchProjectLanguageGuide = (
             <div className="mb-1">
               <TranslateIcon style={{ fontSize: 24 }} />
             </div>
-            Switch the language
+            切换语言
           </>,
         ),
         description: renderToString(
           <>
-            Choose your preferred language. Once set up, AI will respond in your
-            chosen language.
+            选择你偏好的语言。设置完成后，系统会使用你选择的语言进行回答。
             <div className="my-3">
               <div id="projectLanguageContainer" />
             </div>
-            You can go to project settings to change it if you change your mind.
+            如果后续想调整，也可以到项目设置中修改。
           </>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
@@ -324,7 +317,7 @@ const playSwitchProjectLanguageGuide = (
           }
         },
         showButtons: ['next', 'close'],
-        nextBtnText: 'Submit',
+        nextBtnText: '提交',
         onCloseClick: () => {
           $driver.destroy();
           window.sessionStorage.setItem('skipSwitchProjectLanguageGuide', '1');
@@ -392,15 +385,12 @@ const playKnowledgeGuide = (
                 alt="question-sql-pairs-guide"
               />
             </div>
-            Build knowledge base: Question-SQL pairs
+            构建知识库：问题-SQL 对
           </div>,
         ),
         description: renderToString(
           <>
-            Create and manage <b>Question-SQL pairs</b> to refine Wren AI’s SQL
-            generation. You can manually add pairs here or go to Home, ask a
-            question, and save the correct answer to Knowledge. The more you
-            save, the smarter Wren AI becomes!
+            通过创建和管理<b>问题-SQL 对</b>来优化 Zen-SmartBI 的 SQL 生成效果。你可以在这里手动新增，也可以前往首页提问后，把正确答案保存到知识库。积累越多，系统效果越好。
           </>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
@@ -420,21 +410,18 @@ const playKnowledgeGuide = (
                 alt="instructions-guide"
               />
             </div>
-            Build knowledge base: Instructions
+            构建知识库：指令
           </div>,
         ),
         description: renderToString(
           <>
-            In addition to Question-SQL pairs, you can create instructions to
-            define <b>business rules</b> and <b>query logic</b>. These rules
-            guide Wren AI in applying consistent filters, constraints, and best
-            practices to SQL queries.
+            除了问题-SQL 对，你还可以创建指令来定义<b>业务规则</b>和<b>查询逻辑</b>。这些规则会引导 Zen-SmartBI 在 SQL 查询中应用统一的过滤条件、约束和最佳实践。
           </>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
           resetPopoverStyle(popoverDom, 520);
         },
-        doneBtnText: 'Got it',
+        doneBtnText: '知道了',
         onNextClick: () => {
           $driver.destroy();
           dispatcher?.onDone && dispatcher.onDone();
@@ -477,20 +464,18 @@ const playSaveToKnowledgeGuide = async (
             <div className="mb-1">
               <RobotIcon />
             </div>
-            Save to knowledge
+            保存到知识库
           </>,
         ),
         description: renderToString(
           <>
-            If the AI-generated answer is correct, save it as a{' '}
-            <b>Question-SQL pair</b> to improve AI learning. If it's incorrect,
-            refine it with follow-ups before saving to ensure accuracy.
+            如果系统生成的答案是正确的，可以将其保存为 <b>问题-SQL 对</b>，帮助系统持续学习；如果还不够准确，建议先继续追问和修正，再保存到知识库。
           </>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
           resetPopoverStyle(popoverDom, 360);
         },
-        doneBtnText: 'Got it',
+        doneBtnText: '知道了',
         onNextClick: () => {
           $driver.destroy();
           dispatcher?.onDone && dispatcher.onDone();

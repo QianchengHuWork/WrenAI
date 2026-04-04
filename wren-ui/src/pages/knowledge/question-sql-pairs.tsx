@@ -49,7 +49,7 @@ export default function ManageQuestionSQLPairs() {
     useCreateSqlPairMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully created question-sql pair.');
+          message.success('问题-SQL 对创建成功。');
         },
       }),
     );
@@ -57,7 +57,7 @@ export default function ManageQuestionSQLPairs() {
   const [deleteSqlPairMutation] = useDeleteSqlPairMutation(
     getBaseOptions({
       onCompleted: () => {
-        message.success('Successfully deleted question-sql pair.');
+        message.success('问题-SQL 对删除成功。');
       },
     }),
   );
@@ -66,7 +66,7 @@ export default function ManageQuestionSQLPairs() {
     useUpdateSqlPairMutation(
       getBaseOptions({
         onCompleted: () => {
-          message.success('Successfully updated question-sql pair.');
+          message.success('问题-SQL 对更新成功。');
         },
       }),
     );
@@ -86,7 +86,7 @@ export default function ManageQuestionSQLPairs() {
 
   const columns: TableColumnsType<SqlPair> = [
     {
-      title: 'Question',
+      title: '问题',
       dataIndex: 'question',
       width: 300,
       render: (question) => (
@@ -96,7 +96,7 @@ export default function ManageQuestionSQLPairs() {
       ),
     },
     {
-      title: 'SQL statement',
+      title: 'SQL 语句',
       dataIndex: 'sql',
       width: '60%',
       render: (sql) => (
@@ -106,7 +106,7 @@ export default function ManageQuestionSQLPairs() {
       ),
     },
     {
-      title: 'Created time',
+      title: '创建时间',
       dataIndex: 'createdAt',
       width: 130,
       render: (time) => <Text className="gray-7">{getCompactTime(time)}</Text>,
@@ -130,7 +130,7 @@ export default function ManageQuestionSQLPairs() {
         title={
           <>
             <FunctionOutlined className="mr-2 gray-8" />
-            Manage question-SQL pairs
+            管理问题-SQL 对
           </>
         }
         titleExtra={
@@ -139,21 +139,20 @@ export default function ManageQuestionSQLPairs() {
             className=""
             onClick={() => questionSqlPairModal.openModal()}
           >
-            Add question-SQL pair
+            新增问题-SQL 对
           </Button>
         }
         description={
           <>
-            On this page, you can manage your saved question-SQL pairs. These
-            pairs help Wren AI learn how your organization writes SQL, allowing
-            it to generate queries that better align with your expectations.{' '}
+            你可以在这里管理已保存的问题-SQL 对。这些示例可帮助 Zen-SmartBI
+            学习你们组织编写 SQL 的方式，从而生成更符合预期的查询。{' '}
             <Link
               className="gray-8 underline"
               href="https://docs.getwren.ai/oss/guide/knowledge/question-sql-pairs"
               rel="noopener noreferrer"
               target="_blank"
             >
-              Learn more.
+              了解更多
             </Link>
           </>
         }

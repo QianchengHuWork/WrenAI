@@ -40,7 +40,7 @@ export default function APIHistory() {
 
   const columns: TableColumnsType<ApiHistoryResponse> = [
     {
-      title: 'Timestamp',
+      title: '时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 180,
@@ -49,7 +49,7 @@ export default function APIHistory() {
       ),
     },
     {
-      title: 'API type',
+      title: '接口类型',
       dataIndex: 'apiType',
       key: 'apiType',
       width: 180,
@@ -64,7 +64,7 @@ export default function APIHistory() {
       filterMultiple: false,
     },
     {
-      title: 'Status',
+      title: '状态',
       dataIndex: 'statusCode',
       key: 'statusCode',
       width: 100,
@@ -83,15 +83,15 @@ export default function APIHistory() {
         );
       },
       filters: [
-        { text: 'Successful (code: 2xx)', value: 200 },
-        { text: 'Client error (code: 4xx)', value: 400 },
-        { text: 'Server error (code: 5xx)', value: 500 },
+        { text: '成功（状态码：2xx）', value: 200 },
+        { text: '客户端错误（状态码：4xx）', value: 400 },
+        { text: '服务端错误（状态码：5xx）', value: 500 },
       ],
       filteredValue: filters['statusCode'],
       filterMultiple: false,
     },
     {
-      title: 'Question / SQL',
+      title: '问题 / SQL',
       dataIndex: 'requestPayload',
       key: 'requestPayload',
       render: (payload: Record<string, any>, record: ApiHistoryResponse) => {
@@ -110,7 +110,7 @@ export default function APIHistory() {
       },
     },
     {
-      title: 'Thread ID',
+      title: '对话 ID',
       dataIndex: 'threadId',
       key: 'threadId',
       width: 200,
@@ -128,12 +128,12 @@ export default function APIHistory() {
       },
       ...getColumnSearchProps({
         dataIndex: 'threadId',
-        placeholder: 'thread ID',
+        placeholder: '对话 ID',
         filteredValue: filters['threadId'],
       }),
     },
     {
-      title: 'Duration (ms)',
+      title: '耗时（毫秒）',
       dataIndex: 'durationMs',
       key: 'durationMs',
       width: 124,
@@ -142,7 +142,7 @@ export default function APIHistory() {
       ),
     },
     {
-      title: 'Actions',
+      title: '操作',
       key: 'actions',
       width: 110,
       align: 'center',
@@ -154,7 +154,7 @@ export default function APIHistory() {
           size="small"
           onClick={() => detailsDrawer.openDrawer(record)}
         >
-          <EyeOutlined /> Details
+          <EyeOutlined /> 详情
         </Button>
       ),
     },
@@ -166,21 +166,20 @@ export default function APIHistory() {
         title={
           <>
             <ApiOutlined className="mr-2 gray-8" />
-            API history
+            接口历史
           </>
         }
         description={
           <>
             <div>
-              Here you can view the full history of API calls, including request
-              inputs, responses, and execution details.{' '}
+              你可以在这里查看完整的接口调用历史，包括请求参数、响应内容和执行详情。{' '}
               <Link
                 className="gray-8 underline mr-2"
                 href="https://docs.getwren.ai/oss/guide/api-access/history"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Learn more.
+                了解更多
               </Link>
             </div>
           </>

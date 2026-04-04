@@ -32,7 +32,7 @@ export default function Knowledge() {
       'data-guideid': 'question-sql-pairs',
       label: (
         <Link style={linkStyle} href={Path.KnowledgeQuestionSQLPairs}>
-          Question-SQL pairs
+          问题-SQL 对
         </Link>
       ),
       icon: <FunctionOutlined />,
@@ -43,7 +43,7 @@ export default function Knowledge() {
       'data-guideid': 'instructions',
       label: (
         <Link style={linkStyle} href={Path.KnowledgeInstructions}>
-          Instructions
+          指令
         </Link>
       ),
       icon: <InstructionsSVG />,

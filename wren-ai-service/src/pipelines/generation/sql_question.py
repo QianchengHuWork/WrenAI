@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from src.core.pipeline import BasicPipeline
 from src.core.provider import LLMProvider
 from src.pipelines.common import clean_up_new_lines
-from src.utils import trace_cost
+from src.utils import loads_llm_json, trace_cost
 from src.web.v1.services import Configuration
 
 logger = logging.getLogger("wren-ai-service")
@@ -71,7 +71,7 @@ async def generate_sql_question(
 def post_process(
     generate_sql_question: dict,
 ) -> str:
-    return orjson.loads(generate_sql_question.get("replies")[0])["question"]
+    return loads_llm_json(generate_sql_question.get("replies")[0])["question"]
 
 
 ## End of Pipeline

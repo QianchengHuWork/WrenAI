@@ -24,8 +24,8 @@ export function ChartTypeProperty(props: {
 }) {
   const { options } = props;
   return (
-    <Form.Item className="mb-0" label="Chart type" name="chartType">
-      <Select size="small" options={options} placeholder="Select chart type" />
+    <Form.Item className="mb-0" label="图表类型" name="chartType">
+      <Select size="small" options={options} placeholder="请选择图表类型" />
     </Form.Item>
   );
 }
@@ -37,13 +37,13 @@ export function AxisProperty(props: {
   return (
     <Row gutter={16}>
       <Col span={12}>
-        <Form.Item className="mb-0" label="X-axis" name="xAxis">
-          <Select size="small" options={options} placeholder="Select x-axis" />
+        <Form.Item className="mb-0" label="X 轴" name="xAxis">
+          <Select size="small" options={options} placeholder="请选择 X 轴" />
         </Form.Item>
       </Col>
       <Col span={12}>
-        <Form.Item className="mb-0" label="Y-axis" name="yAxis">
-          <Select size="small" options={options} placeholder="Select y-axis" />
+        <Form.Item className="mb-0" label="Y 轴" name="yAxis">
+          <Select size="small" options={options} placeholder="请选择 Y 轴" />
         </Form.Item>
       </Col>
     </Row>

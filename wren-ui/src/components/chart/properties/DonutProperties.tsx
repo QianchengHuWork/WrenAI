@@ -17,22 +17,22 @@ export default function DonutProperties(props: PropertiesProps) {
           <ChartTypeProperty options={chartTypeOptions} />
         </Col>
         <Col span={12}>
-          <Form.Item className="mb-0" label="Category" name="color">
+          <Form.Item className="mb-0" label="分类" name="color">
             <Select
               size="small"
               options={columnOptions}
-              placeholder="Select category"
+              placeholder="请选择分类"
             />
           </Form.Item>
         </Col>
       </Row>
       <Row gutter={16}>
         <Col span={12}>
-          <Form.Item className="mb-0" label="Value" name="theta">
+          <Form.Item className="mb-0" label="数值" name="theta">
             <Select
               size="small"
               options={columnOptions}
-              placeholder="Select value"
+              placeholder="请选择数值"
             />
           </Form.Item>
         </Col>

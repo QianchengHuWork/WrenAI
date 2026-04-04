@@ -19,7 +19,7 @@ from src.pipelines.common import (
     clean_up_new_lines,
     get_engine_supported_data_type,
 )
-from src.utils import trace_cost
+from src.utils import loads_llm_json, trace_cost
 from src.web.v1.services.ask import AskHistory
 
 logger = logging.getLogger("wren-ai-service")
@@ -153,10 +153,26 @@ async def table_retrieval(
         )
 
     if embedding:
-        return await table_retriever.run(
+        results = await table_retriever.run(
             query_embedding=embedding.get("embedding"),
             filters=filters,
         )
+
+        if results.get("documents"):
+            return results
+
+        # When embedding retrieval misses entirely, fall back to all table
+        # descriptions within the available scope so downstream SQL generation
+        # can still operate on the available schema.
+        logger.warning(
+            "Table retrieval returned no matches for query; falling back to filtered table descriptions",
+            extra={"project_id": project_id or ""},
+        )
+        documents = sorted(
+            table_retriever._document_store.filter_documents(filters=filters),
+            key=lambda document: document.meta.get("name", ""),
+        )
+        return {"documents": documents}
     else:
         filters["conditions"].append(
             {"field": "name", "operator": "in", "value": tables}
@@ -346,7 +362,7 @@ def construct_retrieval_results(
     dbschema_retrieval: list[Document],
 ) -> dict[str, Any]:
     if filter_columns_in_tables:
-        columns_and_tables_needed = orjson.loads(
+        columns_and_tables_needed = loads_llm_json(
             filter_columns_in_tables["replies"][0]
         )["results"]
 

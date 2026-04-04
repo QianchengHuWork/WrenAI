@@ -1,0 +1,180 @@
+{
+    "content": [
+        {
+            "type": "text",
+            "text": "{\"view_name\":\"ads_zai_online_clew_assign_log_hi\",\"description\":\"线上新线索分配-分配日志解析表\",\"columns\":[{\"name\":\"request_id\",\"data_type\":\"NVARCHAR\",\"description\":\"请求id\"},{\"name\":\"pt\",\"data_type\":\"NVARCHAR\",\"description\":\"分区字段\"},{\"name\":\"output_strategy\",\"data_type\":\"NVARCHAR\",\"description\":\"出参-策略包：1 表示正常的算法逻辑，2表示拦截线索的尾部FL城市内均分。\"},{\"name\":\"mobile_md5\",\"data_type\":\"NVARCHAR\",\"description\":\"线索手机号码md5-入参\"},{\"name\":\"issue\",\"data_type\":\"NVARCHAR\",\"description\":\"是否战败线索 false 新线索，  true 老线索\"},{\"name\":\"input_strategy\",\"data_type\":\"NVARCHAR\",\"description\":\"入参-策略包：1 表示正常的算法逻辑，2表示拦截线索的尾部FL城市内均分。\"},{\"name\":\"id\",\"data_type\":\"NVARCHAR\",\"description\":\"id\"},{\"name\":\"fellow_rank\",\"data_type\":\"BIGINT\",\"description\":\"用户店内转化率排名-3天一个周期\"},{\"name\":\"create_timestamp\",\"data_type\":\"NVARCHAR\",\"description\":\"请求时间戳\"},{\"name\":\"create_time\",\"data_type\":\"NVARCHAR\",\"description\":\"请求时间\"},{\"name\":\"create_date\",\"data_type\":\"NVARCHAR\",\"description\":\"请求日期\"},{\"name\":\"clue_shop_code\",\"data_type\":\"NVARCHAR\",\"description\":\"门店code-入参\"},{\"name\":\"clue_own_organ_code\",\"data_type\":\"NVARCHAR\",\"description\":\"指定分配的销售所在部门code-入参\"},{\"name\":\"clue_own_admin_id\",\"data_type\":\"NVARCHAR\",\"description\":\"指定分配的销售id-入参\"},{\"name\":\"clue_intention_car_series\",\"data_type\":\"NVARCHAR\",\"description\":\"意向车系id-入参\"},{\"name\":\"clue_grade\",\"data_type\":\"NVARCHAR\",\"description\":\"线索外呼等级-入参\"},{\"name\":\"clue_default_grade\",\"data_type\":\"NVARCHAR\",\"description\":\"线索默认渠道等级-入参\"},{\"name\":\"clue_city_id\",\"data_type\":\"NVARCHAR\",\"description\":\"城市id-入参\"},{\"name\":\"clue_channel_id\",\"data_type\":\"NVARCHAR\",\"description\":\"渠道id-入参\"},{\"name\":\"clue_area_id\",\"data_type\":\"NVARCHAR\",\"description\":\"区域id-入参\"},{\"name\":\"clew_id\",\"data_type\":\"NVARCHAR\",\"description\":\"毛线索id-入参\"},{\"name\":\"assign_version\",\"data_type\":\"NVARCHAR\",\"description\":\"分配调用的算法版本 V1 策略第一大版本 V2 运筹第一大版本\"},{\"name\":\"assign_shop_code\",\"data_type\":\"NVARCHAR\",\"description\":\"分配的销售所在门店code-返回值\"},{\"name\":\"assign_organ_code\",\"data_type\":\"NVARCHAR\",\"description\":\"分配的销售所在部门code(小组code)-返回值\"},{\"name\":\"assign_mobile_md5\",\"data_type\":\"NVARCHAR\",\"description\":\"线索手机号码md5-返回值\"},{\"name\":\"assign_comment\",\"data_type\":\"NVARCHAR\",\"description\":\"分配的备注-未分配到人的原因\"},{\"name\":\"assign_clue_intention_car_series\",\"data_type\":\"NVARCHAR\",\"description\":\"意向车系id-入参-返回值\"},{\"name\":\"assign_clue_grade\",\"data_type\":\"NVARCHAR\",\"description\":\"线索等级-返回值\"},{\"name\":\"assign_clue_channel_id\",\"data_type\":\"NVARCHAR\",\"description\":\"渠道id-返回值\"},{\"name\":\"assign_clew_id\",\"data_type\":\"NVARCHAR\",\"description\":\"毛线索id-返回值\"},{\"name\":\"assign_city_id\",\"data_type\":\"NVARCHAR\",\"description\":\"分配的城市id-返回值\"},{\"name\":\"assign_area_id\",\"data_type\":\"NVARCHAR\",\"description\":\"分配的区域id-返回值\"},{\"name\":\"assign_admin_id\",\"data_type\":\"NVARCHAR\",\"description\":\"分配的销售id-返回值\"}]}"
+        }
+    ],
+    "structuredContent": {
+        "view_name": "ads_zai_online_clew_assign_log_hi",
+        "description": "线上新线索分配-分配日志解析表",
+        "columns": [
+            {
+                "name": "request_id",
+                "data_type": "NVARCHAR",
+                "description": "请求id"
+            },
+            {
+                "name": "pt",
+                "data_type": "NVARCHAR",
+                "description": "分区字段"
+            },
+            {
+                "name": "output_strategy",
+                "data_type": "NVARCHAR",
+                "description": "出参-策略包：1 表示正常的算法逻辑，2表示拦截线索的尾部FL城市内均分。"
+            },
+            {
+                "name": "mobile_md5",
+                "data_type": "NVARCHAR",
+                "description": "线索手机号码md5-入参"
+            },
+            {
+                "name": "issue",
+                "data_type": "NVARCHAR",
+                "description": "是否战败线索 false 新线索，  true 老线索"
+            },
+            {
+                "name": "input_strategy",
+                "data_type": "NVARCHAR",
+                "description": "入参-策略包：1 表示正常的算法逻辑，2表示拦截线索的尾部FL城市内均分。"
+            },
+            {
+                "name": "id",
+                "data_type": "NVARCHAR",
+                "description": "id"
+            },
+            {
+                "name": "fellow_rank",
+                "data_type": "BIGINT",
+                "description": "用户店内转化率排名-3天一个周期"
+            },
+            {
+                "name": "create_timestamp",
+                "data_type": "NVARCHAR",
+                "description": "请求时间戳"
+            },
+            {
+                "name": "create_time",
+                "data_type": "NVARCHAR",
+                "description": "请求时间"
+            },
+            {
+                "name": "create_date",
+                "data_type": "NVARCHAR",
+                "description": "请求日期"
+            },
+            {
+                "name": "clue_shop_code",
+                "data_type": "NVARCHAR",
+                "description": "门店code-入参"
+            },
+            {
+                "name": "clue_own_organ_code",
+                "data_type": "NVARCHAR",
+                "description": "指定分配的销售所在部门code-入参"
+            },
+            {
+                "name": "clue_own_admin_id",
+                "data_type": "NVARCHAR",
+                "description": "指定分配的销售id-入参"
+            },
+            {
+                "name": "clue_intention_car_series",
+                "data_type": "NVARCHAR",
+                "description": "意向车系id-入参"
+            },
+            {
+                "name": "clue_grade",
+                "data_type": "NVARCHAR",
+                "description": "线索外呼等级-入参"
+            },
+            {
+                "name": "clue_default_grade",
+                "data_type": "NVARCHAR",
+                "description": "线索默认渠道等级-入参"
+            },
+            {
+                "name": "clue_city_id",
+                "data_type": "NVARCHAR",
+                "description": "城市id-入参"
+            },
+            {
+                "name": "clue_channel_id",
+                "data_type": "NVARCHAR",
+                "description": "渠道id-入参"
+            },
+            {
+                "name": "clue_area_id",
+                "data_type": "NVARCHAR",
+                "description": "区域id-入参"
+            },
+            {
+                "name": "clew_id",
+                "data_type": "NVARCHAR",
+                "description": "毛线索id-入参"
+            },
+            {
+                "name": "assign_version",
+                "data_type": "NVARCHAR",
+                "description": "分配调用的算法版本 V1 策略第一大版本 V2 运筹第一大版本"
+            },
+            {
+                "name": "assign_shop_code",
+                "data_type": "NVARCHAR",
+                "description": "分配的销售所在门店code-返回值"
+            },
+            {
+                "name": "assign_organ_code",
+                "data_type": "NVARCHAR",
+                "description": "分配的销售所在部门code(小组code)-返回值"
+            },
+            {
+                "name": "assign_mobile_md5",
+                "data_type": "NVARCHAR",
+                "description": "线索手机号码md5-返回值"
+            },
+            {
+                "name": "assign_comment",
+                "data_type": "NVARCHAR",
+                "description": "分配的备注-未分配到人的原因"
+            },
+            {
+                "name": "assign_clue_intention_car_series",
+                "data_type": "NVARCHAR",
+                "description": "意向车系id-入参-返回值"
+            },
+            {
+                "name": "assign_clue_grade",
+                "data_type": "NVARCHAR",
+                "description": "线索等级-返回值"
+            },
+            {
+                "name": "assign_clue_channel_id",
+                "data_type": "NVARCHAR",
+                "description": "渠道id-返回值"
+            },
+            {
+                "name": "assign_clew_id",
+                "data_type": "NVARCHAR",
+                "description": "毛线索id-返回值"
+            },
+            {
+                "name": "assign_city_id",
+                "data_type": "NVARCHAR",
+                "description": "分配的城市id-返回值"
+            },
+            {
+                "name": "assign_area_id",
+                "data_type": "NVARCHAR",
+                "description": "分配的区域id-返回值"
+            },
+            {
+                "name": "assign_admin_id",
+                "data_type": "NVARCHAR",
+                "description": "分配的销售id-返回值"
+            }
+        ]
+    },
+    "isError": false
+}

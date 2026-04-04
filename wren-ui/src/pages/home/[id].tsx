@@ -88,7 +88,7 @@ export default function HomeThread() {
 
   const [createViewMutation, { loading: creating }] = useCreateViewMutation({
     onError: (error) => console.error(error),
-    onCompleted: () => message.success('Successfully created view.'),
+    onCompleted: () => message.success('视图创建成功。'),
   });
 
   const { data, updateQuery: updateThreadQuery } = useThreadQuery({
@@ -116,7 +116,7 @@ export default function HomeThread() {
     useUpdateThreadResponseMutation({
       onError: (error) => console.error(error),
       onCompleted: (data) => {
-        message.success('Successfully updated the SQL statement');
+        message.success('SQL 语句更新成功。');
         // trigger generate answer after sql statement updated
         onGenerateThreadResponseAnswer(data.updateThreadResponse.id);
       },
@@ -168,7 +168,7 @@ export default function HomeThread() {
       awaitRefetchQueries: true,
       onError: (error) => console.error(error),
       onCompleted: () => {
-        message.success('Successfully created question-sql pair.');
+        message.success('问题-SQL 对创建成功。');
       },
     });
 

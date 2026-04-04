@@ -14,16 +14,16 @@ export default function SQLPairDrawer(props: Props) {
       closable
       destroyOnClose
       onClose={onClose}
-      title="View question-SQL pair"
+      title="查看问题-SQL 对"
       visible={visible}
       width={760}
     >
       <div className="mb-6">
-        <Typography.Text className="gray-7 mb-2">Question</Typography.Text>
+        <Typography.Text className="gray-7 mb-2">问题</Typography.Text>
         <div>{defaultValue?.question || '-'}</div>
       </div>
       <div className="mb-6">
-        <Typography.Text className="gray-7 mb-2">SQL statement</Typography.Text>
+        <Typography.Text className="gray-7 mb-2">SQL 语句</Typography.Text>
         <SQLCodeBlock
           code={defaultValue?.sql || ''}
           showLineNumbers
@@ -31,7 +31,7 @@ export default function SQLPairDrawer(props: Props) {
         />
       </div>
       <div className="mb-6">
-        <Typography.Text className="gray-7 mb-2">Created time</Typography.Text>
+        <Typography.Text className="gray-7 mb-2">创建时间</Typography.Text>
         <div>
           {defaultValue?.createdAt
             ? getCompactTime(defaultValue.createdAt)

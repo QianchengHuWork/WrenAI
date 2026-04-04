@@ -32,7 +32,7 @@ export default function APIManagement() {
       'data-guideid': 'api-history',
       label: (
         <Link style={linkStyle} href={Path.APIManagementHistory}>
-          API history
+          接口历史
         </Link>
       ),
       icon: <ApiOutlined />,
@@ -47,7 +47,7 @@ export default function APIManagement() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          API reference
+          接口参考
           <OpenInNewIcon className="ml-1" />
         </Link>
       ),

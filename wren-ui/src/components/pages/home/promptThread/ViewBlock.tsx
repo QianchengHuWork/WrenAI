@@ -17,7 +17,7 @@ export default function ViewBlock({ view, onClick }: Props) {
     return (
       <div className="gray-6 text-medium">
         <FileDoneOutlined className="mr-2" />
-        Generated from saved view{' '}
+        已基于已保存视图生成{' '}
         <Link
           className="gray-7"
           href={`${Path.Modeling}?viewId=${view.id}&openMetadata=true`}
@@ -38,7 +38,7 @@ export default function ViewBlock({ view, onClick }: Props) {
       icon={<SaveOutlined />}
       onClick={onClick}
     >
-      Save as View
+      保存为视图
     </Button>
   );
 }

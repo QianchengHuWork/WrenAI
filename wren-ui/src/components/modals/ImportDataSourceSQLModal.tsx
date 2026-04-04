@@ -36,7 +36,7 @@ export const isSupportSubstitute = (dataSource: DataSource) => {
 
 export default function ImportDataSourceSQLModal(props: Props) {
   const { visible, defaultValue, onSubmit, onClose } = props;
-  const name = getDataSourceName(defaultValue?.dataSource) || 'data source';
+  const name = getDataSourceName(defaultValue?.dataSource) || '数据源';
 
   // Handle errors via try/catch blocks rather than onError callback
   const [substituteDialectSQL, modelSubstitudeResult] =
@@ -47,7 +47,7 @@ export default function ImportDataSourceSQLModal(props: Props) {
       modelSubstitudeResult.error
         ? {
             ...parseGraphQLError(modelSubstitudeResult.error),
-            shortMessage: `Invalid ${name} SQL syntax`,
+            shortMessage: `${name} SQL 语法无效`,
           }
         : null,
     [modelSubstitudeResult.error],
@@ -77,7 +77,7 @@ export default function ImportDataSourceSQLModal(props: Props) {
 
   return (
     <Modal
-      title={`Import from ${name} SQL`}
+      title={`从 ${name} SQL 导入`}
       centered
       closable
       confirmLoading={loading}
@@ -85,7 +85,7 @@ export default function ImportDataSourceSQLModal(props: Props) {
       maskClosable={false}
       onCancel={onClose}
       onOk={submit}
-      okText="Convert"
+      okText="转换"
       visible={visible}
       width={600}
       cancelButtonProps={{ disabled: loading }}
@@ -94,7 +94,7 @@ export default function ImportDataSourceSQLModal(props: Props) {
       <Form form={form} layout="vertical">
         <Form.Item
           name="dialectSql"
-          label="SQL statement"
+          label="SQL 语句"
           rules={[
             {
               required: true,

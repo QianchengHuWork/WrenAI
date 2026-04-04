@@ -93,7 +93,7 @@ const makeProcessing = (text: string) => (props: Props) => {
           disabled={loading}
         >
           <StopOutlined className="-mr-1" />
-          Stop
+          停止
         </Button>
       </div>
     </Wrapper>
@@ -125,7 +125,7 @@ const makeProcessingError =
             onClick={onClose}
           >
             <CloseOutlined className="-mr-1" />
-            Close
+            关闭
           </Button>
         </div>
         <div className="gray-7">
@@ -152,7 +152,7 @@ const Failed = makeProcessingError({
   icon: <ErrorIcon />,
 });
 
-const Understanding = makeProcessing('Understanding question');
+const Understanding = makeProcessing('正在理解问题');
 
 const IntentionFinished = (props: Props) => {
   const { data, onIntentSQLAnswer } = props;
@@ -209,14 +209,14 @@ const GeneralAnswer = (props: Props) => {
           onClick={onClose}
         >
           <CloseOutlined className="-mr-1" />
-          Close
+          关闭
         </Button>
       </div>
       <div className="py-3">
         <div className="bg-gray-2 gray-6 py-2 px-3">
           <div className="d-flex align-center">
             <BrainSVG className="mr-2 adm-brain-svg" />
-            <span className="text-medium ">User Intent Recognized</span>
+            <span className="text-medium ">已识别用户意图</span>
           </div>
           <div style={{ paddingLeft: 22 }}>{data.intentReasoning}</div>
         </div>
@@ -230,7 +230,7 @@ const GeneralAnswer = (props: Props) => {
           {isDone && (
             <div className="gray-6">
               <InfoCircleOutlined className="mr-2" />
-              For the most accurate semantics, please visit the modeling page.
+              如需获得最准确的语义理解，请前往建模页面完善语义模型。
             </div>
           )}
         </div>
@@ -248,7 +248,7 @@ const GeneralAnswer = (props: Props) => {
 
 const MisleadingQuery = makeProcessingError({
   icon: <WarningOutlined className="mr-2 text-lg gold-6" />,
-  title: 'Clarification needed',
+  title: '需要进一步澄清',
 });
 
 const getGeneralAnswerStateComponent = (state: PROCESS_STATE) => {

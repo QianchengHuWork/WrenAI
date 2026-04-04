@@ -51,7 +51,7 @@ export default function Dashboard() {
   } = useDashboardQuery({
     fetchPolicy: 'cache-and-network',
     onError: () => {
-      message.error('Failed to fetch dashboard items.');
+      message.error('获取仪表板卡片失败。');
       router.push(Path.Home);
     },
   });
@@ -63,20 +63,20 @@ export default function Dashboard() {
   const [setDashboardSchedule] = useSetDashboardScheduleMutation({
     refetchQueries: ['Dashboard'],
     onCompleted: () => {
-      message.success('Successfully updated dashboard schedule.');
+      message.success('仪表板刷新计划更新成功。');
     },
     onError: (error) => console.error(error),
   });
 
   const [updateDashboardItemLayouts] = useUpdateDashboardItemLayoutsMutation({
     onError: () => {
-      message.error('Failed to update dashboard item layouts.');
+      message.error('更新仪表板布局失败。');
     },
   });
   const [deleteDashboardItem] = useDeleteDashboardItemMutation({
     onError: (error) => console.error(error),
     onCompleted: (_, query) => {
-      message.success('Successfully deleted dashboard item.');
+      message.success('仪表板卡片删除成功。');
       onRemoveDashboardItemFromQueryCache(query.variables.where.id);
     },
   });

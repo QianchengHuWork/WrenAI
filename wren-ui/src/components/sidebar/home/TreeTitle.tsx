@@ -66,7 +66,7 @@ export default function TreeTitle(props: TreeTitleProps) {
                   label: (
                     <>
                       <EditOutlined className="mr-2" />
-                      Rename
+                      重命名
                     </>
                   ),
                   key: MENU_ITEM_KEYS.RENAME,

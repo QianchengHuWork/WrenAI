@@ -40,7 +40,7 @@ export default function DetailsDrawer(props: Props) {
     <Drawer
       visible={visible}
       className="gray-8"
-      title="API details"
+      title="API 详情"
       width={760}
       closable
       destroyOnClose
@@ -50,7 +50,7 @@ export default function DetailsDrawer(props: Props) {
       <Row className="mb-6">
         <Col span={12}>
           <Typography.Text className="d-block gray-7 mb-2">
-            API type
+            API 类型
           </Typography.Text>
           <div>
             <Tag className="gray-8">{apiType?.toLowerCase()}</Tag>
@@ -58,7 +58,7 @@ export default function DetailsDrawer(props: Props) {
         </Col>
         <Col span={12}>
           <Typography.Text className="d-block gray-7 mb-2">
-            Thread ID
+            对话 ID
           </Typography.Text>
           <div>{threadId || '-'}</div>
         </Col>
@@ -66,13 +66,13 @@ export default function DetailsDrawer(props: Props) {
       <Row className="mb-6">
         <Col span={12}>
           <Typography.Text className="d-block gray-7 mb-2">
-            Created at
+            创建时间
           </Typography.Text>
           <div>{getAbsoluteTime(createdAt)}</div>
         </Col>
         <Col span={12}>
           <Typography.Text className="d-block gray-7 mb-2">
-            Duration
+            耗时
           </Typography.Text>
           <div>{durationMs} ms</div>
         </Col>
@@ -80,7 +80,7 @@ export default function DetailsDrawer(props: Props) {
       <Row className="mb-6">
         <Col span={12}>
           <Typography.Text className="d-block gray-7 mb-2">
-            Status code
+            状态码
           </Typography.Text>
           <div>{getStatusTag(statusCode)}</div>
         </Col>
@@ -88,7 +88,7 @@ export default function DetailsDrawer(props: Props) {
 
       <div className="mb-6">
         <Typography.Text className="d-block gray-7 mb-2">
-          Headers
+          请求头
         </Typography.Text>
         <JsonCodeBlock
           code={headers}
@@ -100,7 +100,7 @@ export default function DetailsDrawer(props: Props) {
 
       <div className="mb-6">
         <Typography.Text className="d-block gray-7 mb-2">
-          Request payload
+          请求载荷
         </Typography.Text>
         <JsonCodeBlock
           code={requestPayload}
@@ -112,7 +112,7 @@ export default function DetailsDrawer(props: Props) {
 
       <div className="mb-6">
         <Typography.Text className="d-block gray-7 mb-2">
-          Response payload
+          响应载荷
         </Typography.Text>
         <JsonCodeBlock
           code={responsePayload}

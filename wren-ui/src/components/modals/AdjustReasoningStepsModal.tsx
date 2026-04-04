@@ -113,10 +113,10 @@ export default function AdjustReasoningStepsModal(props: Props) {
 
   return (
     <Modal
-      title="Adjust steps"
+      title="调整步骤"
       width={640}
       visible={visible}
-      okText="Regenerate answer"
+      okText="重新生成回答"
       onOk={submit}
       onCancel={onClose}
       confirmLoading={loading}
@@ -127,7 +127,7 @@ export default function AdjustReasoningStepsModal(props: Props) {
     >
       <Form form={form} preserve={false} layout="vertical">
         <Form.Item
-          label="Selected models"
+          label="已选模型"
           name="tables"
           required={false}
           rules={[
@@ -138,33 +138,32 @@ export default function AdjustReasoningStepsModal(props: Props) {
           ]}
           extra={
             <div className="text-sm gray-6 mt-1">
-              Select the tables needed to answer your question.{' '}
+              请选择回答当前问题所需的表。{' '}
               <span className="gray-7">
-                Tables not selected won't be used in SQL generation.
+                未选中的表不会参与 SQL 生成。
               </span>
             </div>
           }
         >
           <MultiSelect
             mode="multiple"
-            placeholder="Select models"
+            placeholder="请选择模型"
             options={modelOptions}
             tagRender={tagRender}
           />
         </Form.Item>
         <Form.Item
-          label="Reasoning steps"
+          label="推理步骤"
           className="pb-0"
           extra={
             <div className="text-sm gray-6 mt-1">
               <QuestionCircleOutlined className="mr-1" />
-              Protip: Use @ to choose model in the textarea.
+              提示：可在输入框中使用 @ 选择模型。
             </div>
           }
         >
           <div className="text-sm gray-6 mb-1">
-            Edit the reasoning logic below. Each step should build toward
-            answering the question accurately.
+            请编辑下方推理逻辑。每一步都应服务于更准确地回答问题。
           </div>
           <Form.Item
             noStyle

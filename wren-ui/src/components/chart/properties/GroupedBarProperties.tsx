@@ -18,11 +18,11 @@ export default function GroupedBarProperties(props: PropertiesProps) {
           <ChartTypeProperty options={chartTypeOptions} />
         </Col>
         <Col span={12}>
-          <Form.Item className="mb-0" label="Sub-category" name="xOffset">
+          <Form.Item className="mb-0" label="子分类" name="xOffset">
             <Select
               size="small"
               options={columnOptions}
-              placeholder="Select sub-category"
+              placeholder="请选择子分类"
             />
           </Form.Item>
         </Col>

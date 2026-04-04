@@ -12,6 +12,7 @@ from src.core.engine import (
     clean_generation_result,
 )
 from src.pipelines.retrieval.sql_knowledge import SqlKnowledge
+from src.utils import loads_llm_json
 from src.web.v1.services.ask import AskHistory
 
 logger = logging.getLogger("wren-ai-service")
@@ -40,9 +41,9 @@ class SQLGenPostProcessor:
 
             # test if cleaned_generation_result in string format is actually a dictionary with key 'sql'
             if cleaned_generation_result.startswith("{"):
-                cleaned_generation_result = orjson.loads(cleaned_generation_result)[
-                    "sql"
-                ]
+                cleaned_generation_result = loads_llm_json(
+                    cleaned_generation_result
+                )["sql"]
 
             (
                 valid_generation_result,

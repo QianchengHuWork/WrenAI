@@ -35,7 +35,7 @@ export default function MetadataDrawer(props: Props) {
           icon={<EditOutlined />}
           onClick={() => onEditClick(defaultValue)}
         >
-          Edit
+          编辑
         </Button>
       }
     >

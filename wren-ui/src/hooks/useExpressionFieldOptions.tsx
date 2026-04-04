@@ -24,15 +24,15 @@ export default function useExpressionFieldOptions() {
 
     return [
       {
-        label: 'Aggregation',
+        label: '聚合函数',
         options: aggregations.map(convertor),
       },
       {
-        label: 'Math functions',
+        label: '数学函数',
         options: mathFunctions.map(convertor),
       },
       {
-        label: 'String functions',
+        label: '字符串函数',
         options: stringFunctions.map(convertor),
       },
     ];

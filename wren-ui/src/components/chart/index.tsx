@@ -91,7 +91,7 @@ export default function Chart(props: VegaLiteProps) {
       console.error(error);
       setParsedError({
         code: 'CLIENT_PARSE_ERROR',
-        shortMessage: 'Failed to render chart visualization',
+        shortMessage: '图表渲染失败',
         message: error?.message,
         stacktrace: error?.stack?.split('\n') || [],
       });
@@ -125,7 +125,7 @@ export default function Chart(props: VegaLiteProps) {
   };
 
   const getChartContent = () => {
-    if (values.length === 0) return <div>No available data</div>;
+    if (values.length === 0) return <div>暂无可用数据</div>;
 
     if (parsedError) {
       return (
@@ -153,15 +153,14 @@ export default function Chart(props: VegaLiteProps) {
             <div className="d-flex align-center justify-space-between">
               <div>
                 There are too many categories to display effectively. Click
-                'Show top 25' to view the top results, or ask a follow-up
-                question to focus on a specific group or filter results.
+                当前类别过多，无法有效展示。你可以点击“仅显示前 25 项”查看主要结果，或通过追问聚焦特定分组或筛选条件。
               </div>
               <Button
                 size="small"
                 icon={<EyeOutlined />}
                 onClick={onShowTopCategories}
               >
-                Show top 25
+                仅显示前 25 项
               </Button>
             </div>
           }
@@ -187,21 +186,21 @@ export default function Chart(props: VegaLiteProps) {
       {isAdditionalShow && (
         <div className="adm-chart-additional d-flex justify-content-between align-center">
           {!!onReload && (
-            <Tooltip title="Regenerate chart">
+            <Tooltip title="重新生成图表">
               <button onClick={onReload}>
                 <ReloadOutlined />
               </button>
             </Tooltip>
           )}
           {!!onEdit && (
-            <Tooltip title="Edit chart">
+            <Tooltip title="编辑图表">
               <button onClick={onEdit}>
                 <EditOutlined />
               </button>
             </Tooltip>
           )}
           {!!onPin && (
-            <Tooltip title="Pin chart to dashboard">
+            <Tooltip title="固定到仪表板">
               <button onClick={onPin}>
                 <PushPinOutlined />
               </button>

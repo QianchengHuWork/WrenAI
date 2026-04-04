@@ -19,9 +19,9 @@ export default function ContainerCard(props: Props) {
     <Container maxWidth={maxWidth}>
       <Card>
         <Steps current={step} className="mb-12">
-          <Steps.Step title="Connect" />
-          <Steps.Step title="Select Tables" />
-          <Steps.Step title="Define Relationships" />
+          <Steps.Step title="连接数据源" />
+          <Steps.Step title="选择数据表" />
+          <Steps.Step title="定义关系" />
         </Steps>
         <div className="px-12 pb-6">{props.children}</div>
       </Card>

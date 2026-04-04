@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from src.core.pipeline import BasicPipeline
 from src.core.provider import LLMProvider
 from src.pipelines.common import clean_up_new_lines
-from src.utils import trace_cost
+from src.utils import loads_llm_json, trace_cost
 
 logger = logging.getLogger("wren-ai-service")
 
@@ -121,7 +121,7 @@ def normalized(generate: dict) -> dict:
         text = " ".join(text.split())
         # Convert the normalized text to a dictionary
         try:
-            text_dict = orjson.loads(text.strip())
+            text_dict = loads_llm_json(text)
             return text_dict
         except orjson.JSONDecodeError as e:
             logger.error(f"Error decoding JSON: {e}")

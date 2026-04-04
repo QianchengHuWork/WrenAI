@@ -127,7 +127,7 @@ export default function Settings(props: Props) {
         <StyledSider width={310} className="border-r border-gray-4">
           <div className="gray-9 text-bold py-3 px-5">
             <SettingOutlined className="mr-2" />
-            Settings
+            设置
           </div>
           <div className="p-3 flex-grow-1">
             <MenuIterator
@@ -139,7 +139,7 @@ export default function Settings(props: Props) {
           {!!productVersion && (
             <div className="gray-7 d-flex align-center p-3 px-5">
               <InfoCircleOutlined className="mr-2 text-sm" />
-              Wren AI version: {productVersion}
+              Zen-SmartBI 版本：{productVersion}
             </div>
           )}
         </StyledSider>

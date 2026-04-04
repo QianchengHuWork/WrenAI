@@ -18,11 +18,11 @@ export default function StackedBarProperties(props: PropertiesProps) {
           <ChartTypeProperty options={chartTypeOptions} />
         </Col>
         <Col span={12}>
-          <Form.Item className="mb-0" label="Stack groups" name="color">
+          <Form.Item className="mb-0" label="堆叠分组" name="color">
             <Select
               size="small"
               options={columnOptions}
-              placeholder="Select stack groups"
+              placeholder="请选择堆叠分组"
             />
           </Form.Item>
         </Col>

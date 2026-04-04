@@ -40,10 +40,10 @@ export default function Starter(props) {
   return (
     <>
       <Typography.Title level={1} className="mb-3">
-        Connect a data source
+        连接数据源
       </Typography.Title>
       <Typography.Text>
-        Vote for your favorite data sources on{' '}
+        你也可以在{' '}
         <Link
           href="https://github.com/Canner/WrenAI/discussions/327"
           target="_blank"
@@ -51,7 +51,7 @@ export default function Starter(props) {
         >
           GitHub
         </Link>
-        .
+        为你希望支持的数据源投票。
       </Typography.Text>
       <Row className="mt-6" gutter={[16, 16]}>
         <DataSourceIterator
@@ -64,7 +64,7 @@ export default function Starter(props) {
       <div className="py-8" />
 
       <Typography.Title level={1} className="mb-3">
-        Play around with sample data
+        体验示例数据
       </Typography.Title>
       <Row className="mt-6" gutter={[16, 16]}>
         <TemplatesIterator

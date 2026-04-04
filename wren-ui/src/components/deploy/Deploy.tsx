@@ -17,19 +17,19 @@ const getDeployStatus = (deploying: boolean, status: SyncStatus) => {
       [SyncStatus.IN_PROGRESS]: (
         <Space size={[4, 0]}>
           <LoadingOutlined className="mr-1 gray-1" />
-          <Text className="gray-1">Deploying...</Text>
+          <Text className="gray-1">发布中...</Text>
         </Space>
       ),
       [SyncStatus.SYNCRONIZED]: (
         <Space size={[4, 0]}>
           <CheckCircleOutlined className="mr-1 green-7" />
-          <Text className="gray-1">Synced</Text>
+          <Text className="gray-1">已同步</Text>
         </Space>
       ),
       [SyncStatus.UNSYNCRONIZED]: (
         <Space size={[4, 0]}>
           <WarningOutlined className="mr-1 gold-6" />
-          <Text className="gray-1">Undeployed changes</Text>
+          <Text className="gray-1">有未发布更改</Text>
         </Space>
       ),
     }[syncStatus] || ''
@@ -46,9 +46,7 @@ export default function Deploy() {
       onCompleted: (data) => {
         if (data.deploy?.status === 'FAILED') {
           console.error('Failed to deploy - ', data.deploy?.error);
-          message.error(
-            'Failed to deploy. Please check the log for more details.',
-          );
+          message.error('发布失败，请查看日志了解详情。');
         }
       },
     });
@@ -89,7 +87,7 @@ export default function Deploy() {
         size="small"
         data-guideid="deploy-model"
       >
-        Deploy
+        发布
       </Button>
     </Space>
   );

@@ -137,7 +137,7 @@ export default function AddCalculatedFieldModal(props: Props) {
 
   return (
     <Modal
-      title={`${isEditMode ? 'Update' : 'Add'} calculated field`}
+      title={`${isEditMode ? '编辑' : '新增'}计算字段`}
       width={750}
       visible={visible}
       onCancel={onClose}
@@ -155,13 +155,13 @@ export default function AddCalculatedFieldModal(props: Props) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              How to set primary key in a model.
+              如何在模型中设置主键
             </Typography.Link>
           </div>
           <div>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose}>取消</Button>
             <Button type="primary" onClick={submit} loading={loading}>
-              Save
+              保存
             </Button>
           </div>
         </div>
@@ -169,7 +169,7 @@ export default function AddCalculatedFieldModal(props: Props) {
     >
       <Form form={form} preserve={false} layout="vertical">
         <Form.Item
-          label="Name"
+          label="名称"
           name="name"
           required
           rules={[
@@ -184,7 +184,7 @@ export default function AddCalculatedFieldModal(props: Props) {
         </Form.Item>
 
         <Form.Item
-          label="Select an expression"
+          label="选择表达式"
           name="expression"
           required
           rules={[
@@ -195,7 +195,7 @@ export default function AddCalculatedFieldModal(props: Props) {
           ]}
         >
           <DescriptiveSelector
-            placeholder="Select an expression"
+            placeholder="请选择表达式"
             options={expressionOptions}
             descriptiveContentRender={(content) => {
               return (

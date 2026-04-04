@@ -24,7 +24,7 @@ const ColumnNode = ({ title, relation, primary }) => {
         </span>
       )}
       {primary && (
-        <span className="adm-treeNode--primary" title="Primary Key">
+        <span className="adm-treeNode--primary" title="主键">
           <PrimaryKeyIcon />
         </span>
       )}
@@ -105,7 +105,7 @@ export const createTreeGroupNode =
 
     const emptyChildren = [
       {
-        title: `No ${lowerCase(groupName)}`,
+        title: `暂无${groupName}`,
         key: `${groupKey}-empty`,
         selectable: false,
         className: 'adm-treeNode adm-treeNode--empty adm-treeNode--selectNode',

@@ -373,7 +373,7 @@ const PinnedItem = forwardRef(
         </div>
         <div className="adm-pinned-content">
           <div className="adm-pinned-content-overflow adm-scrollbar-track">
-            <LoadingWrapper loading={loading} tip="Loading...">
+            <LoadingWrapper loading={loading} tip="加载中...">
               <Chart
                 className="adm-pinned-item-chart"
                 width="100%"
@@ -391,7 +391,7 @@ const PinnedItem = forwardRef(
           </div>
           {lastRefreshTime && (
             <div className="adm-pinned-content-info">
-              Last refreshed: {getCompactTime(lastRefreshTime)}
+              上次刷新：{getCompactTime(lastRefreshTime)}
             </div>
           )}
         </div>

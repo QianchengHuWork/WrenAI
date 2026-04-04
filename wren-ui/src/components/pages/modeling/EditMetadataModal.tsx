@@ -39,10 +39,10 @@ export default function EditMetadataModal(props: Props) {
 
   return (
     <Modal
-      title="Edit metadata"
+      title="编辑元数据"
       width={800}
       visible={visible}
-      okText="Submit"
+      okText="提交"
       onOk={submit}
       onCancel={onClose}
       confirmLoading={loading}

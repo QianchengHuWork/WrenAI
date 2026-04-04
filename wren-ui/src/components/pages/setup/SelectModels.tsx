@@ -17,7 +17,7 @@ interface Props {
 
 const columns: ColumnsType<CompactTable> = [
   {
-    title: 'Table name',
+    title: '表名',
     dataIndex: 'name',
   },
 ];
@@ -45,20 +45,19 @@ export default function SelectModels(props: Props) {
   return (
     <div>
       <Title level={1} className="mb-3">
-        Select tables to create data models
+        选择要用于创建数据模型的表
       </Title>
       <Text>
-        We will create data models based on selected tables to help AI better
-        understand your data.
+        我们会基于所选表创建数据模型，帮助 AI 更好地理解你的数据。
         <br />
         <Link
           href="https://docs.getwren.ai/oss/guide/modeling/overview"
           target="_blank"
           rel="noopener noreferrer"
         >
-          Learn more
+          了解更多
         </Link>{' '}
-        about data models.
+        关于数据模型的信息。
       </Text>
       <div className="my-6">
         <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
@@ -87,7 +86,7 @@ export default function SelectModels(props: Props) {
             className="adm-onboarding-btn"
             disabled={submitting}
           >
-            Back
+            上一步
           </Button>
         </Col>
         <Col className="text-right" span={12}>
@@ -98,7 +97,7 @@ export default function SelectModels(props: Props) {
             className="adm-onboarding-btn"
             loading={submitting}
           >
-            Next
+            下一步
           </Button>
         </Col>
       </Row>

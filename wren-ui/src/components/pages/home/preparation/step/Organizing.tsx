@@ -32,8 +32,8 @@ export default function Organizing(props: Props) {
   }, [isDone]);
 
   const title = isAdjustment
-    ? 'User-provided reasoning steps applied'
-    : 'Organizing thoughts';
+    ? '已应用用户提供的推理步骤'
+    : '正在组织思路';
 
   return (
     <>
@@ -45,7 +45,7 @@ export default function Organizing(props: Props) {
       >
         {loading && !stream ? (
           <div className="d-flex align-center gx-2">
-            Thinking
+            思考中
             <Spinner className="gray-6" size={12} />
           </div>
         ) : (

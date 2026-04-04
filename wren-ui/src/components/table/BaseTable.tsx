@@ -8,21 +8,21 @@ import { makeIterable } from '@/utils/iteration';
 
 export const COLUMN = {
   ALIAS: {
-    title: 'Alias',
+    title: '别名',
     dataIndex: 'displayName',
     key: 'alias',
     ellipsis: true,
     render: (name) => name || '-',
   },
   NAME: {
-    title: 'Name',
+    title: '名称',
     dataIndex: 'referenceName',
     key: 'referenceName',
     ellipsis: true,
     render: (name) => name || '-',
   },
   TYPE: {
-    title: 'Type',
+    title: '类型',
     dataIndex: 'type',
     render: (type) => {
       return (
@@ -34,7 +34,7 @@ export const COLUMN = {
     },
   },
   EXPRESSION: {
-    title: 'Expression',
+    title: '表达式',
     dataIndex: 'expression',
     key: 'expression',
     render: (expression) => {
@@ -46,27 +46,27 @@ export const COLUMN = {
     },
   },
   RELATION_FROM: {
-    title: 'From',
+    title: '从',
     key: 'fromField',
     ellipsis: true,
     render: (relation) =>
       `${relation.fromModelDisplayName}.${relation.fromColumnDisplayName}`,
   },
   RELATION_TO: {
-    title: 'To',
+    title: '到',
     key: 'toField',
     ellipsis: true,
     render: (relation) =>
       `${relation.toModelDisplayName}.${relation.toColumnDisplayName}`,
   },
   RELATION: {
-    title: 'Type',
+    title: '关系类型',
     dataIndex: 'type',
     key: 'joinType',
     render: (joinType) => getJoinTypeText(joinType),
   },
   DESCRIPTION: {
-    title: 'Description',
+    title: '描述',
     dataIndex: 'description',
     key: 'description',
     ellipsis: true,

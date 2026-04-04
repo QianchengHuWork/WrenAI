@@ -3,9 +3,9 @@ import { Typography } from 'antd';
 export default function ViewFinished() {
   return (
     <>
-      <Typography.Text className="gray-8">Using pre-saved view</Typography.Text>
+      <Typography.Text className="gray-8">正在使用已保存视图</Typography.Text>
       <div className="gray-7 text-sm mt-1">
-        <div>Matching saved view found. Returning results instantly.</div>
+        <div>已找到匹配的已保存视图，正在直接返回结果。</div>
       </div>
     </>
   );

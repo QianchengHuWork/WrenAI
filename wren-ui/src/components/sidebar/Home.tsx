@@ -78,7 +78,7 @@ export default function Home(props: Props) {
         href={Path.HomeDashboard}
       >
         <FundViewOutlined className="mr-2" />
-        <span className="text-medium">Dashboard</span>
+        <span className="text-medium">仪表板</span>
       </StyledTreeNodeLink>
       <ThreadTree
         threads={threads}

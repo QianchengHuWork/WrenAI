@@ -51,9 +51,9 @@ export default function ModelTree(props: Props) {
       onError: (error) => console.error(error),
       onCompleted: async (data) => {
         if (data.triggerDataSourceDetection) {
-          message.warning('Schema change detected.');
+          message.warning('检测到 Schema 变更。');
         } else {
-          message.success('There is no schema change.');
+          message.success('当前没有 Schema 变更。');
         }
         await refetchSchemaChange();
       },
@@ -64,9 +64,9 @@ export default function ModelTree(props: Props) {
       onCompleted: async (_, options) => {
         const { type } = options.variables?.where;
         if (type === SchemaChangeType.DELETED_TABLES) {
-          message.success('Source table deleted resolved successfully.');
+          message.success('源表删除问题已处理。');
         } else if (type === SchemaChangeType.DELETED_COLUMNS) {
-          message.success('Source column deleted resolved successfully.');
+          message.success('源字段删除问题已处理。');
         }
 
         const { data } = await refetchSchemaChange();
@@ -93,7 +93,7 @@ export default function ModelTree(props: Props) {
   };
 
   const getModelGroupNode = createTreeGroupNode({
-    groupName: 'Models',
+    groupName: '模型',
     groupKey: 'models',
     actions: [
       {
@@ -121,7 +121,7 @@ export default function ModelTree(props: Props) {
             size="small"
             onClick={() => onOpenModelDrawer()}
           >
-            New
+            新建
           </GroupActionButton>
         ),
       },
@@ -138,7 +138,7 @@ export default function ModelTree(props: Props) {
           <span className="adm-actionIcon mx-2" onClick={onOpenSchemaChange}>
             <WarningOutlined
               className="orange-5"
-              title="Review schema change impacts"
+              title="查看 Schema 变更影响"
             />
           </span>
         ),

@@ -35,14 +35,13 @@ import {
 const { Title, Text } = Typography;
 
 const adjustmentType = {
-  [ThreadResponseAdjustmentType.APPLY_SQL]: 'User-provided SQL applied',
-  [ThreadResponseAdjustmentType.REASONING]: 'Reasoning steps adjusted',
+  [ThreadResponseAdjustmentType.APPLY_SQL]: '已应用用户提供的 SQL',
+  [ThreadResponseAdjustmentType.REASONING]: '已调整推理步骤',
 };
 
 const knowledgeTooltip = (
   <>
-    Store this answer as a Question-SQL pair to help Wren AI improve SQL
-    generation.
+    将此回答保存为问题-SQL 对，帮助 Zen-SmartBI 提升 SQL 生成效果。
     <br />
     <Typography.Link
       className="gray-1 underline"
@@ -50,7 +49,7 @@ const knowledgeTooltip = (
       target="_blank"
       rel="noopener noreferrer"
     >
-      Learn more
+      了解更多
     </Typography.Link>
   </>
 );
@@ -165,7 +164,7 @@ const AdjustmentInformation = (props: {
       <div className="d-flex align-center gx-2">
         <ShareAltOutlined className="gray-7" />
         <div className="flex-grow-1 gray-7">
-          Adjusted answer
+          已调整回答
           <Tag className="gray-6 border border-gray-5 bg-gray-3 ml-3 text-medium">
             {adjustmentType[adjustment.type]}
           </Tag>
@@ -301,7 +300,7 @@ export default function AnswerResult(props: Props) {
                 tab={
                   <div className="select-none">
                     <CheckCircleFilled className="mr-2" />
-                    <Text>Answer</Text>
+                    <Text>回答</Text>
                   </div>
                 }
               >
@@ -313,7 +312,7 @@ export default function AnswerResult(props: Props) {
               tab={
                 <div className="select-none">
                   <CodeFilled className="mr-2" />
-                  <Text>View SQL</Text>
+                  <Text>查看 SQL</Text>
                 </div>
               }
             >
@@ -325,7 +324,7 @@ export default function AnswerResult(props: Props) {
                 <div className="select-none">
                   <PieChartFilled className="mr-2" />
                   <Text>
-                    Chart<Tag className="adm-beta-tag">Beta</Tag>
+                    图表<Tag className="adm-beta-tag">测试版</Tag>
                   </Text>
                 </div>
               }
@@ -356,7 +355,7 @@ export default function AnswerResult(props: Props) {
               >
                 <div className="d-flex align-center">
                   <RobotSVG className="mr-2" />
-                  Save to knowledge
+                  保存到知识库
                 </div>
               </Button>
             </Tooltip>

@@ -49,7 +49,7 @@ export default function InstructionModal(props: Props) {
 
   return (
     <Modal
-      title={`${isCreateMode ? 'Add' : 'Update'} an instruction`}
+      title={`${isCreateMode ? '新增' : '编辑'}指令`}
       centered
       closable
       confirmLoading={loading}
@@ -59,13 +59,13 @@ export default function InstructionModal(props: Props) {
       visible={visible}
       width={720}
       cancelButtonProps={{ disabled: loading }}
-      okText="Submit"
+      okText="提交"
       onOk={onSubmitButton}
       afterClose={() => form.resetFields()}
     >
       <Form form={form} preserve={false} layout="vertical">
         <Form.Item
-          label="Instruction details"
+          label="指令内容"
           name="instruction"
           rules={[
             {
@@ -76,14 +76,14 @@ export default function InstructionModal(props: Props) {
         >
           <Input.TextArea
             autoFocus
-            placeholder="Enter a rule that Wren AI should follow when generating SQL queries."
+            placeholder="请输入 Zen-SmartBI 在生成 SQL 时应遵循的规则。"
             maxLength={1000}
             rows={3}
             showCount
           />
         </Form.Item>
         <Form.Item
-          label="Apply instruction to"
+          label="指令适用范围"
           name="isDefault"
           required={false}
           rules={[
@@ -94,29 +94,28 @@ export default function InstructionModal(props: Props) {
           ]}
           extra={
             <>
-              Choose whether this instruction applies to{' '}
-              <span className="gray-7">all queries</span> or{' '}
-              <span className="gray-7">
-                only when similar user questions are detected
-              </span>
-              .
+              请选择该指令适用于
+              <span className="gray-7">所有查询</span>
+              或仅在
+              <span className="gray-7">检测到相似用户问题时</span>
+              生效。
             </>
           }
         >
           <Radio.Group>
             <Radio.Button value={true}>
-              Global (applies to all questions)
+              全局（适用于所有问题）
             </Radio.Button>
             <Radio.Button value={false}>
-              Matched to specific questions
+              仅匹配特定问题
             </Radio.Button>
           </Radio.Group>
         </Form.Item>
         {!isDefault && (
           <Form.Item
-            label="Matching questions"
+            label="匹配问题"
             required
-            extra="Wren AI will match user queries based on similarity and apply this instruction when relevant."
+            extra="Zen-SmartBI 会基于相似度匹配用户问题，并在相关时应用该指令。"
           >
             <Form.List name="questions" initialValue={['']}>
               {(fields, { add, remove }) => (
@@ -140,7 +139,7 @@ export default function InstructionModal(props: Props) {
                           ]}
                         >
                           <Input
-                            placeholder="Enter an example question that should trigger this instruction."
+                            placeholder="请输入可触发该指令的示例问题。"
                             maxLength={100}
                             showCount
                           />
@@ -167,7 +166,7 @@ export default function InstructionModal(props: Props) {
                       disabled={fields.length >= MAX_QUESTIONS}
                       className="mb-1"
                     >
-                      Add a question
+                      新增问题
                     </Button>
                   </Form.Item>
                 </>

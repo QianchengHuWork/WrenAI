@@ -49,9 +49,9 @@ const SampleDatasetPanel = (props: Props) => {
     if (!isCurrentTemplate) {
       const template = templates.find((item) => item.value === name);
       Modal.confirm({
-        title: `Are you sure you want to change to "${template.label}" dataset?`,
+        title: `确定切换到“${template.label}”数据集吗？`,
         okButtonProps: { danger: true },
-        okText: 'Change',
+        okText: '切换',
         onOk: async () => {
           await startSampleDataset({ variables: { data: { name } } });
         },
@@ -61,7 +61,7 @@ const SampleDatasetPanel = (props: Props) => {
 
   return (
     <>
-      <div className="mb-2">Change sample dataset</div>
+      <div className="mb-2">更换示例数据集</div>
       <div className="d-grid grid-columns-3 g-4">
         <SampleDatasetIterator
           data={templates}
@@ -70,8 +70,7 @@ const SampleDatasetPanel = (props: Props) => {
         />
       </div>
       <div className="gray-6 mt-1">
-        Please be aware that choosing another sample dataset will delete all
-        thread records in the Home page.
+        请注意，切换示例数据集会删除首页中的全部对话记录。
       </div>
     </>
   );
@@ -87,7 +86,7 @@ const DataSourcePanel = (props: Props) => {
     onError: (error) => console.error(error),
     onCompleted: async () => {
       refetchSettings();
-      message.success('Successfully update data source.');
+      message.success('数据源更新成功。');
     },
   });
 
@@ -143,7 +142,7 @@ const DataSourcePanel = (props: Props) => {
 
         <div className="py-2 text-right">
           <Button className="mr-2" style={{ width: 80 }} onClick={reset}>
-            Cancel
+            取消
           </Button>
           <Button
             type="primary"
@@ -151,7 +150,7 @@ const DataSourcePanel = (props: Props) => {
             onClick={submit}
             loading={loading}
           >
-            Save
+            保存
           </Button>
         </div>
       </Form>

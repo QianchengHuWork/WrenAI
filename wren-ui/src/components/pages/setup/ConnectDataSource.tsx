@@ -42,10 +42,10 @@ export default function ConnectDataSource(props: Props) {
   return (
     <>
       <Typography.Title level={1} className="mb-3">
-        Connect the data source
+        连接数据源
       </Typography.Title>
       <Typography.Text>
-        Vote for your favorite data sources on{' '}
+        你也可以在{' '}
         <Link
           href="https://github.com/Canner/WrenAI/discussions/327"
           target="_blank"
@@ -53,7 +53,7 @@ export default function ConnectDataSource(props: Props) {
         >
           GitHub
         </Link>
-        .
+        为你希望支持的数据源投票。
       </Typography.Text>
 
       <StyledForm form={form} layout="vertical" className="p-6 my-6">
@@ -71,15 +71,15 @@ export default function ConnectDataSource(props: Props) {
             </DataSource>
           </Col>
           <Col className="text-right" span={12}>
-            Learn more information in the {current.label}{' '}
+            查看 {current.label} 的更多信息，请参考{' '}
             <Link
               href={current.guide}
               target="_blank"
               rel="noopener noreferrer"
             >
-              setup guide
+              接入指南
             </Link>
-            .
+            。
           </Col>
         </Row>
         <current.component />
@@ -107,7 +107,7 @@ export default function ConnectDataSource(props: Props) {
             className="adm-onboarding-btn"
             disabled={submitting}
           >
-            Back
+            上一步
           </Button>
         </Col>
         <Col className="text-right" span={12}>
@@ -118,7 +118,7 @@ export default function ConnectDataSource(props: Props) {
             loading={submitting}
             className="adm-onboarding-btn"
           >
-            Next
+            下一步
           </Button>
         </Col>
       </Row>

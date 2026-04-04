@@ -87,7 +87,7 @@ export const ModelNode = ({ data }: CustomNodeProps<DiagramModel>) => {
         <MarkerHandle id={data.originalData.id.toString()} />
       </NodeHeader>
       <NodeBody draggable={false}>
-        <Column.Title show={true}>Columns</Column.Title>
+        <Column.Title show={true}>字段</Column.Title>
         {renderColumns(data.originalData.fields)}
         <Column.Title
           show={true}
@@ -99,7 +99,7 @@ export const ModelNode = ({ data }: CustomNodeProps<DiagramModel>) => {
             />
           }
         >
-          Calculated Fields
+          计算字段
         </Column.Title>
         {renderColumns(data.originalData.calculatedFields)}
         <Column.Title
@@ -112,7 +112,7 @@ export const ModelNode = ({ data }: CustomNodeProps<DiagramModel>) => {
             />
           }
         >
-          Relationships
+          关系
         </Column.Title>
         {renderColumns(data.originalData.relationFields)}
       </NodeBody>

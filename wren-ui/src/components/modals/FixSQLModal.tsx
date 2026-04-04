@@ -24,7 +24,7 @@ export function FixSQLModal(props: Props) {
   const error = useMemo(() => {
     if (!previewSqlResult.error) return null;
     const graphQLError = parseGraphQLError(previewSqlResult.error);
-    return { ...graphQLError, shortMessage: 'Invalid SQL syntax' };
+    return { ...graphQLError, shortMessage: 'SQL 语法无效' };
   }, [previewSqlResult.error]);
 
   useEffect(() => {
@@ -73,10 +73,10 @@ export function FixSQLModal(props: Props) {
 
   return (
     <Modal
-      title="Fix SQL"
+      title="修复 SQL"
       width={640}
       visible={visible}
-      okText="Submit"
+      okText="提交"
       onOk={submit}
       onCancel={onClose}
       confirmLoading={loading}
@@ -86,11 +86,11 @@ export function FixSQLModal(props: Props) {
       afterClose={reset}
     >
       <Typography.Text className="d-block gray-7 mb-3">
-        The following SQL statement needs to be fixed:
+        以下 SQL 语句需要修复：
       </Typography.Text>
       <Form form={form} preserve={false} layout="vertical">
         <Form.Item
-          label="SQL statement"
+          label="SQL 语句"
           name="sql"
           required
           rules={[
@@ -105,14 +105,14 @@ export function FixSQLModal(props: Props) {
       </Form>
       <div className="my-3">
         <Typography.Text className="d-block gray-7 mb-2">
-          Data preview (50 rows)
+          数据预览（50 行）
         </Typography.Text>
         <Button
           onClick={previewData}
           loading={previewLoading}
           disabled={previewLoading}
         >
-          Preview data
+          预览数据
         </Button>
         {showPreview && (
           <div className="my-3">

@@ -127,7 +127,7 @@ const getData = (
   const modeling = [
     {
       id: LEARNING.DATA_MODELING_GUIDE,
-      title: 'Data modeling guide',
+      title: '数据建模指南',
       onClick: () =>
         $guide?.current?.play(
           LEARNING.DATA_MODELING_GUIDE,
@@ -136,25 +136,25 @@ const getData = (
     },
     {
       id: LEARNING.CREATING_MODEL,
-      title: 'Creating a model',
+      title: '创建模型',
       href: 'https://docs.getwren.ai/oss/guide/modeling/models',
       onClick: () => saveRecord(LEARNING.CREATING_MODEL),
     },
     {
       id: LEARNING.CREATING_VIEW,
-      title: 'Creating a view',
+      title: '创建视图',
       href: 'https://docs.getwren.ai/oss/guide/modeling/views',
       onClick: () => saveRecord(LEARNING.CREATING_VIEW),
     },
     {
       id: LEARNING.WORKING_RELATIONSHIP,
-      title: 'Working on relationship',
+      title: '配置关系',
       href: 'https://docs.getwren.ai/oss/guide/modeling/relationships',
       onClick: () => saveRecord(LEARNING.WORKING_RELATIONSHIP),
     },
     {
       id: LEARNING.CONNECT_OTHER_DATA_SOURCES,
-      title: 'Connect to other data sources',
+      title: '连接其他数据源',
       href: 'https://docs.getwren.ai/oss/guide/connect/overview',
       onClick: () => saveRecord(LEARNING.CONNECT_OTHER_DATA_SOURCES),
     },
@@ -163,7 +163,7 @@ const getData = (
   const home = [
     {
       id: LEARNING.SWITCH_PROJECT_LANGUAGE,
-      title: 'Switch the language',
+      title: '切换语言',
       onClick: () =>
         $guide?.current?.play(
           LEARNING.SWITCH_PROJECT_LANGUAGE,
@@ -172,7 +172,7 @@ const getData = (
     },
     {
       id: LEARNING.VIEW_FULL_SQL,
-      title: 'View full SQL',
+      title: '查看完整 SQL',
       href: 'https://docs.getwren.ai/oss/guide/home/answer#view-sqlview-full-sql',
       onClick: () => saveRecord(LEARNING.VIEW_FULL_SQL),
     },

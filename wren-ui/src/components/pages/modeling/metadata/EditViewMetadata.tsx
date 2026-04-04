@@ -82,7 +82,7 @@ export default function EditViewMetadata(props: Props) {
 
       <div className="mb-6">
         <Typography.Text className="d-block gray-7 mb-2">
-          Columns ({fields.length})
+          字段（{fields.length}）
         </Typography.Text>
         <FieldEditableTable
           dataSource={fields}

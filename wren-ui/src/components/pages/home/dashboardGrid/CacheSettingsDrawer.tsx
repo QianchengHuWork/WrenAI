@@ -57,19 +57,22 @@ const DAY_OF_WEEK = [
 const getDayOfWeekText = (day: CacheScheduleDayEnum) => {
   return (
     {
-      [CacheScheduleDayEnum.MON]: 'Monday',
-      [CacheScheduleDayEnum.TUE]: 'Tuesday',
-      [CacheScheduleDayEnum.WED]: 'Wednesday',
-      [CacheScheduleDayEnum.THU]: 'Thursday',
-      [CacheScheduleDayEnum.FRI]: 'Friday',
-      [CacheScheduleDayEnum.SAT]: 'Saturday',
-      [CacheScheduleDayEnum.SUN]: 'Sunday',
+      [CacheScheduleDayEnum.MON]: '星期一',
+      [CacheScheduleDayEnum.TUE]: '星期二',
+      [CacheScheduleDayEnum.WED]: '星期三',
+      [CacheScheduleDayEnum.THU]: '星期四',
+      [CacheScheduleDayEnum.FRI]: '星期五',
+      [CacheScheduleDayEnum.SAT]: '星期六',
+      [CacheScheduleDayEnum.SUN]: '星期日',
     }[day] || ''
   );
 };
 
 const getFrequencyText = (frequency: string) => {
-  if (frequency === FREQUENCY.NEVER) return 'Manual refresh only';
+  if (frequency === FREQUENCY.DAILY) return '每天';
+  if (frequency === FREQUENCY.WEEKLY) return '每周';
+  if (frequency === FREQUENCY.CUSTOM) return '自定义';
+  if (frequency === FREQUENCY.NEVER) return '仅手动刷新';
   return capitalize(frequency);
 };
 
@@ -125,17 +128,17 @@ export const getScheduleText = (schedule: Schedule): string => {
   switch (frequency) {
     case FREQUENCY.DAILY: {
       const time = convertTime(schedule);
-      return `Cache refreshes daily at ${time}`;
+      return `缓存每天 ${time} 刷新`;
     }
     case FREQUENCY.WEEKLY: {
       const time = convertTime(schedule);
-      return `Cache refreshes every ${getDayOfWeekText(schedule.day as CacheScheduleDayEnum)} at ${time}`;
+      return `缓存每周${getDayOfWeekText(schedule.day as CacheScheduleDayEnum)} ${time} 刷新`;
     }
     case FREQUENCY.CUSTOM: {
-      return `Cache refreshes on custom schedule`;
+      return `缓存按自定义计划刷新`;
     }
     case FREQUENCY.NEVER: {
-      return 'Cache refresh: manual only';
+      return '缓存仅支持手动刷新';
     }
     default: {
       return '';
@@ -245,7 +248,7 @@ export default function CacheSettingsDrawer(props: Props) {
   return (
     <Drawer
       visible={visible}
-      title="Cache settings"
+      title="缓存设置"
       width={410}
       closable
       destroyOnClose
@@ -255,7 +258,7 @@ export default function CacheSettingsDrawer(props: Props) {
       footer={
         <Space className="d-flex justify-end">
           <Button onClick={onClose} disabled={loading}>
-            Cancel
+            取消
           </Button>
           <Button
             type="primary"
@@ -263,17 +266,17 @@ export default function CacheSettingsDrawer(props: Props) {
             loading={loading}
             disabled={loading}
           >
-            Submit
+            提交
           </Button>
         </Space>
       }
     >
       <Form form={form} layout="vertical">
         <Form.Item
-          label="Enable caching"
+          label="启用缓存"
           name="cacheEnabled"
           valuePropName="checked"
-          extra="Enable caching to speed up dashboard loading by reusing recent results. Choose a refresh schedule that fits your needs below."
+          extra="启用缓存后，系统会复用近期结果以提升仪表板加载速度。请在下方选择适合你的刷新计划。"
         >
           <Switch />
         </Form.Item>
@@ -300,10 +303,10 @@ function Schedule() {
 
   return (
     <>
-      <Divider className="gray-6 text-sm">Refresh settings</Divider>
-      <Form.Item label="Frequency" name={['schedule', 'frequency']}>
+      <Divider className="gray-6 text-sm">刷新设置</Divider>
+      <Form.Item label="频率" name={['schedule', 'frequency']}>
         <Select
-          placeholder="Select frequency"
+          placeholder="请选择频率"
           options={Object.keys(FREQUENCY).map((key) => ({
             label: getFrequencyText(key),
             value: FREQUENCY[key],
@@ -316,11 +319,11 @@ function Schedule() {
       {frequency === FREQUENCY.WEEKLY && <WeeklyTimeSelection />}
       {frequency === FREQUENCY.CUSTOM && (
         <Form.Item
-          label="Cron expression"
+          label="Cron 表达式"
           name={['schedule', 'cron']}
           required={false}
           rules={[{ validator: cronValidator }]}
-          extra="Cron expression will be executed in UTC timezone (e.g. '0 0 * * *' for daily at midnight UTC)"
+          extra="Cron 表达式会按 UTC 时区执行，例如 `0 0 * * *` 表示每天 UTC 零点。"
         >
           <Input style={{ maxWidth: 200 }} placeholder="* * * * *" />
         </Form.Item>
@@ -328,7 +331,7 @@ function Schedule() {
 
       {nextSchedule && (
         <div className="gray-7">
-          Next scheduled refresh:
+          下次计划刷新时间：
           <div className="gray-8">
             {nextSchedule} {browserTimeZone && <span>({browserTimeZone})</span>}
           </div>
@@ -342,7 +345,7 @@ function DailyTimeSelection() {
   return (
     <>
       <Form.Item
-        label="Time"
+        label="时间"
         name={['schedule', 'time']}
         required={false}
         rules={[
@@ -364,7 +367,7 @@ function WeeklyTimeSelection() {
       <Row gutter={16}>
         <Col>
           <Form.Item
-            label="Day"
+            label="日期"
             name={['schedule', 'day']}
             required={false}
             rules={[
@@ -380,13 +383,13 @@ function WeeklyTimeSelection() {
                 label: getDayOfWeekText(value),
                 value,
               }))}
-              placeholder="Select day"
+              placeholder="请选择日期"
             />
           </Form.Item>
         </Col>
         <Col>
           <Form.Item
-            label="Time"
+            label="时间"
             name={['schedule', 'time']}
             required={false}
             rules={[

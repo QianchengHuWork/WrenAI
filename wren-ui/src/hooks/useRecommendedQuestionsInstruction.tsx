@@ -91,7 +91,7 @@ export default function useRecommendedQuestionsInstruction() {
             RecommendedQuestionsTaskStatus.FAILED
         ) {
           message.error(
-            `We couldn't regenerate questions right now. Let's try again later.`,
+            '暂时无法重新生成问题，请稍后再试。',
           );
         }
       } else {
@@ -129,7 +129,7 @@ export default function useRecommendedQuestionsInstruction() {
       return {
         ...baseProps,
         icon: <ReloadOutlined />,
-        children: 'Regenerate',
+        children: '重新生成',
       };
     }
 
@@ -141,10 +141,10 @@ export default function useRecommendedQuestionsInstruction() {
         <Icon component={CopilotSVG} className="geekblue-6" />
       ),
       children: generating
-        ? 'Generating questions'
+        ? '正在生成问题'
         : showRetry
-          ? 'Retry'
-          : 'What could I ask?',
+          ? '重试'
+          : '我可以问什么？',
     };
   }, [generating, isRegenerate, showRetry, showRecommendedQuestionsPromptMode]);
 

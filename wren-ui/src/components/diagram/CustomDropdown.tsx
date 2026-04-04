@@ -66,7 +66,7 @@ export const ModelDropdown = makeDropdown((props: Props) => {
       label: (
         <>
           <EditOutlined className="mr-2" />
-          Update Columns
+          更新字段
         </>
       ),
       key: MORE_ACTION.UPDATE_COLUMNS,
@@ -115,7 +115,7 @@ export const ColumnDropdown = makeDropdown((props: Props) => {
       label: (
         <>
           <EditOutlined className="mr-2" />
-          Edit
+          编辑
         </>
       ),
       key: MORE_ACTION.EDIT,
@@ -141,7 +141,7 @@ export const DashboardDropdown = makeDropdown((props: Props) => {
       label: (
         <>
           <DatabaseOutlined className="mr-2" />
-          Cache settings
+          缓存设置
         </>
       ),
       key: MORE_ACTION.CACHE_SETTINGS,
@@ -151,7 +151,7 @@ export const DashboardDropdown = makeDropdown((props: Props) => {
       label: (
         <>
           <ReloadOutlined className="mr-2" />
-          {isSupportCached ? 'Refresh all caches' : 'Refresh all'}
+          {isSupportCached ? '刷新全部缓存' : '全部刷新'}
         </>
       ),
       key: MORE_ACTION.REFRESH,
@@ -168,12 +168,12 @@ export const DashboardItemDropdown = makeDropdown((props: Props) => {
       label: isHideLegend ? (
         <>
           <EyeOutlined className="mr-2" />
-          Show categories
+          显示类别
         </>
       ) : (
         <>
           {<EyeInvisibleOutlined className="mr-2" />}
-          Hide categories
+          隐藏类别
         </>
       ),
       key: MORE_ACTION.HIDE_CATEGORY,
@@ -183,7 +183,7 @@ export const DashboardItemDropdown = makeDropdown((props: Props) => {
       label: (
         <>
           <ReloadOutlined className="mr-2" />
-          {isSupportCached ? 'Refresh cache' : 'Refresh'}
+          {isSupportCached ? '刷新缓存' : '刷新'}
         </>
       ),
       key: MORE_ACTION.REFRESH,
@@ -215,7 +215,7 @@ export const SQLPairDropdown = makeDropdown(
         label: (
           <>
             <EyeOutlined className="mr-2" />
-            View
+            查看
           </>
         ),
         key: MORE_ACTION.VIEW_SQL_PAIR,
@@ -229,7 +229,7 @@ export const SQLPairDropdown = makeDropdown(
         label: (
           <>
             <EditOutlined className="mr-2" />
-            Edit
+            编辑
           </>
         ),
         key: MORE_ACTION.EDIT,
@@ -274,7 +274,7 @@ export const InstructionDropdown = makeDropdown(
         label: (
           <>
             <EyeOutlined className="mr-2" />
-            View
+            查看
           </>
         ),
         key: MORE_ACTION.VIEW_INSTRUCTION,
@@ -288,7 +288,7 @@ export const InstructionDropdown = makeDropdown(
         label: (
           <>
             <EditOutlined className="mr-2" />
-            Edit
+            编辑
           </>
         ),
         key: MORE_ACTION.EDIT,
@@ -330,7 +330,7 @@ export const AdjustAnswerDropdown = makeDropdown(
     const { onMoreClick, data } = props;
     const items: ItemType[] = [
       {
-        label: 'Adjust steps',
+        label: '调整步骤',
         icon: <EditSVG />,
         disabled: !data.sqlGenerationReasoning,
         key: 'adjust-steps',
@@ -341,7 +341,7 @@ export const AdjustAnswerDropdown = makeDropdown(
           }),
       },
       {
-        label: 'Adjust SQL',
+        label: '调整 SQL',
         icon: <CodeFilled className="text-base" />,
         disabled: !data.sql,
         key: 'adjust-sql',

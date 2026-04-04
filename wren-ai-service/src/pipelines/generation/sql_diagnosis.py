@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from src.core.pipeline import BasicPipeline
 from src.core.provider import LLMProvider
 from src.pipelines.common import clean_up_new_lines
-from src.utils import trace_cost
+from src.utils import loads_llm_json, trace_cost
 
 logger = logging.getLogger("wren-ai-service")
 
@@ -92,7 +92,7 @@ async def generate_sql_diagnosis(
 async def post_process(
     generate_sql_diagnosis: dict,
 ) -> str:
-    return orjson.loads(generate_sql_diagnosis.get("replies")[0])
+    return loads_llm_json(generate_sql_diagnosis.get("replies")[0])
 
 
 ## End of Pipeline

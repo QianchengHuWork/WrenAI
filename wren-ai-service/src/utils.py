@@ -4,6 +4,7 @@ import os
 import re
 from pathlib import Path
 
+import orjson
 import requests
 from dotenv import load_dotenv
 from langfuse.decorators import langfuse_context
@@ -11,6 +12,9 @@ from langfuse.decorators import langfuse_context
 from src.config import Settings
 
 logger = logging.getLogger("wren-ai-service")
+
+_JSON_CODE_BLOCK_RE = re.compile(r"```(?:json)?\s*([\[{].*[\]}])\s*```", re.DOTALL)
+_JSON_TRAILING_COMMA_RE = re.compile(r",(?=\s*[}\]])")
 
 
 class CustomFormatter(logging.Formatter):
@@ -218,3 +222,18 @@ def extract_braces_content(resp: str) -> str:
     """
     match = re.search(r"```json\s*(\{.*?\})\s*```", resp, re.DOTALL)
     return match.group(1) if match else resp
+
+
+def loads_llm_json(text: str):
+    """
+    Parse LLM JSON output with minimal repair for common formatting mistakes.
+    """
+    normalized = text.strip()
+    if match := _JSON_CODE_BLOCK_RE.search(normalized):
+        normalized = match.group(1).strip()
+
+    try:
+        return orjson.loads(normalized)
+    except orjson.JSONDecodeError:
+        repaired = _JSON_TRAILING_COMMA_RE.sub("", normalized)
+        return orjson.loads(repaired)

@@ -93,7 +93,7 @@ export default function Column(props: ColumnProps) {
 }
 
 const MoreColumnTip = (props: { count: number }) => {
-  return <div className="text-sm gray-7 px-3 py-1">and {props.count} more</div>;
+  return <div className="text-sm gray-7 px-3 py-1">另有 {props.count} 项</div>;
 };
 
 const ColumnTitle = (props: ColumnTitleProps) => {

@@ -27,15 +27,15 @@ export default function ProjectSettings(props: Props) {
     refetchQueries: ['GetSettings'],
     onError: (error) => console.error(error),
     onCompleted: () => {
-      message.success('Successfully updated project language.');
+      message.success('项目语言更新成功。');
     },
   });
 
   const reset = () => {
     Modal.confirm({
-      title: 'Are you sure you want to reset?',
+      title: '确定要重置项目吗？',
       okButtonProps: { danger: true },
-      okText: 'Reset',
+      okText: '重置',
       onOk: async () => {
         await resetCurrentProject();
         client.clearStore();
@@ -61,14 +61,14 @@ export default function ProjectSettings(props: Props) {
         initialValues={{ language: data.language }}
       >
         <Form.Item
-          label="Project language"
-          extra="This setting will affect the language in which the AI responds to you."
+          label="项目语言"
+          extra="该设置会影响 AI 回复你的语言。"
         >
           <Row gutter={16} wrap={false}>
             <Col className="flex-grow-1">
               <Form.Item name="language" noStyle>
                 <Select
-                  placeholder="Select a language"
+                  placeholder="请选择语言"
                   showSearch
                   options={languageOptions}
                 />
@@ -81,19 +81,18 @@ export default function ProjectSettings(props: Props) {
                 onClick={submit}
                 loading={loading}
               >
-                Save
+                保存
               </Button>
             </Col>
           </Row>
         </Form.Item>
       </Form>
-      <div className="gray-8 mb-2">Reset project</div>
+      <div className="gray-8 mb-2">重置项目</div>
       <Button type="primary" style={{ width: 70 }} danger onClick={reset}>
-        Reset
+        重置
       </Button>
       <div className="gray-6 mt-1">
-        Please be aware that resetting will delete all current settings and
-        records, including those in the Modeling Page and Home Page threads.
+        请注意，重置会删除当前全部设置和记录，包括建模页配置与首页对话。
       </div>
     </div>
   );

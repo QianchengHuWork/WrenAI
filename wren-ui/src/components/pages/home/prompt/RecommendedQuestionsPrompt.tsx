@@ -117,10 +117,10 @@ export default function RecommendedQuestionsPrompt(props: Props) {
       <div className="d-flex align-center mb-3">
         <Logo size={24} color="var(--gray-8)" />
         <div className="text-md text-medium gray-8 mx-3">
-          Know more about your data.
+          更了解你的数据
         </div>
         <div className="text-medium gray-7">
-          Try asking some of the following questions
+          你可以先试试下面这些问题
         </div>
       </div>
       <Space
@@ -147,7 +147,7 @@ export default function RecommendedQuestionsPrompt(props: Props) {
                 size="small"
                 icon={isExpanded ? <MinusOutlined /> : <ColumnHeightOutlined />}
               >
-                {isExpanded ? 'Collapse' : 'Expand all'}
+                {isExpanded ? '收起' : '展开全部'}
               </Button>
             </div>
           )}

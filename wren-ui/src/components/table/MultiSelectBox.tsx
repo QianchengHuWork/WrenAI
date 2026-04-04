@@ -85,12 +85,12 @@ export default function MultiSelectBox(props: Props) {
     <StyledBox
       className={status ? `multiSelectBox-input-${status}` : undefined}
     >
-      <StyledTotal>{total} table(s)</StyledTotal>
+      <StyledTotal>{total} 张表</StyledTotal>
       <div className="p-2">
         <Input
           prefix={<SearchOutlined />}
           onChange={onSearchChange}
-          placeholder="Search here"
+          placeholder="搜索"
           allowClear
         />
       </div>

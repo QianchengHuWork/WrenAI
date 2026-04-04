@@ -15,7 +15,7 @@ from src.core.pipeline import BasicPipeline
 from src.core.provider import DocumentStoreProvider, EmbedderProvider, LLMProvider
 from src.pipelines.common import build_table_ddl, clean_up_new_lines
 from src.pipelines.generation.utils.sql import construct_instructions
-from src.utils import trace_cost
+from src.utils import loads_llm_json, trace_cost
 from src.web.v1.services import Configuration
 from src.web.v1.services.ask import AskHistory
 
@@ -299,7 +299,7 @@ async def classify_intent(prompt: dict, generator: Any, generator_name: str) -> 
 @observe(capture_input=False)
 def post_process(classify_intent: dict, construct_db_schemas: list[str]) -> dict:
     try:
-        results = orjson.loads(classify_intent.get("replies")[0])
+        results = loads_llm_json(classify_intent.get("replies")[0])
         return {
             "rephrased_question": results["rephrased_question"],
             "intent": results["results"],

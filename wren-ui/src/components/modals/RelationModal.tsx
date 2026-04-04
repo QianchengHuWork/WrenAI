@@ -95,10 +95,10 @@ export default function RelationModal(props: Props) {
 
   return (
     <Modal
-      title={`${isEmpty(defaultValue) ? 'Add' : 'Update'} relationship`}
+      title={`${isEmpty(defaultValue) ? '新增' : '编辑'}关系`}
       width={750}
       visible={visible}
-      okText="Submit"
+      okText="提交"
       onOk={submit}
       onCancel={onClose}
       confirmLoading={loading}
@@ -109,7 +109,7 @@ export default function RelationModal(props: Props) {
     >
       <Form form={form} preserve={false} layout="vertical">
         <Form.Item
-          label="From"
+          label="来源字段"
           name={FormFieldKey.FROM_FIELD}
           required
           rules={[
@@ -132,7 +132,7 @@ export default function RelationModal(props: Props) {
           />
         </Form.Item>
         <Form.Item
-          label="To"
+          label="目标字段"
           name={FormFieldKey.TO_FIELD}
           required
           rules={[
@@ -154,7 +154,7 @@ export default function RelationModal(props: Props) {
           />
         </Form.Item>
         <Form.Item
-          label="Type"
+          label="关系类型"
           name={FormFieldKey.TYPE}
           required
           rules={[
@@ -167,7 +167,7 @@ export default function RelationModal(props: Props) {
           <Select
             data-testid="relationship-form__type-select"
             options={relationTypeOptions}
-            placeholder="Select a relationship type"
+            placeholder="请选择关系类型"
           />
         </Form.Item>
       </Form>

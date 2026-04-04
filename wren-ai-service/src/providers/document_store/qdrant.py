@@ -162,6 +162,60 @@ class AsyncQdrantDocumentStore(QdrantDocumentStore):
             collection_name=index, field_name="project_id", field_schema="keyword"
         )
 
+    def recreate_collection(
+        self,
+        collection_name: str,
+        distance,
+        embedding_dim: int,
+        on_disk: Optional[bool] = None,
+        use_sparse_embeddings: Optional[bool] = None,
+        sparse_idf: bool = False,
+    ):
+        """
+        Override upstream collection creation for Qdrant 1.11 compatibility.
+
+        The bundled haystack integration always forwards `init_from`, and older
+        Qdrant servers reject that field even when it is null.
+        """
+        if on_disk is None:
+            on_disk = self.on_disk
+
+        if use_sparse_embeddings is None:
+            use_sparse_embeddings = self.use_sparse_embeddings
+
+        vectors_config = rest.VectorParams(
+            size=embedding_dim,
+            on_disk=on_disk,
+            distance=distance,
+        )
+        sparse_vectors_config = None
+
+        if use_sparse_embeddings:
+            vectors_config = {DENSE_VECTORS_NAME: vectors_config}
+            sparse_vectors_config = {
+                SPARSE_VECTORS_NAME: rest.SparseVectorParams(
+                    index=rest.SparseIndexParams(on_disk=on_disk),
+                    modifier=rest.Modifier.IDF if sparse_idf else None,
+                ),
+            }
+
+        if self.client.collection_exists(collection_name):
+            self.client.delete_collection(collection_name)
+
+        self.client.create_collection(
+            collection_name=collection_name,
+            vectors_config=vectors_config,
+            sparse_vectors_config=sparse_vectors_config,
+            shard_number=self.shard_number,
+            replication_factor=self.replication_factor,
+            write_consistency_factor=self.write_consistency_factor,
+            on_disk_payload=self.on_disk_payload,
+            hnsw_config=self.hnsw_config,
+            optimizers_config=self.optimizers_config,
+            wal_config=self.wal_config,
+            quantization_config=self.quantization_config,
+        )
+
     async def _query_by_embedding(
         self,
         query_embedding: List[float],
@@ -172,12 +226,10 @@ class AsyncQdrantDocumentStore(QdrantDocumentStore):
     ) -> List[Document]:
         qdrant_filters = convert_filters_to_qdrant(filters)
 
-        points = await self.async_client.search(
+        response = await self.async_client.query_points(
             collection_name=self.index,
-            query_vector=rest.NamedVector(
-                name=DENSE_VECTORS_NAME if self.use_sparse_embeddings else "",
-                vector=query_embedding,
-            ),
+            query=query_embedding,
+            using=DENSE_VECTORS_NAME if self.use_sparse_embeddings else None,
             search_params=(
                 rest.SearchParams(
                     quantization=rest.QuantizationSearchParams(
@@ -193,6 +245,7 @@ class AsyncQdrantDocumentStore(QdrantDocumentStore):
             limit=top_k,
             with_vectors=return_embedding,
         )
+        points = response.points
         results = [
             convert_qdrant_point_to_haystack_document(
                 point, use_sparse_embeddings=self.use_sparse_embeddings

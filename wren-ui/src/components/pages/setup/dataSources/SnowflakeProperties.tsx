@@ -38,9 +38,7 @@ const UploadPrivateKey = (props: {
         setFileList([uploadFile]);
       } catch (error) {
         console.error('Failed to handle file', error);
-        message.error(
-          'Failed to handle file. Please upload a valid private key file.',
-        );
+        message.error('文件处理失败，请上传有效的私钥文件。');
       }
     }
   };
@@ -58,7 +56,7 @@ const UploadPrivateKey = (props: {
       onRemove={onRemove}
       maxCount={1}
     >
-      <Button icon={<UploadOutlined />}>Upload private key</Button>
+      <Button icon={<UploadOutlined />}>上传私钥</Button>
     </Upload>
   );
 };
@@ -75,7 +73,7 @@ export default function SnowflakeProperties(props: Props) {
   return (
     <>
       <Form.Item
-        label="Display name"
+        label="显示名称"
         name="displayName"
         required
         rules={[
@@ -88,7 +86,7 @@ export default function SnowflakeProperties(props: Props) {
         <Input />
       </Form.Item>
       <Form.Item
-        label="Account"
+        label="账户"
         name="account"
         required
         rules={[
@@ -104,7 +102,7 @@ export default function SnowflakeProperties(props: Props) {
         />
       </Form.Item>
       <Form.Item
-        label="Database name"
+        label="数据库名称"
         name="database"
         required
         rules={[
@@ -114,10 +112,10 @@ export default function SnowflakeProperties(props: Props) {
           },
         ]}
       >
-        <Input placeholder="Snowflake database name" disabled={isEditMode} />
+        <Input placeholder="Snowflake 数据库名称" disabled={isEditMode} />
       </Form.Item>
       <Form.Item
-        label="Schema"
+        label="Schema 名称"
         name="schema"
         required
         rules={[
@@ -127,22 +125,21 @@ export default function SnowflakeProperties(props: Props) {
           },
         ]}
       >
-        <Input />
+        <Input placeholder="Schema 名称" />
       </Form.Item>
       <Form.Item
-        label="Warehouse"
+        label="仓库"
         name="warehouse"
         extra={
           <span className="gray-6">
-            Specifies the virtual warehouse for query execution. If blank, the
-            account's default warehouse is used (if configured).
+            指定执行查询所使用的虚拟仓库。若留空，则使用账户默认仓库（如已配置）。
           </span>
         }
       >
         <Input />
       </Form.Item>
       <Form.Item
-        label="User"
+        label="用户"
         name="user"
         rules={[
           {
@@ -156,18 +153,17 @@ export default function SnowflakeProperties(props: Props) {
       <Form.Item
         label={
           <div>
-            Authentication method
+            认证方式
             <div className="gray-6">
-              Username and password authentication will be{' '}
-              <span className="gray-7">deprecated by November 2025</span>. We
-              recommend switching to key pair authentication.{' '}
+              用户名和密码认证将在
+              <span className="gray-7"> 2025 年 11 月后弃用</span>。建议切换到密钥对认证。{' '}
               <Link
                 className="gray-7 underline"
                 href="https://www.snowflake.com/en/blog/blocking-single-factor-password-authentification"
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                Learn more
+                了解更多
               </Link>
             </div>
           </div>
@@ -175,10 +171,10 @@ export default function SnowflakeProperties(props: Props) {
       >
         <Radio.Group value={tabKey} onChange={changeTabKey} buttonStyle="solid">
           <Radio.Button value={TAB_KEY.PASSWORD_AUTHENTICATION}>
-            Password authentication
+            密码认证
           </Radio.Button>
           <Radio.Button value={TAB_KEY.KEY_PAIR_AUTHENTICATION}>
-            Key pair authentication
+            密钥对认证
           </Radio.Button>
         </Radio.Group>
       </Form.Item>
@@ -186,7 +182,7 @@ export default function SnowflakeProperties(props: Props) {
       <div>
         {tabKey === TAB_KEY.PASSWORD_AUTHENTICATION && (
           <Form.Item
-            label="Password"
+            label="密码"
             name="password"
             required
             rules={[
@@ -196,12 +192,12 @@ export default function SnowflakeProperties(props: Props) {
               },
             ]}
           >
-            <Input.Password placeholder="input password" />
+            <Input.Password placeholder="请输入密码" />
           </Form.Item>
         )}
         {tabKey === TAB_KEY.KEY_PAIR_AUTHENTICATION && (
           <Form.Item
-            label="Private key file"
+            label="私钥文件"
             name="privateKey"
             required
             rules={[
@@ -212,7 +208,7 @@ export default function SnowflakeProperties(props: Props) {
             ]}
             extra={
               <div className="gray-6">
-                Upload your private key file for key pair authentication.
+                上传用于密钥对认证的私钥文件。
               </div>
             }
           >
