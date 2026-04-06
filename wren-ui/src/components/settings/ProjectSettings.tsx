@@ -60,10 +60,7 @@ export default function ProjectSettings(props: Props) {
         layout="vertical"
         initialValues={{ language: data.language }}
       >
-        <Form.Item
-          label="项目语言"
-          extra="该设置会影响 AI 回复你的语言。"
-        >
+        <Form.Item label="项目语言" extra="该设置会影响 AI 回复你的语言。">
           <Row gutter={16} wrap={false}>
             <Col className="flex-grow-1">
               <Form.Item name="language" noStyle>

@@ -28,8 +28,7 @@ export const makeDeleteModal =
             autoFocusButton: null,
             cancelText: '取消',
             content:
-              config?.content ||
-              '删除后将无法恢复，请确认是否继续删除。',
+              config?.content || '删除后将无法恢复，请确认是否继续删除。',
             icon: <ExclamationCircleOutlined />,
             okText: '删除',
             onOk: onConfirm,
@@ -62,8 +61,7 @@ export default makeDeleteModal(DefaultDeleteButton);
 export const DeleteThreadModal = makeDeleteModal(DefaultDeleteButton, {
   icon: <DeleteOutlined className="mr-2" />,
   itemName: '对话',
-  content:
-    '该操作会永久删除此对话中的全部历史结果，请确认是否继续。',
+  content: '该操作会永久删除此对话中的全部历史结果，请确认是否继续。',
 });
 
 export const DeleteViewModal = makeDeleteModal(DefaultDeleteButton, {
@@ -99,13 +97,11 @@ export const DeleteDashboardItemModal = makeDeleteModal(DefaultDeleteButton, {
 export const DeleteQuestionSQLPairModal = makeDeleteModal(DefaultDeleteButton, {
   icon: <DeleteOutlined className="mr-2" />,
   itemName: '问题-SQL 对',
-  content:
-    '该操作不可撤销，请确认是否继续。',
+  content: '该操作不可撤销，请确认是否继续。',
 });
 
 export const DeleteInstructionModal = makeDeleteModal(DefaultDeleteButton, {
   icon: <DeleteOutlined className="mr-2" />,
   itemName: '指令',
-  content:
-    '该操作不可撤销，请确认是否继续。',
+  content: '该操作不可撤销，请确认是否继续。',
 });

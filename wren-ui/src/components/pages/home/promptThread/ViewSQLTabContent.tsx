@@ -91,7 +91,8 @@ export default function ViewSQLTabContent(props: AnswerResultProps) {
     if (!nativeSQLResult.nativeSQLMode) {
       message.success(
         <>
-          你复制的是 Wren SQL。该方言用于 Wren Engine，可能无法直接在你的数据库中运行。
+          你复制的是 Wren SQL。该方言用于 Wren
+          Engine，可能无法直接在你的数据库中运行。
           {hasNativeSQL && (
             <>
               请点击“<b>显示原始 SQL</b>”获取可执行版本。

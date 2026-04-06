@@ -69,7 +69,8 @@ export const DATA_SOURCE_OPTIONS = {
   },
   [DATA_SOURCES.DENODO_MCP]: {
     ...getDataSourceConfig(DATA_SOURCES.DENODO_MCP),
-    guide: 'https://community.denodo.com/docs/html/document/denodoconnects/9.4/en/Denodo%20MCP%20Server%20-%20User%20Manual',
+    guide:
+      'https://community.denodo.com/docs/html/document/denodoconnects/9.4/en/Denodo%20MCP%20Server%20-%20User%20Manual',
     disabled: false,
   },
   [DATA_SOURCES.POSTGRES]: {

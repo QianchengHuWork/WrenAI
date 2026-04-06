@@ -72,9 +72,7 @@ export default function PreparationStatus(
     const showView = data.view !== null;
     const showSqlPair = !!preparedTask?.candidates[0]?.sqlPair;
     return (
-      <div className="gray-6">
-        {showView || showSqlPair ? '1 步' : '3 步'}
-      </div>
+      <div className="gray-6">{showView || showSqlPair ? '1 步' : '3 步'}</div>
     );
   }
 

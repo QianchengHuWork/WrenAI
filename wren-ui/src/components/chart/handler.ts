@@ -3,7 +3,7 @@ import {
   ThreadResponseChartDetail,
 } from '@/apollo/client/graphql/__types__';
 import { isNil, cloneDeep, uniq, sortBy, omit, isNumber } from 'lodash';
-import { Config, TopLevelSpec } from 'vega-lite';
+import type { Config, TopLevelSpec } from 'vega-lite';
 
 enum MarkType {
   ARC = 'arc',

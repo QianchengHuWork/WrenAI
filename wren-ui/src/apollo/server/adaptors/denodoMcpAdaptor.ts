@@ -83,6 +83,12 @@ export class DenodoMcpAdaptor implements IDenodoMcpAdaptor {
           other: payload.error.data,
         });
       }
+      if (payload?.result?.isError) {
+        throw Errors.create(Errors.GeneralErrorCodes.SQL_EXECUTION_ERROR, {
+          customMessage: this.getToolErrorMessage(payload.result),
+          other: payload.result,
+        });
+      }
       return payload?.result || {};
     };
 
@@ -187,7 +193,10 @@ export class DenodoMcpAdaptor implements IDenodoMcpAdaptor {
       ? this.parseSsePayload(response.data)
       : [JSON.parse(response.data)];
 
-    return payloads.find((payload) => `${payload?.id}` === `${requestId}`) || payloads[0];
+    return (
+      payloads.find((payload) => `${payload?.id}` === `${requestId}`) ||
+      payloads[0]
+    );
   }
 
   private parseSsePayload(raw: string) {
@@ -222,5 +231,13 @@ export class DenodoMcpAdaptor implements IDenodoMcpAdaptor {
 
   private createRequestId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  private getToolErrorMessage(result: Record<string, any>) {
+    return (
+      result?.content?.find(
+        (item) => item?.type === 'text' && typeof item?.text === 'string',
+      )?.text || 'Denodo MCP tool execution failed'
+    );
   }
 }

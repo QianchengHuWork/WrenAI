@@ -14,9 +14,7 @@ export default function Generating(props: Props) {
 
   return (
     <>
-      <Typography.Text className="gray-8">
-        正在生成 SQL 语句
-      </Typography.Text>
+      <Typography.Text className="gray-8">正在生成 SQL 语句</Typography.Text>
       <div className="gray-7 text-sm mt-1">
         {generating || correcting ? (
           <div className="d-flex align-center gx-2">

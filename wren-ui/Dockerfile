@@ -19,6 +19,7 @@ RUN corepack prepare yarn@4.5.3 --activate
 
 FROM base AS deps
 WORKDIR /app
+ENV NODE_ENV development
 
 # Install dependencies based on the preferred package manager
 RUN yarn install --immutable
@@ -36,7 +37,7 @@ COPY .prettierrc ./
 COPY next.config.js ./
 COPY tsconfig.json ./
 
-RUN yarn build
+RUN node --max-old-space-size=4096 ./node_modules/next/dist/bin/next build
 
 # Production image, copy all the files and run next
 FROM base AS runner

@@ -216,7 +216,59 @@ describe('denodoMcp utils', () => {
     );
 
     expect(sql).toContain('"dwd_ord_wife_det_h"."ord_create_time"');
-    expect(sql).toContain('CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)');
+    expect(sql).toContain(
+      'CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)',
+    );
     expect(sql).not.toContain('WITH TIME ZONE');
+  });
+
+  it('rewrites DATE_PART and TO_NUMBER into Denodo-compatible SQL', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'dwd_ord_wife_det_h',
+          cached: false,
+          tableReference: {
+            table: 'dwd_ord_wife_det_h',
+          },
+          columns: [
+            {
+              name: 'city',
+              isCalculated: false,
+              expression: '"city"',
+            },
+            {
+              name: 'actual_price',
+              isCalculated: false,
+              expression: '"actual_price"',
+            },
+            {
+              name: 'ord_create_time',
+              isCalculated: false,
+              expression: '"ord_create_time"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const sql = toDenodoNativeSql(
+      `SELECT
+         dwd_ord_wife_det_h.city,
+         SUM(TO_NUMBER(dwd_ord_wife_det_h.actual_price)) AS total_amount
+       FROM dwd_ord_wife_det_h
+       WHERE DATE_PART('year', CAST(dwd_ord_wife_det_h.ord_create_time AS TIMESTAMP WITH TIME ZONE)) = 2026
+       GROUP BY dwd_ord_wife_det_h.city`,
+      manifest,
+    );
+
+    expect(sql).toMatch(
+      /SUM\(CAST\("dwd_ord_wife_det_h"\."actual_price" AS DECIMAL\(\s*18,\s*2\s*\)\)\) AS "total_amount"/,
+    );
+    expect(sql).toContain(
+      'EXTRACT(YEAR FROM CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)) = 2026',
+    );
+    expect(sql).not.toContain('DATE_PART');
+    expect(sql).not.toContain('TO_NUMBER');
   });
 });

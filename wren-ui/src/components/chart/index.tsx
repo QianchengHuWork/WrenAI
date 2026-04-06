@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { isEmpty } from 'lodash';
 import { Alert, Button, Tooltip } from 'antd';
-import { TopLevelSpec, compile } from 'vega-lite';
+import { compile } from 'vega-lite';
+import type { TopLevelSpec } from 'vega-lite';
 import embed, { EmbedOptions, Result } from 'vega-embed';
 import ChartSpecHandler from './handler';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
@@ -153,7 +154,8 @@ export default function Chart(props: VegaLiteProps) {
             <div className="d-flex align-center justify-space-between">
               <div>
                 There are too many categories to display effectively. Click
-                当前类别过多，无法有效展示。你可以点击“仅显示前 25 项”查看主要结果，或通过追问聚焦特定分组或筛选条件。
+                当前类别过多，无法有效展示。你可以点击“仅显示前 25
+                项”查看主要结果，或通过追问聚焦特定分组或筛选条件。
               </div>
               <Button
                 size="small"

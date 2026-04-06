@@ -109,7 +109,8 @@ const playDataModelingGuide = (
             <br />
             {isSampleDataset ? (
               <>
-                本指南使用 {sampleDatasetInfo.label} 数据集进行演示。如需了解更多，请查看{' '}
+                本指南使用 {sampleDatasetInfo.label}{' '}
+                数据集进行演示。如需了解更多，请查看{' '}
                 <a
                   href={sampleDatasetInfo.guide}
                   target="_blank"
@@ -183,9 +184,7 @@ const playDataModelingGuide = (
           </>,
         ),
         description: renderToString(
-          <>
-            你可以编辑模型和字段的别名以及描述信息。
-          </>,
+          <>你可以编辑模型和字段的别名以及描述信息。</>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
           resetPopoverStyle(popoverDom, 360);
@@ -207,9 +206,7 @@ const playDataModelingGuide = (
             发布建模
           </>,
         ),
-        description: renderToString(
-          <>完成模型编辑后，记得发布这些变更。</>,
-        ),
+        description: renderToString(<>完成模型编辑后，记得发布这些变更。</>),
       },
     },
     {
@@ -227,9 +224,7 @@ const playDataModelingGuide = (
           </>,
         ),
         description: renderToString(
-          <>
-            完成模型编辑后，你可以前往“首页”开始提问。
-          </>,
+          <>完成模型编辑后，你可以前往“首页”开始提问。</>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
           resetPopoverStyle(popoverDom, 720);
@@ -390,7 +385,8 @@ const playKnowledgeGuide = (
         ),
         description: renderToString(
           <>
-            通过创建和管理<b>问题-SQL 对</b>来优化 Zen-SmartBI 的 SQL 生成效果。你可以在这里手动新增，也可以前往首页提问后，把正确答案保存到知识库。积累越多，系统效果越好。
+            通过创建和管理<b>问题-SQL 对</b>来优化 Zen-SmartBI 的 SQL
+            生成效果。你可以在这里手动新增，也可以前往首页提问后，把正确答案保存到知识库。积累越多，系统效果越好。
           </>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
@@ -415,7 +411,9 @@ const playKnowledgeGuide = (
         ),
         description: renderToString(
           <>
-            除了问题-SQL 对，你还可以创建指令来定义<b>业务规则</b>和<b>查询逻辑</b>。这些规则会引导 Zen-SmartBI 在 SQL 查询中应用统一的过滤条件、约束和最佳实践。
+            除了问题-SQL 对，你还可以创建指令来定义<b>业务规则</b>和
+            <b>查询逻辑</b>。这些规则会引导 Zen-SmartBI 在 SQL
+            查询中应用统一的过滤条件、约束和最佳实践。
           </>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {
@@ -469,7 +467,8 @@ const playSaveToKnowledgeGuide = async (
         ),
         description: renderToString(
           <>
-            如果系统生成的答案是正确的，可以将其保存为 <b>问题-SQL 对</b>，帮助系统持续学习；如果还不够准确，建议先继续追问和修正，再保存到知识库。
+            如果系统生成的答案是正确的，可以将其保存为 <b>问题-SQL 对</b>
+            ，帮助系统持续学习；如果还不够准确，建议先继续追问和修正，再保存到知识库。
           </>,
         ),
         onPopoverRender: (popoverDom: DriverPopoverDOM) => {

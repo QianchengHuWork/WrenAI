@@ -156,7 +156,8 @@ export default function SnowflakeProperties(props: Props) {
             认证方式
             <div className="gray-6">
               用户名和密码认证将在
-              <span className="gray-7"> 2025 年 11 月后弃用</span>。建议切换到密钥对认证。{' '}
+              <span className="gray-7"> 2025 年 11 月后弃用</span>
+              。建议切换到密钥对认证。{' '}
               <Link
                 className="gray-7 underline"
                 href="https://www.snowflake.com/en/blog/blocking-single-factor-password-authentification"
@@ -206,11 +207,7 @@ export default function SnowflakeProperties(props: Props) {
                 message: ERROR_TEXTS.CONNECTION.PRIVATE_KEY_FILE.REQUIRED,
               },
             ]}
-            extra={
-              <div className="gray-6">
-                上传用于密钥对认证的私钥文件。
-              </div>
-            }
+            extra={<div className="gray-6">上传用于密钥对认证的私钥文件。</div>}
           >
             <UploadPrivateKey />
           </Form.Item>

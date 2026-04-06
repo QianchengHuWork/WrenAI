@@ -31,9 +31,7 @@ export default function Organizing(props: Props) {
     if (isDone) scrollBottom();
   }, [isDone]);
 
-  const title = isAdjustment
-    ? '已应用用户提供的推理步骤'
-    : '正在组织思路';
+  const title = isAdjustment ? '已应用用户提供的推理步骤' : '正在组织思路';
 
   return (
     <>

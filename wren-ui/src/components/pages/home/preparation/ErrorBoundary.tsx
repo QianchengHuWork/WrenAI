@@ -23,9 +23,7 @@ export default function ErrorBoundary({ children, error }: Props) {
     <Timeline className="px-1 -mb-4">
       <Timeline.Item dot={<CloseCircleFilled className="red-5" />}>
         <Typography.Text className="gray-8">
-          {hasInvalidSql
-            ? 'SQL 语句生成失败'
-            : error.shortMessage}
+          {hasInvalidSql ? 'SQL 语句生成失败' : error.shortMessage}
         </Typography.Text>
         <div className="gray-7 text-sm mt-1">
           <div>

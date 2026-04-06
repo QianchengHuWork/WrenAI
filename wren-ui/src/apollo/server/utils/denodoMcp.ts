@@ -3,10 +3,7 @@ import path from 'path';
 import { Parser } from 'node-sql-parser';
 import { getConfig } from '@server/config';
 import { Manifest } from '@server/mdl/type';
-import {
-  CompactColumn,
-  CompactTable,
-} from '@server/services/metadataService';
+import { CompactColumn, CompactTable } from '@server/services/metadataService';
 import * as Errors from '@server/utils/error';
 
 const parser = new Parser();
@@ -93,7 +90,8 @@ export const extractDenodoStructuredContent = <T = any>(
 export const toDenodoCompactTables = (
   rawSchema: Record<string, any>,
 ): CompactTable[] => {
-  const schema = extractDenodoStructuredContent<DenodoDatabaseSchema>(rawSchema);
+  const schema =
+    extractDenodoStructuredContent<DenodoDatabaseSchema>(rawSchema);
   const views = schema?.views || [];
 
   return views.map((view) => {
@@ -154,10 +152,7 @@ export const toDenodoPreviewData = (
   };
 };
 
-export const toDenodoNativeSql = (
-  sql: string,
-  manifest: Manifest,
-): string => {
+export const toDenodoNativeSql = (sql: string, manifest: Manifest): string => {
   try {
     const ast = parser.astify(sql, { database: 'postgresql' });
     const rewrittenAst = rewriteAst(ast, manifest);
@@ -187,10 +182,7 @@ const normalizeSemanticType = (dataType?: string) => {
   return 'string';
 };
 
-const inferDataType = (
-  rows: Record<string, unknown>[],
-  columnName: string,
-) => {
+const inferDataType = (rows: Record<string, unknown>[], columnName: string) => {
   const value = rows
     .map((row) => row?.[columnName])
     .find((candidate) => candidate !== null && candidate !== undefined);
@@ -212,6 +204,24 @@ type StatementScope = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
+const replaceNode = (
+  target: Record<string, any>,
+  next: Record<string, any>,
+) => {
+  Object.keys(target).forEach((key) => delete target[key]);
+  Object.assign(target, next);
+  return target;
+};
+
+const getFunctionName = (expr: any) =>
+  expr?.name?.name
+    ?.map((part: { value?: string }) => part?.value)
+    ?.join('.')
+    ?.toUpperCase?.();
+
+const getFunctionArguments = (expr: any) =>
+  Array.isArray(expr?.args?.value) ? expr.args.value : [];
+
 const buildManifestModelMap = (manifest: Manifest) => {
   return new Map(
     (manifest.models || []).map((model) => {
@@ -232,7 +242,10 @@ const buildManifestModelMap = (manifest: Manifest) => {
   );
 };
 
-const getPhysicalColumnName = (column: { name: string; expression?: string }) => {
+const getPhysicalColumnName = (column: {
+  name: string;
+  expression?: string;
+}) => {
   if (!column.expression) {
     return column.name;
   }
@@ -262,6 +275,44 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
         }
         return target;
       });
+    }
+
+    if (expr.type === 'function') {
+      const functionName = getFunctionName(expr);
+      const args = getFunctionArguments(expr);
+
+      if (
+        functionName === 'DATE_PART' &&
+        args.length === 2 &&
+        args[0]?.type === 'single_quote_string'
+      ) {
+        return replaceNode(expr, {
+          type: 'extract',
+          args: {
+            field: `${args[0].value || ''}`.toUpperCase(),
+            cast_type: null,
+            source: rewriteExpression(args[1], scope),
+          },
+        });
+      }
+
+      if (functionName === 'TO_NUMBER' && args.length === 1) {
+        return replaceNode(expr, {
+          type: 'cast',
+          keyword: 'cast',
+          expr: rewriteExpression(args[0], scope),
+          symbol: 'as',
+          target: [
+            {
+              dataType: 'DECIMAL',
+              length: 18,
+              scale: 2,
+              parentheses: true,
+              suffix: [],
+            },
+          ],
+        });
+      }
     }
 
     if (expr.type === 'column_ref') {

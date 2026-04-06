@@ -262,7 +262,8 @@ export default function TextBasedAnswer(props: AnswerResultProps) {
               <Alert
                 message={
                   <>
-                    请点击 <b>查看 SQL</b>，检查逐步查询逻辑并确认数据不可用的原因。
+                    请点击 <b>查看 SQL</b>
+                    ，检查逐步查询逻辑并确认数据不可用的原因。
                   </>
                 }
                 type="info"
