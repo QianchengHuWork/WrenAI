@@ -44,8 +44,7 @@ const Toolbar = (props: { dataSource: string; onClick: () => void }) => {
         Wren SQL
       </span>
       <Button className="px-0" type="link" size="small" onClick={onClick}>
-        <SelectOutlined />
-        从 {name} SQL 导入
+        <SelectOutlined />从 {name} SQL 导入
       </Button>
     </div>
   );

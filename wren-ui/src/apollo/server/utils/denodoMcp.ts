@@ -3,10 +3,7 @@ import path from 'path';
 import { Parser } from 'node-sql-parser';
 import { getConfig } from '@server/config';
 import { Manifest } from '@server/mdl/type';
-import {
-  CompactColumn,
-  CompactTable,
-} from '@server/services/metadataService';
+import { CompactColumn, CompactTable } from '@server/services/metadataService';
 import * as Errors from '@server/utils/error';
 
 const parser = new Parser();
@@ -93,7 +90,8 @@ export const extractDenodoStructuredContent = <T = any>(
 export const toDenodoCompactTables = (
   rawSchema: Record<string, any>,
 ): CompactTable[] => {
-  const schema = extractDenodoStructuredContent<DenodoDatabaseSchema>(rawSchema);
+  const schema =
+    extractDenodoStructuredContent<DenodoDatabaseSchema>(rawSchema);
   const views = schema?.views || [];
 
   return views.map((view) => {
@@ -154,10 +152,7 @@ export const toDenodoPreviewData = (
   };
 };
 
-export const toDenodoNativeSql = (
-  sql: string,
-  manifest: Manifest,
-): string => {
+export const toDenodoNativeSql = (sql: string, manifest: Manifest): string => {
   try {
     const ast = parser.astify(sql, { database: 'postgresql' });
     const rewrittenAst = rewriteAst(ast, manifest);
@@ -187,10 +182,7 @@ const normalizeSemanticType = (dataType?: string) => {
   return 'string';
 };
 
-const inferDataType = (
-  rows: Record<string, unknown>[],
-  columnName: string,
-) => {
+const inferDataType = (rows: Record<string, unknown>[], columnName: string) => {
   const value = rows
     .map((row) => row?.[columnName])
     .find((candidate) => candidate !== null && candidate !== undefined);
@@ -209,8 +201,206 @@ type StatementScope = {
   selectAliases: Set<string>;
 };
 
+type DateBucketUnit = 'YEAR' | 'QUARTER' | 'MONTH' | 'DAY';
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
+
+const replaceNode = (
+  target: Record<string, any>,
+  next: Record<string, any>,
+) => {
+  Object.keys(target).forEach((key) => delete target[key]);
+  Object.assign(target, next);
+  return target;
+};
+
+const cloneNode = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+
+const getFunctionName = (expr: any) =>
+  expr?.name?.name
+    ?.map((part: { value?: string }) => part?.value)
+    ?.join('.')
+    ?.toUpperCase?.();
+
+const getFunctionArguments = (expr: any) =>
+  Array.isArray(expr?.args?.value) ? expr.args.value : [];
+
+const getAggregateName = (expr: any) => `${expr?.name || ''}`.toUpperCase();
+
+const buildNumberNode = (value: number) => ({
+  type: 'number',
+  value,
+});
+
+const buildBinaryExpr = (left: any, operator: string, right: any) => ({
+  type: 'binary_expr',
+  operator,
+  left,
+  right,
+});
+
+const buildExtractExpr = (field: string, source: any) => ({
+  type: 'extract',
+  args: {
+    field,
+    cast_type: null,
+    source,
+  },
+});
+
+const buildCaseExpr = (
+  conditions: { cond: any; result: any }[],
+  elseResult: any,
+) => ({
+  type: 'case',
+  expr: null,
+  args: [
+    ...conditions.map(({ cond, result }) => ({
+      type: 'when',
+      cond,
+      result,
+    })),
+    {
+      type: 'else',
+      result: elseResult,
+    },
+  ],
+});
+
+const buildCoalesceExpr = (...args: any[]) => ({
+  type: 'function',
+  name: {
+    name: [
+      {
+        type: 'default',
+        value: 'COALESCE',
+      },
+    ],
+  },
+  args: {
+    type: 'expr_list',
+    value: args,
+  },
+});
+
+const buildDecimalTarget = (scale = 6) => [
+  {
+    dataType: 'DECIMAL',
+    length: 18,
+    scale,
+    parentheses: true,
+    suffix: [],
+  },
+];
+
+const buildCastExpr = (expr: any, target: any[]) => ({
+  type: 'cast',
+  keyword: 'cast',
+  expr,
+  symbol: 'as',
+  target,
+});
+
+const buildDateBucketExpr = (unit: DateBucketUnit, source: any) => {
+  const buildSource = () => cloneNode(source);
+  const yearExpr = () => buildExtractExpr('YEAR', buildSource());
+
+  switch (unit) {
+    case 'YEAR':
+      return yearExpr();
+    case 'MONTH':
+      return buildBinaryExpr(
+        buildBinaryExpr(yearExpr(), '*', buildNumberNode(100)),
+        '+',
+        buildExtractExpr('MONTH', buildSource()),
+      );
+    case 'DAY':
+      return buildBinaryExpr(
+        buildBinaryExpr(
+          buildBinaryExpr(yearExpr(), '*', buildNumberNode(10000)),
+          '+',
+          buildBinaryExpr(
+            buildExtractExpr('MONTH', buildSource()),
+            '*',
+            buildNumberNode(100),
+          ),
+        ),
+        '+',
+        buildExtractExpr('DAY', buildSource()),
+      );
+    case 'QUARTER':
+      return buildBinaryExpr(
+        buildBinaryExpr(yearExpr(), '*', buildNumberNode(10)),
+        '+',
+        buildCaseExpr(
+          [
+            {
+              cond: buildBinaryExpr(
+                buildExtractExpr('MONTH', buildSource()),
+                '<=',
+                buildNumberNode(3),
+              ),
+              result: buildNumberNode(1),
+            },
+            {
+              cond: buildBinaryExpr(
+                buildExtractExpr('MONTH', buildSource()),
+                '<=',
+                buildNumberNode(6),
+              ),
+              result: buildNumberNode(2),
+            },
+            {
+              cond: buildBinaryExpr(
+                buildExtractExpr('MONTH', buildSource()),
+                '<=',
+                buildNumberNode(9),
+              ),
+              result: buildNumberNode(3),
+            },
+          ],
+          buildNumberNode(4),
+        ),
+      );
+  }
+};
+
+const getDateBucketUnit = (value?: string): DateBucketUnit | null => {
+  switch (`${value || ''}`.toUpperCase()) {
+    case 'YEAR':
+      return 'YEAR';
+    case 'QUARTER':
+      return 'QUARTER';
+    case 'MONTH':
+      return 'MONTH';
+    case 'DAY':
+      return 'DAY';
+    default:
+      return null;
+  }
+};
+
+const normalizeCastTarget = (target: any) => {
+  const dataType = `${target?.dataType || ''}`.toUpperCase();
+
+  if (
+    dataType === 'TIMESTAMP' &&
+    Array.isArray(target?.suffix) &&
+    target.suffix.join(' ').toUpperCase() === 'WITH TIME ZONE'
+  ) {
+    return {
+      ...target,
+      suffix: [],
+    };
+  }
+
+  if (['DOUBLE', 'FLOAT', 'REAL', 'NUMBER'].includes(dataType)) {
+    return buildDecimalTarget()[0];
+  }
+
+  return target;
+};
 
 const buildManifestModelMap = (manifest: Manifest) => {
   return new Map(
@@ -232,7 +422,10 @@ const buildManifestModelMap = (manifest: Manifest) => {
   );
 };
 
-const getPhysicalColumnName = (column: { name: string; expression?: string }) => {
+const getPhysicalColumnName = (column: {
+  name: string;
+  expression?: string;
+}) => {
   if (!column.expression) {
     return column.name;
   }
@@ -249,19 +442,72 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
     }
 
     if (expr.type === 'cast' && Array.isArray(expr.target)) {
-      expr.target = expr.target.map((target: any) => {
-        if (
-          target?.dataType === 'TIMESTAMP' &&
-          Array.isArray(target?.suffix) &&
-          target.suffix.join(' ').toUpperCase() === 'WITH TIME ZONE'
-        ) {
-          return {
-            ...target,
-            suffix: [],
-          };
-        }
-        return target;
-      });
+      expr.expr = rewriteExpression(expr.expr, scope);
+      expr.target = expr.target.map((target: any) =>
+        normalizeCastTarget(target),
+      );
+      return expr;
+    }
+
+    if (expr.type === 'function') {
+      const functionName = getFunctionName(expr);
+      const args = getFunctionArguments(expr);
+
+      if (
+        functionName === 'DATE_PART' &&
+        args.length === 2 &&
+        args[0]?.type === 'single_quote_string'
+      ) {
+        return replaceNode(expr, {
+          type: 'extract',
+          args: {
+            field: `${args[0].value || ''}`.toUpperCase(),
+            cast_type: null,
+            source: rewriteExpression(args[1], scope),
+          },
+        });
+      }
+
+      const bucketUnit =
+        args[0]?.type === 'single_quote_string'
+          ? getDateBucketUnit(args[0].value)
+          : null;
+      if (
+        ['DATE_TRUNC', 'DATETRUNC'].includes(functionName) &&
+        args.length === 2 &&
+        bucketUnit
+      ) {
+        return replaceNode(
+          expr,
+          buildDateBucketExpr(bucketUnit, rewriteExpression(args[1], scope)),
+        );
+      }
+
+      if (functionName === 'TO_NUMBER' && args.length === 1) {
+        return replaceNode(expr, {
+          ...buildCastExpr(
+            rewriteExpression(args[0], scope),
+            buildDecimalTarget(2),
+          ),
+        });
+      }
+    }
+
+    if (
+      expr.type === 'aggr_func' &&
+      getAggregateName(expr) === 'SUM' &&
+      !expr.over
+    ) {
+      if (expr.args?.expr) {
+        expr.args.expr = rewriteExpression(expr.args.expr, scope);
+      } else if (expr.args?.value) {
+        expr.args.value = rewriteExpression(expr.args.value, scope);
+      }
+
+      return replaceNode(
+        expr,
+        buildCoalesceExpr(cloneNode(expr), buildNumberNode(0)),
+      );
     }
 
     if (expr.type === 'column_ref') {
@@ -326,6 +572,9 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
       if (item.as) {
         scope.tables.set(item.as, null);
       }
+      if (item.join === 'FULL JOIN') {
+        item.join = 'FULL OUTER JOIN';
+      }
       return;
     }
 
@@ -335,6 +584,10 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
     if (matchedModel.table !== originalTable) {
       item.table = matchedModel.table;
       item.as = alias;
+    }
+
+    if (item.join === 'FULL JOIN') {
+      item.join = 'FULL OUTER JOIN';
     }
 
     if (item.on) {

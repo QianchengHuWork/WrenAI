@@ -103,12 +103,8 @@ export default function InstructionModal(props: Props) {
           }
         >
           <Radio.Group>
-            <Radio.Button value={true}>
-              全局（适用于所有问题）
-            </Radio.Button>
-            <Radio.Button value={false}>
-              仅匹配特定问题
-            </Radio.Button>
+            <Radio.Button value={true}>全局（适用于所有问题）</Radio.Button>
+            <Radio.Button value={false}>仅匹配特定问题</Radio.Button>
           </Radio.Group>
         </Form.Item>
         {!isDefault && (

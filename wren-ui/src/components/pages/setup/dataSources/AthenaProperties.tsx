@@ -216,7 +216,8 @@ export default function AthenaProperties(props: Props) {
 
       {authType === ATHENA_AUTH_METHOD.instance_profile && (
         <div className="gray-8" style={{ fontStyle: 'italic' }}>
-          系统会自动从当前计算环境（EC2、ECS、EKS）绑定的实例配置文件角色中识别 AWS 凭证。
+          系统会自动从当前计算环境（EC2、ECS、EKS）绑定的实例配置文件角色中识别
+          AWS 凭证。
         </div>
       )}
     </>

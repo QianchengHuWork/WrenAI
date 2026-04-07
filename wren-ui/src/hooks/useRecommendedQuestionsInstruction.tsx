@@ -90,9 +90,7 @@ export default function useRecommendedQuestionsInstruction() {
           recommendedQuestionsTask.status ===
             RecommendedQuestionsTaskStatus.FAILED
         ) {
-          message.error(
-            '暂时无法重新生成问题，请稍后再试。',
-          );
+          message.error('暂时无法重新生成问题，请稍后再试。');
         }
       } else {
         setIsRegenerate(true);

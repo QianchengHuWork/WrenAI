@@ -141,11 +141,9 @@ export const getLineageOptions = (data: {
 
     let title = undefined;
     if (isSourceModelFieldsWithAggregation) {
-      title =
-        '聚合函数不支持直接选择源模型字段，以避免产生不符合预期的结果。';
+      title = '聚合函数不支持直接选择源模型字段，以避免产生不符合预期的结果。';
     } else if (isRelationshipWithoutPrimaryKey) {
-      title =
-        '请先为该模型设置主键，之后才能在计算字段中使用该关系。';
+      title = '请先为该模型设置主键，之后才能在计算字段中使用该关系。';
     } else if (isSourceModelCalculatedField) {
       title = '暂不支持直接使用源模型中的计算字段。';
     } else if (isInUsedRelationship) {

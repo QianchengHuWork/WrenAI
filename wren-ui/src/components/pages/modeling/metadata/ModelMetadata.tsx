@@ -58,9 +58,7 @@ export default function ModelMetadata(props: Props) {
         </Col>
       </Row>
       <div className="mb-6" data-testid="metadata__description">
-        <Typography.Text className="d-block gray-7 mb-2">
-          描述
-        </Typography.Text>
+        <Typography.Text className="d-block gray-7 mb-2">描述</Typography.Text>
         <div>{description || '-'}</div>
       </div>
 

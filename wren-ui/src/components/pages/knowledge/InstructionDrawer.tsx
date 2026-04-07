@@ -22,15 +22,11 @@ export default function InstructionDrawer(props: Props) {
       width={760}
     >
       <div className="mb-6">
-        <Typography.Text className="gray-7 mb-2">
-          指令内容
-        </Typography.Text>
+        <Typography.Text className="gray-7 mb-2">指令内容</Typography.Text>
         <div>{defaultValue?.instruction || '-'}</div>
       </div>
       <div className="mb-6">
-        <Typography.Text className="gray-7 mb-2">
-          匹配问题
-        </Typography.Text>
+        <Typography.Text className="gray-7 mb-2">匹配问题</Typography.Text>
         <div>
           {defaultValue?.isDefault ? (
             <>

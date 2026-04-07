@@ -216,7 +216,212 @@ describe('denodoMcp utils', () => {
     );
 
     expect(sql).toContain('"dwd_ord_wife_det_h"."ord_create_time"');
-    expect(sql).toContain('CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)');
+    expect(sql).toContain(
+      'CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)',
+    );
     expect(sql).not.toContain('WITH TIME ZONE');
+  });
+
+  it('rewrites DATE_PART and TO_NUMBER into Denodo-compatible SQL', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'dwd_ord_wife_det_h',
+          cached: false,
+          tableReference: {
+            table: 'dwd_ord_wife_det_h',
+          },
+          columns: [
+            {
+              name: 'city',
+              isCalculated: false,
+              expression: '"city"',
+            },
+            {
+              name: 'actual_price',
+              isCalculated: false,
+              expression: '"actual_price"',
+            },
+            {
+              name: 'ord_create_time',
+              isCalculated: false,
+              expression: '"ord_create_time"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const sql = toDenodoNativeSql(
+      `SELECT
+         dwd_ord_wife_det_h.city,
+         SUM(TO_NUMBER(dwd_ord_wife_det_h.actual_price)) AS total_amount
+       FROM dwd_ord_wife_det_h
+       WHERE DATE_PART('year', CAST(dwd_ord_wife_det_h.ord_create_time AS TIMESTAMP WITH TIME ZONE)) = 2026
+       GROUP BY dwd_ord_wife_det_h.city`,
+      manifest,
+    );
+
+    expect(sql).toMatch(
+      /COALESCE\(SUM\(CAST\("dwd_ord_wife_det_h"\."actual_price" AS DECIMAL\(\s*18,\s*2\s*\)\)\), 0\) AS "total_amount"/,
+    );
+    expect(sql).toContain(
+      'EXTRACT(YEAR FROM CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)) = 2026',
+    );
+    expect(sql).not.toContain('DATE_PART');
+    expect(sql).not.toContain('TO_NUMBER');
+  });
+
+  it('rewrites monthly conversion queries into Denodo-safe buckets and numeric casts', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'ads_zai_online_niche_assign_drive_order_hf',
+          cached: false,
+          tableReference: {
+            table: 'ads_zai_online_niche_assign_drive_order_hf',
+          },
+          columns: [
+            {
+              name: 'create_time',
+              isCalculated: false,
+              expression: '"create_time"',
+            },
+            {
+              name: 'mobile_md5',
+              isCalculated: false,
+              expression: '"mobile_md5"',
+            },
+          ],
+        },
+        {
+          name: 'dwd_ord_wife_det_h',
+          cached: false,
+          tableReference: {
+            table: 'dwd_ord_wife_det_h',
+          },
+          columns: [
+            {
+              name: 'ord_create_time',
+              isCalculated: false,
+              expression: '"ord_create_time"',
+            },
+            {
+              name: 'hxn_phone_md5',
+              isCalculated: false,
+              expression: '"hxn_phone_md5"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const sql = toDenodoNativeSql(
+      `WITH monthly_leads AS (
+         SELECT DATETRUNC('month', CAST(create_time AS TIMESTAMP WITH TIME ZONE)) AS month,
+                COUNT(DISTINCT mobile_md5) AS leads_count
+         FROM ads_zai_online_niche_assign_drive_order_hf
+         GROUP BY DATETRUNC('month', CAST(create_time AS TIMESTAMP WITH TIME ZONE))
+       ),
+       monthly_orders AS (
+         SELECT DATE_TRUNC('month', CAST(dwd_ord_wife_det_h.ord_create_time AS TIMESTAMP WITH TIME ZONE)) AS month,
+                COUNT(DISTINCT dwd_ord_wife_det_h.hxn_phone_md5) AS orders_count
+         FROM dwd_ord_wife_det_h
+         GROUP BY DATE_TRUNC('month', CAST(dwd_ord_wife_det_h.ord_create_time AS TIMESTAMP WITH TIME ZONE))
+       ),
+       monthly_metrics AS (
+         SELECT COALESCE(l.month, o.month) AS month,
+                COALESCE(l.leads_count, 0) AS leads_count,
+                COALESCE(o.orders_count, 0) AS orders_count
+         FROM monthly_leads l
+         FULL OUTER JOIN monthly_orders o ON l.month = o.month
+       )
+       SELECT month,
+              CASE
+                WHEN orders_count > 0 AND leads_count > 0
+                  THEN (CAST(orders_count AS DOUBLE) / CAST(leads_count AS DOUBLE)) * 100
+                ELSE 0
+              END AS conversion_rate
+       FROM monthly_metrics
+       ORDER BY month`,
+      manifest,
+    );
+
+    expect(sql).not.toContain('DATE_TRUNC');
+    expect(sql).not.toContain('DATETRUNC');
+    expect(sql).toContain('FULL OUTER JOIN');
+    expect(sql).toContain('CAST("orders_count" AS DECIMAL(18, 6))');
+    expect(sql).toContain('CAST("leads_count" AS DECIMAL(18, 6))');
+    expect(sql).toContain(
+      'EXTRACT(YEAR FROM CAST("create_time" AS TIMESTAMP)) * 100 + EXTRACT(MONTH FROM CAST("create_time" AS TIMESTAMP)) AS "month"',
+    );
+    expect(sql).toContain(
+      'EXTRACT(YEAR FROM CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)) * 100 + EXTRACT(MONTH FROM CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)) AS "month"',
+    );
+  });
+
+  it('rewrites day buckets for daily trend queries', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'ads_zai_online_niche_assign_drive_order_hf',
+          cached: false,
+          tableReference: {
+            table: 'ads_zai_online_niche_assign_drive_order_hf',
+          },
+          columns: [
+            {
+              name: 'create_time',
+              isCalculated: false,
+              expression: '"create_time"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const sql = toDenodoNativeSql(
+      `SELECT DATE_TRUNC('day', CAST(create_time AS TIMESTAMP WITH TIME ZONE)) AS day_bucket,
+              COUNT(*) AS clue_count
+       FROM ads_zai_online_niche_assign_drive_order_hf
+       GROUP BY DATE_TRUNC('day', CAST(create_time AS TIMESTAMP WITH TIME ZONE))
+       ORDER BY day_bucket`,
+      manifest,
+    );
+
+    expect(sql).not.toContain('DATE_TRUNC');
+    expect(sql).toContain(
+      'EXTRACT(YEAR FROM CAST("create_time" AS TIMESTAMP)) * 10000 + EXTRACT(MONTH FROM CAST("create_time" AS TIMESTAMP)) * 100 + EXTRACT(DAY FROM CAST("create_time" AS TIMESTAMP)) AS "day_bucket"',
+    );
+  });
+
+  it('wraps SUM aggregates with COALESCE to avoid null totals', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'dwd_ord_wife_det_h',
+          cached: false,
+          tableReference: {
+            table: 'dwd_ord_wife_det_h',
+          },
+          columns: [
+            {
+              name: 'actual_price',
+              isCalculated: false,
+              expression: '"actual_price"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const sql = toDenodoNativeSql(
+      'SELECT SUM(TO_NUMBER(actual_price)) AS total_amount FROM dwd_ord_wife_det_h',
+      manifest,
+    );
+
+    expect(sql).toContain(
+      'COALESCE(SUM(CAST("actual_price" AS DECIMAL(18, 2))), 0) AS "total_amount"',
+    );
   });
 });

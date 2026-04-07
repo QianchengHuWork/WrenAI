@@ -27,9 +27,7 @@ const Wrapper = ({ children }) => {
       style={{ height: '100%' }}
     >
       <Logo size={48} color="var(--gray-8)" />
-      <div className="text-md text-medium gray-8 mt-3">
-        更了解你的数据
-      </div>
+      <div className="text-md text-medium gray-8 mt-3">更了解你的数据</div>
       {children}
     </div>
   );

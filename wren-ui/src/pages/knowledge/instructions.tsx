@@ -138,9 +138,7 @@ export default function ManageInstructions() {
               </div>
             ))}
             {moreCount > 0 && (
-              <div className="text-sm gray-7 pl-1">
-                还有 {moreCount} 个问题
-              </div>
+              <div className="text-sm gray-7 pl-1">还有 {moreCount} 个问题</div>
             )}
           </StyledQuestionsBlock>
         );
@@ -182,7 +180,8 @@ export default function ManageInstructions() {
         description={
           <>
             你可以在这里管理用于指导 Zen-SmartBI 生成 SQL 的指令。这些指令可帮助
-            Zen-SmartBI 理解你的数据模型和业务规则，提升查询准确性，减少手动调整。{' '}
+            Zen-SmartBI
+            理解你的数据模型和业务规则，提升查询准确性，减少手动调整。{' '}
             <Link
               className="gray-8 underline"
               href="https://docs.getwren.ai/oss/guide/knowledge/instructions"

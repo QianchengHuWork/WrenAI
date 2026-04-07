@@ -81,9 +81,7 @@ export default function EditBasicMetadata(props: Props) {
       )}
 
       <div className="mb-6" data-testid="edit-metadata__description">
-        <Typography.Text className="d-block gray-7 mb-2">
-          描述
-        </Typography.Text>
+        <Typography.Text className="d-block gray-7 mb-2">描述</Typography.Text>
         <EditableWrapper
           record={data}
           dataIndex="description"
