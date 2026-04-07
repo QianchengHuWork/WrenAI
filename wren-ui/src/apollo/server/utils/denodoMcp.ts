@@ -34,6 +34,9 @@ export const buildDenodoMcpSchemaToolName = (databaseName: string) =>
 export const buildDenodoMcpQueryToolName = (databaseName: string) =>
   `denodo_${databaseName}_run_sql_query`;
 
+export const buildDenodoMcpValidateToolName = (databaseName: string) =>
+  `denodo_${databaseName}_validate_sql_query`;
+
 export const getDenodoSemanticDir = (projectId: number) =>
   path.join(config.persistCredentialDir, 'denodo-mcp', `${projectId}`);
 

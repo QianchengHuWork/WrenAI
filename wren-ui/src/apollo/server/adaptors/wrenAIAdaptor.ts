@@ -22,6 +22,9 @@ import {
   ChartResult,
   ChartStatus,
   TextBasedAnswerStatus,
+  SqlCorrectionInput,
+  SqlCorrectionResult,
+  SqlCorrectionStatus,
   SqlPairResult,
   SqlPairStatus,
   QuestionInput,
@@ -33,6 +36,7 @@ import {
   AskFeedbackInput,
   AskFeedbackResult,
   AskFeedbackStatus,
+  SQLDialect,
 } from '@server/models/adaptor';
 import { getLogger } from '@server/utils';
 import * as Errors from '@server/utils/error';
@@ -64,6 +68,8 @@ export interface IWrenAIAdaptor {
   cancelAsk(queryId: string): Promise<void>;
   getAskResult(queryId: string): Promise<AskResult>;
   getAskStreamingResult(queryId: string): Promise<Readable>;
+  createSqlCorrection(input: SqlCorrectionInput): Promise<AsyncQueryResponse>;
+  getSqlCorrectionResult(queryId: string): Promise<SqlCorrectionResult>;
 
   /**
    * After you choose a candidate, you can request AI service to generate the detail.
@@ -294,6 +300,55 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
       throw Errors.create(Errors.GeneralErrorCodes.INTERNAL_SERVER_ERROR, {
         originalError: err,
       });
+    }
+  }
+
+  public async createSqlCorrection(
+    input: SqlCorrectionInput,
+  ): Promise<AsyncQueryResponse> {
+    try {
+      const res = await axios.post(
+        `${this.wrenAIBaseEndpoint}/v1/sql-corrections`,
+        {
+          sql: input.sql,
+          error: input.error,
+          project_id: input.projectId,
+          retrieved_tables: input.retrievedTables,
+          use_dry_plan: input.useDryPlan,
+          allow_dry_plan_fallback: input.allowDryPlanFallback,
+          validation_mode: input.validationMode,
+          configurations: input.configurations,
+        },
+      );
+      return { queryId: res.data.event_id };
+    } catch (err: any) {
+      logger.debug(
+        `Got error when creating SQL correction: ${getAIServiceError(err)}`,
+      );
+      throw err;
+    }
+  }
+
+  public async getSqlCorrectionResult(
+    queryId: string,
+  ): Promise<SqlCorrectionResult> {
+    try {
+      const res = await axios.get(
+        `${this.wrenAIBaseEndpoint}/v1/sql-corrections/${queryId}`,
+      );
+      const { status, error } = this.transformStatusAndError(res.data);
+      return {
+        status: status as SqlCorrectionStatus,
+        error,
+        response: res.data.response,
+        invalidSql: res.data.invalid_sql,
+        traceId: res.data.trace_id,
+      };
+    } catch (err: any) {
+      logger.debug(
+        `Got error when getting SQL correction result: ${getAIServiceError(err)}`,
+      );
+      throw err;
     }
   }
 
@@ -820,6 +875,7 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
     const candidates = (body?.response || []).map((candidate: any) => ({
       type: candidate?.type?.toUpperCase() as AskCandidateType,
       sql: candidate.sql,
+      sqlDialect: candidate?.sqlDialect as SQLDialect | undefined,
       viewId: candidate?.viewId ? Number(candidate.viewId) : null,
       sqlpairId: candidate?.sqlpairId ? Number(candidate.sqlpairId) : null,
     }));
@@ -876,6 +932,7 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
       | AskResultStatus
       | TextBasedAnswerStatus
       | ChartStatus
+      | SqlCorrectionStatus
       | SqlPairStatus
       | QuestionsStatus
       | InstructionStatus

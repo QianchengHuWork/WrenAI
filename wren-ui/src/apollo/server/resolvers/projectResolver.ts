@@ -51,6 +51,17 @@ export enum OnboardingStatusEnum {
   WITH_SAMPLE_DATASET = 'WITH_SAMPLE_DATASET',
 }
 
+const DEFAULT_DENODO_SQL_INSTRUCTION = `
+For Denodo SQL generation:
+1. Always wrap table names, column names, and alias-qualified columns in double quotes.
+2. Prefer semantic fields like *_year, *_month, *_date over casting raw date strings.
+3. Do not cast fields already modeled as date/timestamp to TIMESTAMP again.
+4. Prefer = or IN for status/enum filters; avoid lower(...) like ... unless pattern matching is required.
+5. For numeric text conversions, prefer CAST(... AS DECIMAL).
+6. Do not generate LIMIT, FETCH, or TOP.
+7. Only use views and columns that exist in the manifest.
+`.trim();
+
 export class ProjectResolver {
   constructor() {
     this.getSettings = this.getSettings.bind(this);
@@ -321,6 +332,7 @@ export class ProjectResolver {
           manifest,
         });
         await this.deploy(ctx);
+        await this.ensureDefaultDenodoInstruction(project.id, ctx);
       } else {
         // handle other data source
         await ctx.projectService.getProjectDataSourceTables(project);
@@ -355,6 +367,33 @@ export class ProjectResolver {
         ...ctx.projectService.getGeneralConnectionInfo(project),
       },
     };
+  }
+
+  private async ensureDefaultDenodoInstruction(
+    projectId: number,
+    ctx: IContext,
+  ) {
+    const existingDefaultInstruction = await ctx.instructionRepository.findOneBy({
+      projectId,
+      isDefault: true,
+    } as any);
+
+    if (existingDefaultInstruction) {
+      return;
+    }
+
+    try {
+      await ctx.instructionService.createInstruction({
+        projectId,
+        instruction: DEFAULT_DENODO_SQL_INSTRUCTION,
+        questions: [],
+        isDefault: true,
+      });
+    } catch (error: any) {
+      logger.warn(
+        `Failed to create default Denodo instruction for project ${projectId}: ${error.message}`,
+      );
+    }
   }
 
   public async updateDataSource(

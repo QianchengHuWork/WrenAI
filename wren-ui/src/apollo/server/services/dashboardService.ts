@@ -7,6 +7,7 @@ import {
   DashboardItemDetail,
   DashboardItemLayout,
 } from '@server/repositories';
+import { SQLDialect } from '@server/models/adaptor';
 import { getLogger } from '@server/utils';
 import { getUTCOffsetMinutes } from '@server/utils/timezone';
 import { IProjectService } from './projectService';
@@ -25,6 +26,7 @@ export interface CreateDashboardItemInput {
   dashboardId: number;
   type: DashboardItemType;
   sql: string;
+  sqlDialect?: SQLDialect;
   chartSchema: DashboardItemDetail['chartSchema'];
 }
 
@@ -175,6 +177,7 @@ export class DashboardService implements IDashboardService {
       type: input.type,
       detail: {
         sql: input.sql,
+        sqlDialect: input.sqlDialect,
         chartSchema: input.chartSchema,
       },
       layout,

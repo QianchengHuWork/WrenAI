@@ -1,4 +1,5 @@
 import { TelemetryEvent } from '../../telemetry/telemetry';
+import { SQLDialect } from '../../models/adaptor';
 import { DataSourceName } from '../../types';
 import { QueryService } from '../queryService';
 
@@ -12,6 +13,7 @@ describe('QueryService', () => {
   beforeEach(() => {
     mockDenodoMcpAdaptor = {
       getDatabaseSchema: jest.fn(),
+      validateSqlQuery: jest.fn(),
       runSqlQuery: jest.fn(),
     };
     mockIbisAdaptor = {
@@ -165,6 +167,30 @@ describe('QueryService', () => {
       },
       actionSuccess: false,
       service: undefined,
+    });
+  });
+
+  it('should execute Denodo dialect SQL without re-translating it', async () => {
+    mockDenodoMcpAdaptor.runSqlQuery.mockResolvedValue({
+      structuredContent: {
+        data: [{ city: '上海' }],
+      },
+    });
+
+    const sql = 'SELECT "city" FROM "dv_order_base"';
+    const res = await queryService.preview(sql, {
+      project: {
+        type: DataSourceName.DENODO_MCP,
+        connectionInfo: {},
+      },
+      manifest: {},
+      sqlDialect: SQLDialect.DIALECT,
+    });
+
+    expect(mockDenodoMcpAdaptor.runSqlQuery).toHaveBeenCalledWith(sql, {});
+    expect(res).toMatchObject({
+      columns: [{ name: 'city', type: 'string' }],
+      data: [['上海']],
     });
   });
 });

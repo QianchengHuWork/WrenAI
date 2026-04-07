@@ -101,6 +101,7 @@ export class DashboardResolver {
       project,
       manifest: mdl,
       limit: DEFAULT_PREVIEW_LIMIT,
+      sqlDialect: response.sqlDialect,
       cacheEnabled: true,
       refresh: true,
     });
@@ -109,6 +110,7 @@ export class DashboardResolver {
       dashboardId: dashboard.id,
       type: itemType,
       sql: response.sql,
+      sqlDialect: response.sqlDialect,
       chartSchema: response.chartDetail?.chartSchema,
     });
   }
@@ -168,6 +170,7 @@ export class DashboardResolver {
         project,
         manifest: mdl,
         limit: limit || DEFAULT_PREVIEW_LIMIT,
+        sqlDialect: item.detail.sqlDialect,
         cacheEnabled,
         refresh: refresh || false,
       })) as PreviewDataResponse;

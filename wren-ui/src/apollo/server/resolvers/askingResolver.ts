@@ -19,6 +19,7 @@ import { safeFormatSQL } from '@server/utils/sqlFormat';
 import {
   AskingDetailTaskInput,
   constructCteSql,
+  ThreadResponseAnswerStatus,
   ThreadRecommendQuestionResult,
 } from '../services/askingService';
 import {
@@ -733,7 +734,7 @@ export class AskingResolver {
         parent.askingTaskId,
       );
       if (!askingTask) return null;
-      return this.transformAskingTask(askingTask, ctx);
+      return this.transformAskingTask(askingTask, ctx, parent);
     },
     adjustmentTask: async (
       parent: ThreadResponse,
@@ -789,6 +790,7 @@ export class AskingResolver {
   private async transformAskingTask(
     askingTask: TrackedAskingResult,
     ctx: IContext,
+    threadResponse?: ThreadResponse,
   ): Promise<AskingTask> {
     const project = await ctx.projectService.getCurrentProject();
     // construct candidates from response
@@ -816,22 +818,26 @@ export class AskingResolver {
         ? AskResultType.TEXT_TO_SQL
         : askingTask.type;
 
-    const toolCalls =
-      project.type === DataSourceName.DENODO_MCP
-        ? [
-            `call MCP tool: ${buildDenodoMcpQueryToolName(
-              (project.connectionInfo as DENODO_MCP_CONNECTION_INFO)
-                .databaseName,
-            )}`,
-          ]
-        : [];
+    const toolCalls = [...(askingTask.toolCalls || [])];
+    if (
+      project.type === DataSourceName.DENODO_MCP &&
+      this.shouldShowDenodoRunQuery(threadResponse)
+    ) {
+      const runQueryToolCall = `call MCP tool: ${buildDenodoMcpQueryToolName(
+        (project.connectionInfo as DENODO_MCP_CONNECTION_INFO).databaseName,
+      )}`;
+      if (!toolCalls.includes(runQueryToolCall)) {
+        toolCalls.push(runQueryToolCall);
+      }
+    }
     const semanticFiles =
-      project.type === DataSourceName.DENODO_MCP
+      askingTask.semanticFiles ||
+      (project.type === DataSourceName.DENODO_MCP
         ? [
             `read semantic file: ${getDenodoRawSchemaPath(project.id)}`,
             `read semantic file: ${getDenodoManifestPath(project.id)}`,
           ]
-        : [];
+        : []);
 
     return {
       type,
@@ -850,5 +856,19 @@ export class AskingResolver {
         : null,
       traceId: askingTask.traceId,
     };
+  }
+
+  private shouldShowDenodoRunQuery(threadResponse?: ThreadResponse) {
+    const status = threadResponse?.answerDetail?.status;
+    if (!status) return false;
+
+    return [
+      ThreadResponseAnswerStatus.FETCHING_DATA,
+      ThreadResponseAnswerStatus.PREPROCESSING,
+      ThreadResponseAnswerStatus.STREAMING,
+      ThreadResponseAnswerStatus.FINISHED,
+      ThreadResponseAnswerStatus.FAILED,
+      ThreadResponseAnswerStatus.INTERRUPTED,
+    ].includes(status as ThreadResponseAnswerStatus);
   }
 }

@@ -36,6 +36,7 @@ import {
   DashboardService,
   AskingTaskTracker,
   InstructionService,
+  DenodoSqlGuardService,
 } from '@server/services';
 import { PostHogTelemetry } from './apollo/server/telemetry/telemetry';
 import {
@@ -88,6 +89,10 @@ export const initComponents = () => {
     ibisServerEndpoint: serverConfig.ibisServerEndpoint,
   });
   const denodoMcpAdaptor = new DenodoMcpAdaptor();
+  const denodoSqlGuardService = new DenodoSqlGuardService({
+    denodoMcpAdaptor,
+    wrenAIAdaptor,
+  });
 
   // services
   const metadataService = new DataSourceMetadataService({
@@ -126,6 +131,9 @@ export const initComponents = () => {
     askingTaskRepository,
     threadResponseRepository,
     viewRepository,
+    projectService,
+    deployService,
+    denodoSqlGuardService,
   });
   const askingService = new AskingService({
     telemetry,
@@ -217,6 +225,7 @@ export const initComponents = () => {
     dashboardService,
     sqlPairService,
     instructionService,
+    denodoSqlGuardService,
     askingTaskTracker,
 
     // background trackers

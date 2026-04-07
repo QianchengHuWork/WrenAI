@@ -9,7 +9,9 @@ import {
   ChartStatus,
   ChartAdjustmentOption,
   WrenAILanguage,
+  SQLDialect,
 } from '@server/models/adaptor';
+import { DataSourceName } from '@server/types';
 import { IDeployService } from './deployService';
 import { IProjectService } from './projectService';
 import { IThreadRepository, Thread } from '../repositories/threadRepository';
@@ -691,6 +693,7 @@ export class AskingService implements IAskingService {
       threadId: thread.id,
       question: input.question,
       sql: input.sql,
+      sqlDialect: input.sql ? SQLDialect.WREN : undefined,
       askingTaskId: input.trackedAskingResult?.taskId,
     });
 
@@ -747,6 +750,7 @@ export class AskingService implements IAskingService {
       threadId: thread.id,
       question: input.question,
       sql: input.sql,
+      sqlDialect: input.sql ? SQLDialect.WREN : undefined,
       askingTaskId: input.trackedAskingResult?.taskId,
     });
 
@@ -774,8 +778,14 @@ export class AskingService implements IAskingService {
       throw new Error(`Thread response ${responseId} not found`);
     }
 
+    const project = await this.projectService.getCurrentProject();
+
     return await this.threadResponseRepository.updateOne(responseId, {
       sql: data.sql,
+      sqlDialect:
+        project.type === DataSourceName.DENODO_MCP
+          ? SQLDialect.DIALECT
+          : SQLDialect.WREN,
     });
   }
 
@@ -942,6 +952,7 @@ export class AskingService implements IAskingService {
         project,
         manifest: mdl,
         limit,
+        sqlDialect: response.sqlDialect,
       })) as PreviewDataResponse;
       this.telemetry.sendEvent(eventName, { sql: response.sql });
       return data;

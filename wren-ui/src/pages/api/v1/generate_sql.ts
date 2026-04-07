@@ -27,6 +27,7 @@ const {
   wrenAIAdaptor,
   wrenEngineAdaptor,
   ibisAdaptor,
+  denodoSqlGuardService,
 } = components;
 
 interface GenerateSqlRequest {
@@ -111,6 +112,15 @@ export default async function handler(
     // Validate the AI result
     validateAskResult(result, task.queryId);
 
+    if (project.type === DataSourceName.DENODO_MCP) {
+      result = await denodoSqlGuardService.guardAskResult({
+        askResult: result,
+        manifest: lastDeploy.manifest,
+        project,
+      });
+      validateAskResult(result, task.queryId);
+    }
+
     // Get the generated SQL
     let sql = result.response?.[0]?.sql;
 
@@ -118,7 +128,9 @@ export default async function handler(
     const newThreadId = threadId || uuidv4();
 
     // If returnSqlDialect is true, also get and return the native SQL
-    if (returnSqlDialect && sql) {
+    if (project.type === DataSourceName.DENODO_MCP) {
+      sql = sql || undefined;
+    } else if (returnSqlDialect && sql) {
       let nativeSql: string;
       if (project.type === DataSourceName.DUCKDB) {
         nativeSql = await wrenEngineAdaptor.getNativeSQL(sql, {

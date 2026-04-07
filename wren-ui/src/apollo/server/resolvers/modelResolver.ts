@@ -29,6 +29,7 @@ import {
 } from '../utils/model';
 import { CompactTable, PreviewDataResponse } from '@server/services';
 import { TelemetryEvent } from '../telemetry/telemetry';
+import { SQLDialect } from '@server/models/adaptor';
 
 const logger = getLogger('ModelResolver');
 logger.level = 'debug';
@@ -982,7 +983,10 @@ export class ModelResolver {
       });
     } else if (project.type === DataSourceName.DENODO_MCP) {
       logger.info(`Getting native sql for Denodo MCP`);
-      nativeSql = toDenodoNativeSql(response.sql, manifest);
+      nativeSql =
+        response.sqlDialect === SQLDialect.DIALECT
+          ? response.sql
+          : toDenodoNativeSql(response.sql, manifest);
     } else {
       logger.info(`Getting native sql from ibis server`);
       nativeSql = await ctx.ibisServerAdaptor.getNativeSql({

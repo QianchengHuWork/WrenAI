@@ -12,6 +12,7 @@ import {
 } from '../adaptors/ibisAdaptor';
 import { getLogger } from '@server/utils';
 import { DENODO_MCP_CONNECTION_INFO, Project } from '../repositories';
+import { SQLDialect } from '../models/adaptor';
 import { PostHogTelemetry, TelemetryEvent } from '../telemetry/telemetry';
 import {
   toDenodoNativeSql,
@@ -47,6 +48,7 @@ export interface PreviewOptions {
   // if not given, will use the deployed manifest
   manifest: Manifest;
   limit?: number;
+  sqlDialect?: SQLDialect;
   dryRun?: boolean;
   refresh?: boolean;
   cacheEnabled?: boolean;
@@ -113,6 +115,7 @@ export class QueryService implements IQueryService {
       project,
       manifest: mdl,
       limit,
+      sqlDialect,
       dryRun,
       refresh,
       cacheEnabled,
@@ -123,7 +126,8 @@ export class QueryService implements IQueryService {
         dataSource,
         connectionInfo,
       ) as DENODO_MCP_CONNECTION_INFO;
-      const nativeSql = toDenodoNativeSql(sql, mdl);
+      const nativeSql =
+        sqlDialect === SQLDialect.DIALECT ? sql : toDenodoNativeSql(sql, mdl);
       if (dryRun) {
         await this.denodoMcpAdaptor.runSqlQuery(
           nativeSql,

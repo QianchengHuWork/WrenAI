@@ -4,15 +4,21 @@ import {
   AskResultType,
   AskResultStatus,
   AskInput,
+  SQLDialect,
 } from '@server/models/adaptor';
 import {
   AskingTask,
   IAskingTaskRepository,
+  Project,
   IThreadResponseRepository,
   IViewRepository,
 } from '@server/repositories';
 import { IWrenAIAdaptor } from '../adaptors';
 import * as Errors from '@server/utils/error';
+import { DataSourceName } from '@server/types';
+import { IProjectService } from './projectService';
+import { IDeployService } from './deployService';
+import { IDenodoSqlGuardService } from './denodoSqlGuardService';
 
 const logger = getLogger('AskingTaskTracker');
 logger.level = 'debug';
@@ -64,12 +70,18 @@ export class AskingTaskTracker implements IAskingTaskTracker {
   private runningJobs = new Set<string>();
   private threadResponseRepository: IThreadResponseRepository;
   private viewRepository: IViewRepository;
+  private projectService: IProjectService;
+  private deployService: IDeployService;
+  private denodoSqlGuardService: IDenodoSqlGuardService;
 
   constructor({
     wrenAIAdaptor,
     askingTaskRepository,
     threadResponseRepository,
     viewRepository,
+    projectService,
+    deployService,
+    denodoSqlGuardService,
     pollingInterval = 1000, // 1 second
     memoryRetentionTime = 5 * 60 * 1000, // 5 minutes
   }: {
@@ -77,6 +89,9 @@ export class AskingTaskTracker implements IAskingTaskTracker {
     askingTaskRepository: IAskingTaskRepository;
     threadResponseRepository: IThreadResponseRepository;
     viewRepository: IViewRepository;
+    projectService: IProjectService;
+    deployService: IDeployService;
+    denodoSqlGuardService: IDenodoSqlGuardService;
     pollingInterval?: number;
     memoryRetentionTime?: number;
   }) {
@@ -84,6 +99,9 @@ export class AskingTaskTracker implements IAskingTaskTracker {
     this.askingTaskRepository = askingTaskRepository;
     this.threadResponseRepository = threadResponseRepository;
     this.viewRepository = viewRepository;
+    this.projectService = projectService;
+    this.deployService = deployService;
+    this.denodoSqlGuardService = denodoSqlGuardService;
     this.pollingInterval = pollingInterval;
     this.memoryRetentionTime = memoryRetentionTime;
     this.startPolling();
@@ -254,7 +272,7 @@ export class AskingTaskTracker implements IAskingTaskTracker {
 
             // Poll for updates
             logger.info(`Polling for updates for task ${queryId}`);
-            const result = await this.wrenAIAdaptor.getAskResult(queryId);
+            let result = await this.wrenAIAdaptor.getAskResult(queryId);
             task.lastPolled = now;
 
             // if result is not changed, we don't need to update the database
@@ -306,6 +324,29 @@ export class AskingTaskTracker implements IAskingTaskTracker {
               }
               this.runningJobs.delete(queryId);
               return;
+            }
+
+            const project = await this.projectService.getCurrentProject();
+
+            if (this.shouldGuardDenodoSql(project, result)) {
+              const correctingResult = {
+                ...result,
+                status: AskResultStatus.CORRECTING,
+              } as AskResult;
+              task.result = correctingResult;
+              await this.updateTaskInDatabase({ queryId }, task);
+
+              const deployment = await this.deployService.getLastDeployment(
+                project.id,
+              );
+              const guardedResult =
+                await this.denodoSqlGuardService.guardAskResult({
+                  askResult: result,
+                  manifest: deployment.manifest,
+                  project,
+                });
+              task.result = guardedResult;
+              result = guardedResult;
             }
 
             // update the database
@@ -376,11 +417,13 @@ export class AskingTaskTracker implements IAskingTaskTracker {
       });
       await this.threadResponseRepository.updateOne(task.threadResponseId, {
         sql: view.statement,
+        sqlDialect: SQLDialect.WREN,
         viewId: response.viewId,
       });
     } else {
       await this.threadResponseRepository.updateOne(task.threadResponseId, {
         sql: response?.sql,
+        sqlDialect: response?.sqlDialect || SQLDialect.WREN,
       });
     }
   }
@@ -467,5 +510,15 @@ export class AskingTaskTracker implements IAskingTaskTracker {
     }
 
     return false;
+  }
+
+  private shouldGuardDenodoSql(project: Project, result: AskResult): boolean {
+    return (
+      project.type === DataSourceName.DENODO_MCP &&
+      result.status === AskResultStatus.FINISHED &&
+      result.type === AskResultType.TEXT_TO_SQL &&
+      Array.isArray(result.response) &&
+      result.response.some((candidate) => candidate?.sql)
+    );
   }
 }

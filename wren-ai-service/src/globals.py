@@ -267,6 +267,8 @@ def create_service_container(
                     **pipe_components["sql_tables_extraction"],
                 ),
                 "db_schema_retrieval": _db_schema_retrieval_pipeline,
+                "sql_pairs_retrieval": _sql_pair_retrieval_pipeline,
+                "instructions_retrieval": _instructions_retrieval_pipeline,
                 "sql_correction": _sql_correction_pipeline,
                 "sql_knowledge_retrieval": retrieval.SqlKnowledges(
                     **pipe_components["sql_knowledge_retrieval"],

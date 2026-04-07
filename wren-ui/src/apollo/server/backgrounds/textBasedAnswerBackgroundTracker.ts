@@ -83,6 +83,7 @@ export class TextBasedAnswerBackgroundTracker {
               manifest: mdl,
               modelingOnly: false,
               limit: 500,
+              sqlDialect: threadResponse.sqlDialect,
             })) as PreviewDataResponse;
           } catch (error) {
             logger.error(`Error when query sql data: ${error}`);

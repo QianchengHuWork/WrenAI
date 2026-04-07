@@ -63,6 +63,7 @@ class SqlCorrectionService:
         retrieved_tables: Optional[List[str]] = None
         use_dry_plan: bool = False
         allow_dry_plan_fallback: bool = True
+        validation_mode: Literal["engine", "none"] = "engine"
 
     @observe(name="SQL Correction")
     @trace_metadata
@@ -76,11 +77,15 @@ class SqlCorrectionService:
         event_id = request.event_id
         sql = request.sql
         error = request.error
+        retrieval_query = f"{sql}\n{error}"
         project_id = request.project_id
         retrieved_tables = request.retrieved_tables
         use_dry_plan = request.use_dry_plan
         allow_dry_plan_fallback = request.allow_dry_plan_fallback
+        validation_mode = request.validation_mode
         sql_knowledge = None
+        instructions = []
+        sql_samples = []
 
         try:
             _invalid = {
@@ -100,6 +105,28 @@ class SqlCorrectionService:
                     project_id=project_id,
                 )
 
+            if project_id:
+                if "sql_pairs_retrieval" in self._pipelines:
+                    sql_pairs_result = await self._pipelines["sql_pairs_retrieval"].run(
+                        query=retrieval_query,
+                        project_id=project_id,
+                    )
+                    sql_samples = sql_pairs_result["formatted_output"].get(
+                        "documents", []
+                    )
+
+                if "instructions_retrieval" in self._pipelines:
+                    instruction_result = await self._pipelines[
+                        "instructions_retrieval"
+                    ].run(
+                        query=retrieval_query,
+                        project_id=project_id,
+                        scope="sql",
+                    )
+                    instructions = instruction_result["formatted_output"].get(
+                        "instructions", []
+                    )
+
             documents = (
                 (
                     await self._pipelines["db_schema_retrieval"].run(
@@ -115,9 +142,12 @@ class SqlCorrectionService:
             res = await self._pipelines["sql_correction"].run(
                 contexts=table_ddls,
                 invalid_generation_result=_invalid,
+                instructions=instructions,
+                sql_samples=sql_samples,
                 project_id=project_id,
                 use_dry_plan=use_dry_plan,
                 allow_dry_plan_fallback=allow_dry_plan_fallback,
+                validation_mode=validation_mode,
                 sql_knowledge=sql_knowledge,
             )
 

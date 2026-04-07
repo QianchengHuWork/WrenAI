@@ -22,6 +22,7 @@ class PostRequest(BaseRequest):
     retrieved_tables: Optional[List[str]] = None
     use_dry_plan: bool = False
     allow_dry_plan_fallback: bool = True
+    validation_mode: Literal["engine", "none"] = "engine"
 
 
 class PostResponse(BaseModel):

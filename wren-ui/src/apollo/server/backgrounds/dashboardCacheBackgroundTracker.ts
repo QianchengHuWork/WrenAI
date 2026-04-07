@@ -127,6 +127,7 @@ export class DashboardCacheBackgroundTracker {
               await this.queryService.preview(item.detail.sql, {
                 project,
                 manifest: mdl,
+                sqlDialect: item.detail.sqlDialect,
                 cacheEnabled: true,
                 refresh: true,
               });

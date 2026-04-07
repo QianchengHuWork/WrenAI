@@ -6,6 +6,8 @@ import { DENODO_MCP_CONNECTION_INFO } from '@server/repositories';
 import {
   buildDenodoMcpQueryToolName,
   buildDenodoMcpSchemaToolName,
+  buildDenodoMcpValidateToolName,
+  extractDenodoStructuredContent,
 } from '@server/utils/denodoMcp';
 
 const logger = getLogger('DenodoMcpAdaptor');
@@ -25,6 +27,10 @@ export interface IDenodoMcpAdaptor {
   getDatabaseSchema(
     connectionInfo: DENODO_MCP_CONNECTION_INFO,
   ): Promise<Record<string, any>>;
+  validateSqlQuery(
+    sql: string,
+    connectionInfo: DENODO_MCP_CONNECTION_INFO,
+  ): Promise<{ isValid: boolean; errorMessage?: string }>;
   runSqlQuery(
     sql: string,
     connectionInfo: DENODO_MCP_CONNECTION_INFO,
@@ -54,6 +60,25 @@ export class DenodoMcpAdaptor implements IDenodoMcpAdaptor {
       buildDenodoMcpQueryToolName(connectionInfo.databaseName),
       { sql_query: sql },
     );
+  }
+
+  public async validateSqlQuery(
+    sql: string,
+    connectionInfo: DENODO_MCP_CONNECTION_INFO,
+  ): Promise<{ isValid: boolean; errorMessage?: string }> {
+    const result = await this.callTool(
+      connectionInfo,
+      buildDenodoMcpValidateToolName(connectionInfo.databaseName),
+      { sql_query: sql },
+    );
+    const structured = extractDenodoStructuredContent<{
+      is_valid?: boolean;
+      error_message?: string;
+    }>(result);
+    return {
+      isValid: structured?.is_valid === true,
+      errorMessage: structured?.error_message,
+    };
   }
 
   private async callTool(

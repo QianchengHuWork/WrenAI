@@ -20,7 +20,7 @@ from src.pipelines.generation.utils.sql import (
 )
 from src.pipelines.retrieval.sql_functions import SqlFunction
 from src.pipelines.retrieval.sql_knowledge import SqlKnowledge
-from src.utils import trace_cost
+from src.utils import loads_llm_json, trace_cost
 
 logger = logging.getLogger("wren-ai-service")
 
@@ -73,6 +73,14 @@ sql_correction_user_prompt_template = """
 {% endfor %}
 {% endif %}
 
+{% if sql_samples %}
+### SQL SAMPLES ###
+{% for sample in sql_samples %}
+Question: {{ sample.question }}
+SQL: {{ sample.sql }}
+{% endfor %}
+{% endif %}
+
 ### QUESTION ###
 SQL: {{ invalid_generation_result.sql }}
 Error Message: {{ invalid_generation_result.error }}
@@ -88,6 +96,7 @@ def prompt(
     invalid_generation_result: Dict,
     prompt_builder: PromptBuilder,
     instructions: list[dict] | None = None,
+    sql_samples: list[dict] | None = None,
     sql_functions: list[SqlFunction] | None = None,
 ) -> dict:
     _prompt = prompt_builder.run(
@@ -96,6 +105,7 @@ def prompt(
         instructions=construct_instructions(
             instructions=instructions,
         ),
+        sql_samples=sql_samples,
         sql_functions=sql_functions,
     )
     return {"prompt": clean_up_new_lines(_prompt.get("prompt"))}
@@ -123,7 +133,22 @@ async def post_process(
     project_id: str | None = None,
     use_dry_plan: bool = False,
     allow_dry_plan_fallback: bool = True,
+    validation_mode: str = "engine",
 ) -> dict:
+    if validation_mode == "none":
+        cleaned_generation_result = clean_up_new_lines(
+            generate_sql_correction.get("replies")[0]
+        )
+        if cleaned_generation_result.startswith("{"):
+            cleaned_generation_result = loads_llm_json(cleaned_generation_result)["sql"]
+        return {
+            "valid_generation_result": {
+                "sql": cleaned_generation_result,
+                "correlation_id": "",
+            },
+            "invalid_generation_result": {},
+        }
+
     return await post_processor.run(
         generate_sql_correction.get("replies"),
         project_id=project_id,
@@ -170,10 +195,12 @@ class SQLCorrection(BasicPipeline):
         contexts: List[Document],
         invalid_generation_result: Dict[str, str],
         instructions: list[dict] | None = None,
+        sql_samples: list[dict] | None = None,
         sql_functions: list[SqlFunction] | None = None,
         project_id: str | None = None,
         use_dry_plan: bool = False,
         allow_dry_plan_fallback: bool = True,
+        validation_mode: str = "engine",
         sql_knowledge: SqlKnowledge | None = None,
     ):
         logger.info("SQLCorrection pipeline is running...")
@@ -189,10 +216,12 @@ class SQLCorrection(BasicPipeline):
                 "invalid_generation_result": invalid_generation_result,
                 "documents": contexts,
                 "instructions": instructions,
+                "sql_samples": sql_samples,
                 "sql_functions": sql_functions,
                 "project_id": project_id,
                 "use_dry_plan": use_dry_plan,
                 "allow_dry_plan_fallback": allow_dry_plan_fallback,
+                "validation_mode": validation_mode,
                 "data_source": metadata.get("data_source", "local_file"),
                 "sql_knowledge": sql_knowledge,
                 **self._components,

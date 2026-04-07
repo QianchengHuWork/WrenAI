@@ -7,6 +7,7 @@ import {
   mapValues,
   snakeCase,
 } from 'lodash';
+import { SQLDialect } from '@server/models/adaptor';
 
 export enum DashboardItemType {
   // AI chart types, refer to ChartType in adaptor.ts
@@ -30,6 +31,7 @@ export interface DashboardItemLayout {
 
 export interface DashboardItemDetail {
   sql: string;
+  sqlDialect?: SQLDialect;
   chartSchema?: Record<string, any>;
 }
 

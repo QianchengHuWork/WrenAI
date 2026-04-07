@@ -8,6 +8,11 @@ type Brand<T, B> = T & { __brand: B };
 export type DialectSQL = Brand<string, 'DialectSQL'>;
 export type WrenSQL = Brand<string, 'WrenSQL'>;
 
+export enum SQLDialect {
+  WREN = 'WREN',
+  DIALECT = 'DIALECT',
+}
+
 export interface WrenAIError {
   code: Errors.GeneralErrorCodes;
   message: string;
@@ -134,6 +139,7 @@ export type AskResult = AskResponse<
   Array<{
     type: AskCandidateType;
     sql: string;
+    sqlDialect?: SQLDialect;
     viewId?: number | null;
     sqlpairId?: number | null;
   }>,
@@ -148,6 +154,31 @@ export type AskResult = AskResponse<
   invalidSql?: string;
   traceId?: string;
 };
+
+export interface SqlCorrectionInput {
+  sql: string;
+  error: string;
+  projectId?: string;
+  retrievedTables?: string[];
+  useDryPlan?: boolean;
+  allowDryPlanFallback?: boolean;
+  validationMode?: 'engine' | 'none';
+  configurations?: ProjectConfigurations;
+}
+
+export enum SqlCorrectionStatus {
+  CORRECTING = 'CORRECTING',
+  FINISHED = 'FINISHED',
+  FAILED = 'FAILED',
+}
+
+export interface SqlCorrectionResult {
+  status: SqlCorrectionStatus;
+  response?: string;
+  error?: WrenAIError;
+  invalidSql?: string;
+  traceId?: string;
+}
 
 export enum RecommendationQuestionStatus {
   GENERATING = 'GENERATING',

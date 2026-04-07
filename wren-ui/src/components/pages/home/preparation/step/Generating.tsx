@@ -17,10 +17,28 @@ export default function Generating(props: Props) {
       <Typography.Text className="gray-8">正在生成 SQL 语句</Typography.Text>
       <div className="gray-7 text-sm mt-1">
         {generating || correcting ? (
-          <div className="d-flex align-center gx-2">
-            {correcting ? '正在修正 SQL 语句' : '正在生成'}
-            <Spinner className="gray-6" size={12} />
-          </div>
+          <>
+            <div className="d-flex align-center gx-2">
+              {correcting ? '正在修正 SQL 语句' : '正在生成'}
+              <Spinner className="gray-6" size={12} />
+            </div>
+            {!!semanticFiles?.length && (
+              <div className="mt-1">
+                <div>已查看语义文件：</div>
+                {semanticFiles.map((file) => (
+                  <div key={file}>{file}</div>
+                ))}
+              </div>
+            )}
+            {!!toolCalls?.length && (
+              <div className="mt-1">
+                <div>执行调用：</div>
+                {toolCalls.map((toolCall) => (
+                  <div key={toolCall}>{toolCall}</div>
+                ))}
+              </div>
+            )}
+          </>
         ) : (
           <>
             <div>SQL 语句生成成功</div>
