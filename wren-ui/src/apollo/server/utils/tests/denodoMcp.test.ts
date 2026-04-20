@@ -1,5 +1,13 @@
 import { Manifest } from '@server/mdl/type';
 import {
+  applySemanticDictionaryToSql,
+  buildDenodoSemanticDictionaryBatchContext,
+  buildDenodoSemanticDictionaryBatches,
+  buildDenodoSemanticDictionary,
+  buildFallbackDenodoSemanticDictionaryEntries,
+  buildDenodoSemanticDictionaryTasks,
+  normalizeDenodoSemanticDictionaryEntries,
+  toDenodoSemanticContext,
   toDenodoCompactTables,
   toDenodoNativeSql,
   toDenodoPreviewData,
@@ -85,6 +93,204 @@ describe('denodoMcp utils', () => {
       ['上海', 12, true],
       ['杭州', 8, false],
     ]);
+  });
+
+  it('builds semantic dictionary tasks from candidate columns and batches by column scope', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'dv_ord_core',
+          cached: false,
+          properties: {
+            description: '订单核心事实表',
+          },
+          tableReference: {
+            table: 'dv_ord_core',
+          },
+          columns: [
+            {
+              name: 'order_status',
+              type: 'string',
+              properties: { description: 'B端订单状态' },
+              isCalculated: false,
+              expression: '"order_status"',
+            },
+            {
+              name: 'order_amount',
+              type: 'number',
+              properties: { description: '订单总金额' },
+              isCalculated: false,
+              expression: '"order_amount"',
+            },
+            {
+              name: 'city',
+              type: 'string',
+              properties: { description: '订单所在城市' },
+              isCalculated: false,
+              expression: '"city"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const rawSchema = {
+      structuredContent: {
+        views: [
+          {
+            view_name: 'dv_ord_core',
+            description: '订单核心事实表',
+            columns: [
+              { name: 'order_status', data_type: 'VARCHAR', description: 'B端订单状态' },
+              { name: 'order_amount', data_type: 'DECIMAL', description: '订单总金额' },
+              { name: 'city', data_type: 'VARCHAR', description: '订单所在城市' },
+            ],
+          },
+        ],
+      },
+    };
+
+    const tasks = buildDenodoSemanticDictionaryTasks({ manifest, rawSchema });
+    expect(tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: 'dv_ord_core.order_status.COLUMN_HINT',
+          rewriteMode: 'COLUMN_HINT',
+        }),
+        expect.objectContaining({
+          taskId: 'dv_ord_core.order_status.VALUE_ALIAS',
+          rewriteMode: 'VALUE_ALIAS',
+        }),
+        expect.objectContaining({
+          taskId: 'dv_ord_core.order_amount.COLUMN_HINT',
+          rewriteMode: 'COLUMN_HINT',
+        }),
+      ]),
+    );
+
+    const batches = buildDenodoSemanticDictionaryBatches(tasks, 1);
+    expect(batches).toHaveLength(3);
+    expect(
+      batches.find((batch) =>
+        batch.some((task) => task.scope.column === 'order_status'),
+      ),
+    ).toHaveLength(2);
+
+    const context = buildDenodoSemanticDictionaryBatchContext({
+      tasks: batches[0],
+      manifest,
+      rawSchema,
+    });
+    expect(context.manifestSummary.models).toHaveLength(1);
+    expect(context.rawSchemaSummary.views).toHaveLength(1);
+  });
+
+  it('normalizes batch semantic dictionary results into stable entries', () => {
+    const tasks = [
+      {
+        taskId: 'dv_ord_core.order_status.COLUMN_HINT',
+        scope: { model: 'dv_ord_core', column: 'order_status' },
+        rewriteMode: 'COLUMN_HINT' as const,
+        description: 'B端订单状态',
+      },
+      {
+        taskId: 'dv_ord_core.order_status.VALUE_ALIAS',
+        scope: { model: 'dv_ord_core', column: 'order_status' },
+        rewriteMode: 'VALUE_ALIAS' as const,
+        description: 'B端订单状态',
+      },
+    ];
+
+    const entries = normalizeDenodoSemanticDictionaryEntries({
+      tasks,
+      result: {
+        items: [
+          {
+            taskId: 'dv_ord_core.order_status.COLUMN_HINT',
+            concept: '订单履约状态',
+            aliases: ['订单状态', '履约状态'],
+          },
+          {
+            taskId: 'dv_ord_core.order_status.VALUE_ALIAS',
+            concept: '订单履约状态',
+            valueMappings: [
+              {
+                canonicalValue: '已完成',
+                aliases: ['已交付', '交付完成'],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(entries).toEqual([
+      {
+        scope: { model: 'dv_ord_core', column: 'order_status' },
+        concept: '订单履约状态',
+        description: 'B端订单状态',
+        aliases: ['订单状态', '履约状态', '订单履约状态'],
+        rewriteMode: 'COLUMN_HINT',
+      },
+      {
+        scope: { model: 'dv_ord_core', column: 'order_status' },
+        concept: '订单履约状态',
+        description: 'B端订单状态',
+        aliases: ['已交付', '交付完成'],
+        canonicalValue: '已完成',
+        rewriteMode: 'VALUE_ALIAS',
+      },
+    ]);
+  });
+
+  it('builds deterministic fallback entries from enum descriptions', () => {
+    const tasks = [
+      {
+        taskId: 'dv_ord_core.order_status.COLUMN_HINT',
+        scope: { model: 'dv_ord_core', column: 'order_status' },
+        rewriteMode: 'COLUMN_HINT' as const,
+        description:
+          '订单状态中文值。由基础订单表 order_status_value 重命名而来。枚举值：待支付、已支付、已锁单、交付中、已完成、已退款。',
+      },
+      {
+        taskId: 'dv_ord_core.order_status.VALUE_ALIAS',
+        scope: { model: 'dv_ord_core', column: 'order_status' },
+        rewriteMode: 'VALUE_ALIAS' as const,
+        description:
+          '订单状态中文值。由基础订单表 order_status_value 重命名而来。枚举值：待支付、已支付、已锁单、交付中、已完成、已退款。',
+      },
+      {
+        taskId: 'dv_ord_core.order_status_code.VALUE_ALIAS',
+        scope: { model: 'dv_ord_core', column: 'order_status_code' },
+        rewriteMode: 'VALUE_ALIAS' as const,
+        description:
+          '订单状态编码。枚举值：CREATED=待支付，PAID=已支付，LOCKED=已锁单，DELIVERING=交付中，COMPLETED=已完成，REFUNDED=已退款。',
+      },
+    ];
+
+    const entries = buildFallbackDenodoSemanticDictionaryEntries({ tasks });
+
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          scope: { model: 'dv_ord_core', column: 'order_status' },
+          rewriteMode: 'COLUMN_HINT',
+          concept: '订单状态中文值。由基础订单表 order_status_value 重命名而来',
+        }),
+        expect.objectContaining({
+          scope: { model: 'dv_ord_core', column: 'order_status' },
+          rewriteMode: 'VALUE_ALIAS',
+          canonicalValue: '已完成',
+          aliases: expect.arrayContaining(['已完成', '已交付', '交付完成']),
+        }),
+        expect.objectContaining({
+          scope: { model: 'dv_ord_core', column: 'order_status_code' },
+          rewriteMode: 'VALUE_ALIAS',
+          canonicalValue: 'COMPLETED',
+          aliases: expect.arrayContaining(['已完成', '已交付', '交付完成']),
+        }),
+      ]),
+    );
   });
 
   it('quotes model and column identifiers for Denodo and strips limit', () => {
@@ -220,6 +426,44 @@ describe('denodoMcp utils', () => {
       'CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)',
     );
     expect(sql).not.toContain('WITH TIME ZONE');
+  });
+
+  it('rewrites IN predicates using semantic dictionary aliases only when mappings are unique', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'dv_ord_core',
+          cached: false,
+          tableReference: { table: 'dv_ord_core' },
+          columns: [
+            {
+              name: 'order_status',
+              isCalculated: false,
+              expression: '"order_status"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const rewritten = applySemanticDictionaryToSql(
+      `SELECT * FROM "dv_ord_core" WHERE "dv_ord_core"."order_status" IN ('已交付', '已完成')`,
+      manifest,
+      buildDenodoSemanticDictionary([
+        {
+          scope: { model: 'dv_ord_core', column: 'order_status' },
+          concept: '订单履约状态',
+          aliases: ['已交付', '交付完成'],
+          canonicalValue: '已完成',
+          rewriteMode: 'VALUE_ALIAS',
+        },
+      ]),
+    );
+
+    expect(rewritten.sql).toContain(`IN ('已完成', '已完成')`);
+    expect(rewritten.appliedRewrites).toContain(
+      'apply semantic rewrite: dv_ord_core.order_status: 已交付 -> 已完成',
+    );
   });
 
   it('rewrites DATE_PART and TO_NUMBER into Denodo-compatible SQL', () => {
@@ -423,5 +667,90 @@ describe('denodoMcp utils', () => {
     expect(sql).toContain(
       'COALESCE(SUM(CAST("actual_price" AS DECIMAL(18, 2))), 0) AS "total_amount"',
     );
+  });
+
+  it('builds semantic context for relevant models only', () => {
+    const context = toDenodoSemanticContext(
+      buildDenodoSemanticDictionary([
+        {
+          scope: {
+            model: 'dv_ord_core',
+            column: 'order_status',
+          },
+          concept: '订单履约状态',
+          description: '订单状态字段，包含已完成等交付语义',
+          aliases: ['已交付', '交付完成'],
+          canonicalValue: '已完成',
+          rewriteMode: 'VALUE_ALIAS',
+        },
+        {
+          scope: {
+            model: 'dim_city',
+            column: 'city_name',
+          },
+          concept: '城市名称',
+          aliases: ['城市'],
+          rewriteMode: 'COLUMN_HINT',
+        },
+      ]),
+      {
+        models: ['dv_ord_core'],
+      },
+    );
+
+    expect(context).toContain('scope: dv_ord_core.order_status');
+    expect(context).toContain('canonical: 已完成');
+    expect(context).not.toContain('dim_city.city_name');
+  });
+
+  it('rewrites scoped semantic aliases into canonical values', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'dv_ord_core',
+          cached: false,
+          tableReference: {
+            table: 'dv_ord_core',
+          },
+          columns: [
+            {
+              name: 'order_status',
+              isCalculated: false,
+              expression: '"order_status"',
+            },
+            {
+              name: 'order_amount',
+              isCalculated: false,
+              expression: '"order_amount"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const result = applySemanticDictionaryToSql(
+      `SELECT SUM("dv_ord_core"."order_amount") AS "total_amount"
+       FROM "dv_ord_core"
+       WHERE lower("dv_ord_core"."order_status") LIKE lower('%已交付%')`,
+      manifest,
+      buildDenodoSemanticDictionary([
+        {
+          scope: {
+            model: 'dv_ord_core',
+            column: 'order_status',
+          },
+          concept: '订单履约状态',
+          aliases: ['已交付', '交付完成'],
+          canonicalValue: '已完成',
+          rewriteMode: 'VALUE_ALIAS',
+        },
+      ]),
+    );
+
+    expect(result.sql).toContain(`"dv_ord_core"."order_status" = '已完成'`);
+    expect(result.sql).not.toContain('已交付');
+    expect(result.appliedRewrites).toEqual([
+      'apply semantic rewrite: dv_ord_core.order_status: 已交付 -> 已完成',
+    ]);
   });
 });

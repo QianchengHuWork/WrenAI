@@ -25,6 +25,8 @@ import {
   SqlCorrectionInput,
   SqlCorrectionResult,
   SqlCorrectionStatus,
+  SemanticDictionaryInput,
+  SemanticDictionaryResult,
   SqlPairResult,
   SqlPairStatus,
   QuestionInput,
@@ -48,9 +50,13 @@ logger.level = 'debug';
 
 const getAIServiceError = (error: any) => {
   const { data } = error.response || {};
-  return data?.detail
-    ? `${error.message}, detail: ${data.detail}`
-    : error.message;
+  const detail =
+    typeof data?.detail === 'string'
+      ? data.detail
+      : data?.detail
+        ? JSON.stringify(data.detail)
+        : undefined;
+  return detail ? `${error.message}, detail: ${detail}` : error.message;
 };
 
 export interface IWrenAIAdaptor {
@@ -70,6 +76,9 @@ export interface IWrenAIAdaptor {
   getAskStreamingResult(queryId: string): Promise<Readable>;
   createSqlCorrection(input: SqlCorrectionInput): Promise<AsyncQueryResponse>;
   getSqlCorrectionResult(queryId: string): Promise<SqlCorrectionResult>;
+  generateSemanticDictionary(
+    input: SemanticDictionaryInput,
+  ): Promise<SemanticDictionaryResult>;
 
   /**
    * After you choose a candidate, you can request AI service to generate the detail.
@@ -246,6 +255,7 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
         project_id: input.projectId.toString(),
         histories: this.transformHistoryInput(input.histories),
         configurations: input.configurations,
+        semantic_context: input.semanticContext,
       });
       return { queryId: res.data.query_id };
     } catch (err: any) {
@@ -318,6 +328,7 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
           allow_dry_plan_fallback: input.allowDryPlanFallback,
           validation_mode: input.validationMode,
           configurations: input.configurations,
+          semantic_context: input.semanticContext,
         },
       );
       return { queryId: res.data.event_id };
@@ -349,6 +360,32 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
         `Got error when getting SQL correction result: ${getAIServiceError(err)}`,
       );
       throw err;
+    }
+  }
+
+  public async generateSemanticDictionary(
+    input: SemanticDictionaryInput,
+  ): Promise<SemanticDictionaryResult> {
+    try {
+      const res = await axios.post(
+        `${this.wrenAIBaseEndpoint}/v1/semantic-dictionaries`,
+        {
+          project_id: input.projectId,
+          tasks: input.tasks,
+          manifest_summary: input.manifestSummary,
+          raw_schema_summary: input.rawSchemaSummary,
+          configurations: input.configurations,
+        },
+      );
+      return {
+        items: res.data.items || [],
+      };
+    } catch (err: any) {
+      const errorMessage = getAIServiceError(err);
+      logger.debug(
+        `Got error when generating semantic dictionary: ${errorMessage}`,
+      );
+      throw new Error(errorMessage);
     }
   }
 
@@ -828,8 +865,8 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
 
   private async waitDeployFinished(deployId: string): Promise<boolean> {
     let deploySuccess = false;
-    // timeout after 30 seconds
-    for (let waitTime = 1; waitTime <= 7; waitTime++) {
+    // Long-running Denodo/large-schema deployments can take minutes.
+    for (let attempt = 1; attempt <= 60; attempt++) {
       try {
         const status = await this.getDeployStatus(deployId);
         logger.debug(`Wren AI: Deploy status: ${status}`);
@@ -845,9 +882,18 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
           return;
         }
       } catch (err: any) {
-        throw err;
+        if (
+          err?.code === 'ECONNABORTED' ||
+          /timeout/i.test(err?.message || '')
+        ) {
+          logger.debug(
+            `Wren AI: Deploy status check timed out, assuming indexing is still in progress`,
+          );
+        } else {
+          throw err;
+        }
       }
-      await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     return deploySuccess;
   }
@@ -856,10 +902,16 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
     try {
       const res = await axios.get(
         `${this.wrenAIBaseEndpoint}/v1/semantics-preparations/${deployId}/status`,
+        {
+          timeout: 5000,
+        },
       );
       if (res.data.error) {
-        // passing AI response error string to catch block
-        throw new Error(res.data.error);
+        const errorMessage =
+          typeof res.data.error === 'string'
+            ? res.data.error
+            : res.data.error?.message || JSON.stringify(res.data.error);
+        throw new Error(errorMessage);
       }
       return res.data?.status.toUpperCase() as WrenAISystemStatus;
     } catch (err: any) {

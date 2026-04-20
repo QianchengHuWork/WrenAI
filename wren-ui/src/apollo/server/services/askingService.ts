@@ -45,6 +45,11 @@ import {
 import { getConfig } from '@server/config';
 import { TextBasedAnswerBackgroundTracker } from '../backgrounds/textBasedAnswerBackgroundTracker';
 import { IAskingTaskTracker, TrackedAskingResult } from './askingTaskTracker';
+import {
+  isDenodoSemanticDictionaryEnabled,
+  readDenodoSemanticDictionary,
+  toDenodoSemanticContext,
+} from '@server/utils/denodoMcp';
 
 const config = getConfig();
 
@@ -594,7 +599,8 @@ export class AskingService implements IAskingService {
     threadResponseId?: number,
   ): Promise<Task> {
     const { threadId, language } = payload;
-    const { id: projectId } = await this.projectService.getCurrentProject();
+    const project = await this.projectService.getCurrentProject();
+    const { id: projectId } = project;
     const deployId = await this.getDeployId();
 
     // if it's a follow-up question, then the input will have a threadId
@@ -603,12 +609,21 @@ export class AskingService implements IAskingService {
     const histories = threadId
       ? await this.getAskingHistory(threadId, threadResponseId)
       : null;
+    const semanticContext =
+      project.type === DataSourceName.DENODO_MCP &&
+      isDenodoSemanticDictionaryEnabled()
+        ? toDenodoSemanticContext(
+            await readDenodoSemanticDictionary(project.id),
+          )
+        : undefined;
+
     const response = await this.askingTaskTracker.createAskingTask({
       query: input.question,
       projectId,
       histories,
       deployId,
       configurations: { language },
+      semanticContext,
       rerunFromCancelled,
       previousTaskId,
       threadResponseId,
@@ -1069,6 +1084,11 @@ export class AskingService implements IAskingService {
   private async getDeployId() {
     const { id } = await this.projectService.getCurrentProject();
     const lastDeploy = await this.deployService.getLastDeployment(id);
+    if (!lastDeploy) {
+      throw new Error(
+        'Current project has no successful deployment yet. Please deploy the semantic layer first.',
+      );
+    }
     return lastDeploy.hash;
   }
 

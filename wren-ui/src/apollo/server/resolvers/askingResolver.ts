@@ -33,6 +33,8 @@ import {
   buildDenodoMcpQueryToolName,
   getDenodoManifestPath,
   getDenodoRawSchemaPath,
+  getDenodoSemanticDictionaryPath,
+  isDenodoSemanticDictionaryEnabled,
 } from '@server/utils/denodoMcp';
 import { DENODO_MCP_CONNECTION_INFO } from '@server/repositories';
 
@@ -836,6 +838,11 @@ export class AskingResolver {
         ? [
             `read semantic file: ${getDenodoRawSchemaPath(project.id)}`,
             `read semantic file: ${getDenodoManifestPath(project.id)}`,
+            ...(isDenodoSemanticDictionaryEnabled()
+              ? [
+                  `read semantic file: ${getDenodoSemanticDictionaryPath(project.id)}`,
+                ]
+              : []),
           ]
         : []);
 

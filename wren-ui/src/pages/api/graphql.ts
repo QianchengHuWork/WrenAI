@@ -47,6 +47,7 @@ const bootstrapServer = async () => {
     instructionRepository,
     apiHistoryRepository,
     dashboardItemRefreshJobRepository,
+    semanticDictionaryBuildJobRepository,
     // adaptors
     wrenEngineAdaptor,
     ibisAdaptor,
@@ -67,6 +68,7 @@ const bootstrapServer = async () => {
     projectRecommendQuestionBackgroundTracker,
     threadRecommendQuestionBackgroundTracker,
     dashboardCacheBackgroundTracker,
+    semanticDictionaryBuildBackgroundTracker,
   } = components;
 
   const modelService = new ModelService({
@@ -160,10 +162,12 @@ const bootstrapServer = async () => {
       instructionRepository,
       apiHistoryRepository,
       dashboardItemRefreshJobRepository,
+      semanticDictionaryBuildJobRepository,
       // background trackers
       projectRecommendQuestionBackgroundTracker,
       threadRecommendQuestionBackgroundTracker,
       dashboardCacheBackgroundTracker,
+      semanticDictionaryBuildBackgroundTracker,
     }),
   });
   await apolloServer.start();

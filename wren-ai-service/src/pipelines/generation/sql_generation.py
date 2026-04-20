@@ -69,6 +69,11 @@ SQL:
 {% endfor %}
 {% endif %}
 
+{% if semantic_context %}
+### SEMANTIC DICTIONARY ###
+{{ semantic_context }}
+{% endif %}
+
 ### QUESTION ###
 User's Question: {{ query }}
 
@@ -90,6 +95,7 @@ def prompt(
     sql_generation_reasoning: str | None = None,
     sql_samples: list[dict] | None = None,
     instructions: list[dict] | None = None,
+    semantic_context: str | None = None,
     has_calculated_field: bool = False,
     has_metric: bool = False,
     has_json_field: bool = False,
@@ -103,6 +109,7 @@ def prompt(
         instructions=construct_instructions(
             instructions=instructions,
         ),
+        semantic_context=semantic_context or "",
         calculated_field_instructions=(
             get_calculated_field_instructions(sql_knowledge)
             if has_calculated_field
@@ -193,6 +200,7 @@ class SQLGeneration(BasicPipeline):
         sql_generation_reasoning: str | None = None,
         sql_samples: list[dict] | None = None,
         instructions: list[dict] | None = None,
+        semantic_context: str | None = None,
         project_id: str | None = None,
         has_calculated_field: bool = False,
         has_metric: bool = False,
@@ -218,6 +226,7 @@ class SQLGeneration(BasicPipeline):
                 "sql_generation_reasoning": sql_generation_reasoning,
                 "sql_samples": sql_samples,
                 "instructions": instructions,
+                "semantic_context": semantic_context,
                 "project_id": project_id,
                 "has_calculated_field": has_calculated_field,
                 "has_metric": has_metric,

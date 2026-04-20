@@ -71,7 +71,12 @@ class SemanticsPreparationService:
         }
 
         try:
-            logger.info(f"MDL: {prepare_semantics_request.mdl}")
+            logger.info(
+                "Preparing semantics, mdl_hash=%s, project_id=%s, mdl_size=%s",
+                prepare_semantics_request.mdl_hash,
+                prepare_semantics_request.project_id,
+                len(prepare_semantics_request.mdl),
+            )
 
             input = {
                 "mdl_str": prepare_semantics_request.mdl,

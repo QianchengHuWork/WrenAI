@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { Alert, Typography, Form, Row, Col, Button } from 'antd';
 import styled from 'styled-components';
 import { DATA_SOURCES } from '@/utils/enum/dataSources';
+import type { DataSourceSetupProgress as DataSourceSetupProgressState } from '@/hooks/useSetupConnectionDataSource';
 import { getDataSource, getPostgresErrorMessage } from './utils';
+import DataSourceSetupProgress from './DataSourceSetupProgress';
 
 const StyledForm = styled(Form)`
   border: 1px var(--gray-4) solid;
@@ -21,10 +23,18 @@ interface Props {
   onBack: () => void;
   submitting: boolean;
   connectError?: Record<string, any>;
+  setupProgress?: DataSourceSetupProgressState;
 }
 
 export default function ConnectDataSource(props: Props) {
-  const { connectError, dataSource, submitting, onNext, onBack } = props;
+  const {
+    connectError,
+    dataSource,
+    submitting,
+    onNext,
+    onBack,
+    setupProgress,
+  } = props;
   const [form] = Form.useForm();
   const current = getDataSource(dataSource);
 
@@ -84,6 +94,14 @@ export default function ConnectDataSource(props: Props) {
         </Row>
         <current.component />
       </StyledForm>
+
+      {dataSource === DATA_SOURCES.DENODO_MCP && setupProgress ? (
+        <DataSourceSetupProgress
+          progress={setupProgress}
+          title="正在预加载并创建数据源"
+          subtitle="核心语义层会先就绪，Semantic Dictionary 会在后台分步生成并持续更新进度。"
+        />
+      ) : null}
 
       {connectError && (
         <Alert

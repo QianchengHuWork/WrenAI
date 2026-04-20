@@ -53,6 +53,8 @@ export enum WrenAILanguage {
   TR = 'Turkish',
 }
 
+export const DEFAULT_PROJECT_LANGUAGE = 'ZH_CN';
+
 export interface DeployData {
   manifest: Manifest;
   hash: string;
@@ -82,6 +84,7 @@ export interface AskInput {
   projectId: number;
   histories?: ThreadResponse[];
   configurations?: ProjectConfigurations;
+  semanticContext?: string;
 }
 
 export interface AsyncQueryResponse {
@@ -164,6 +167,57 @@ export interface SqlCorrectionInput {
   allowDryPlanFallback?: boolean;
   validationMode?: 'engine' | 'none';
   configurations?: ProjectConfigurations;
+  semanticContext?: string;
+}
+
+export interface SemanticDictionaryInput {
+  projectId?: string;
+  tasks: SemanticDictionaryTask[];
+  manifestSummary: Record<string, any>;
+  rawSchemaSummary: Record<string, any>;
+  configurations?: ProjectConfigurations;
+}
+
+export interface SemanticDictionaryTask {
+  taskId: string;
+  scope: {
+    model: string;
+    column: string;
+  };
+  rewriteMode: 'COLUMN_HINT' | 'VALUE_ALIAS';
+  columnType?: string;
+  description?: string;
+  modelDescription?: string;
+}
+
+export interface SemanticDictionaryValueMapping {
+  canonicalValue: string;
+  aliases: string[];
+  description?: string;
+}
+
+export interface SemanticDictionaryBatchItem {
+  taskId: string;
+  concept?: string;
+  description?: string;
+  aliases?: string[];
+  valueMappings?: SemanticDictionaryValueMapping[];
+}
+
+export interface SemanticDictionaryEntry {
+  scope: {
+    model: string;
+    column: string;
+  };
+  concept: string;
+  description?: string;
+  aliases: string[];
+  canonicalValue?: string | null;
+  rewriteMode: 'COLUMN_HINT' | 'VALUE_ALIAS';
+}
+
+export interface SemanticDictionaryResult {
+  items: SemanticDictionaryBatchItem[];
 }
 
 export enum SqlCorrectionStatus {

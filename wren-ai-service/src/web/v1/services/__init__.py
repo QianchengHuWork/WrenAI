@@ -82,6 +82,7 @@ from .chart_adjustment import ChartAdjustmentService  # noqa: E402
 from .instructions import InstructionsService  # noqa: E402
 from .question_recommendation import QuestionRecommendation  # noqa: E402
 from .relationship_recommendation import RelationshipRecommendation  # noqa: E402
+from .semantic_dictionary import SemanticDictionaryService  # noqa: E402
 from .semantics_description import SemanticsDescription  # noqa: E402
 from .semantics_preparation import SemanticsPreparationService  # noqa: E402
 from .sql_answer import SqlAnswerService  # noqa: E402
@@ -96,6 +97,7 @@ __all__ = [
     "ChartAdjustmentService",
     "QuestionRecommendation",
     "RelationshipRecommendation",
+    "SemanticDictionaryService",
     "SemanticsDescription",
     "SemanticsPreparationService",
     "SqlAnswerService",

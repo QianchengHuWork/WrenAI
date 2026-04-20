@@ -9,8 +9,40 @@ interface Props {
   semanticFiles?: string[];
 }
 
+type GeneratingSection = {
+  title: string;
+  items: string[];
+};
+
+const buildSections = ({
+  semanticFiles,
+  toolCalls,
+}: {
+  semanticFiles?: string[];
+  toolCalls?: string[];
+}): GeneratingSection[] => {
+  const sections: GeneratingSection[] = [];
+
+  if (semanticFiles?.length) {
+    sections.push({
+      title: '已查看语义文件',
+      items: semanticFiles,
+    });
+  }
+
+  if (toolCalls?.length) {
+    sections.push({
+      title: '执行调用',
+      items: toolCalls,
+    });
+  }
+
+  return sections;
+};
+
 export default function Generating(props: Props) {
   const { loading, generating, correcting, toolCalls, semanticFiles } = props;
+  const sections = buildSections({ semanticFiles, toolCalls });
 
   return (
     <>
@@ -22,19 +54,19 @@ export default function Generating(props: Props) {
               {correcting ? '正在修正 SQL 语句' : '正在生成'}
               <Spinner className="gray-6" size={12} />
             </div>
-            {!!semanticFiles?.length && (
-              <div className="mt-1">
-                <div>已查看语义文件：</div>
-                {semanticFiles.map((file) => (
-                  <div key={file}>{file}</div>
-                ))}
-              </div>
-            )}
-            {!!toolCalls?.length && (
-              <div className="mt-1">
-                <div>执行调用：</div>
-                {toolCalls.map((toolCall) => (
-                  <div key={toolCall}>{toolCall}</div>
+            {!!sections.length && (
+              <div className="d-flex flex-column gy-3 mt-2">
+                {sections.map((section, index) => (
+                  <div key={section.title}>
+                    <div className="gray-8 font-medium">
+                      {index + 1}. {section.title}
+                    </div>
+                    <div className="mt-1 pl-4">
+                      {section.items.map((item) => (
+                        <div key={item}>{item}</div>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -42,19 +74,19 @@ export default function Generating(props: Props) {
         ) : (
           <>
             <div>SQL 语句生成成功</div>
-            {!!semanticFiles?.length && (
-              <div className="mt-1">
-                <div>已查看语义文件：</div>
-                {semanticFiles.map((file) => (
-                  <div key={file}>{file}</div>
-                ))}
-              </div>
-            )}
-            {!!toolCalls?.length && (
-              <div className="mt-1">
-                <div>执行调用：</div>
-                {toolCalls.map((toolCall) => (
-                  <div key={toolCall}>{toolCall}</div>
+            {!!sections.length && (
+              <div className="d-flex flex-column gy-3 mt-2">
+                {sections.map((section, index) => (
+                  <div key={section.title}>
+                    <div className="gray-8 font-medium">
+                      {index + 1}. {section.title}
+                    </div>
+                    <div className="mt-1 pl-4">
+                      {section.items.map((item) => (
+                        <div key={item}>{item}</div>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

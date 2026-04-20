@@ -53,6 +53,7 @@ const resolvers = {
 
     // Settings
     settings: projectResolver.getSettings,
+    dataSourceSetupProgress: projectResolver.getDataSourceSetupProgress,
     getMDL: modelResolver.getMDL,
 
     // Learning
@@ -146,6 +147,7 @@ const resolvers = {
     resetCurrentProject: projectResolver.resetCurrentProject,
     updateCurrentProject: projectResolver.updateCurrentProject,
     updateDataSource: projectResolver.updateDataSource,
+    refreshDenodoSemanticAssets: projectResolver.refreshDenodoSemanticAssets,
 
     // preview
     previewSql: modelResolver.previewSql,

@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import dataclass
 
 from src.core.engine import Engine
@@ -70,10 +71,16 @@ def llm_processor(entry: dict) -> dict:
     def build_fallback_params(all_models: dict) -> dict:
         result = {}
         for model_name, model in all_models.items():
+            api_key_name = model.get("api_key_name")
             result[model_name] = {
                 "model_name": model_name,
                 "litellm_params": {
                     "model": model["model"],
+                    **(
+                        {"api_key": os.getenv(api_key_name)}
+                        if api_key_name and os.getenv(api_key_name)
+                        else {}
+                    ),
                     **({"api_base": model["api_base"]} if "api_base" in model else {}),
                     **(
                         {"api_version": model["api_version"]}

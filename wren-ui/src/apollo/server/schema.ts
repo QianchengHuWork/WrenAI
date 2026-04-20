@@ -860,6 +860,36 @@ export const typeDefs = gql`
     language: ProjectLanguage!
   }
 
+  enum DataSourceSetupStatus {
+    IDLE
+    RUNNING
+    COMPLETED
+    FAILED
+  }
+
+  enum DataSourceSetupStepStatus {
+    PENDING
+    RUNNING
+    COMPLETED
+    FAILED
+  }
+
+  type DataSourceSetupStep {
+    key: String!
+    title: String!
+    status: DataSourceSetupStepStatus!
+    description: String
+  }
+
+  type DataSourceSetupProgress {
+    status: DataSourceSetupStatus!
+    dataSourceType: String
+    currentStepKey: String
+    error: String
+    steps: [DataSourceSetupStep!]!
+    updatedAt: String!
+  }
+
   type GetMDLResult {
     hash: String!
     mdl: String
@@ -1144,6 +1174,7 @@ export const typeDefs = gql`
 
     # Settings
     settings: Settings!
+    dataSourceSetupProgress: DataSourceSetupProgress!
 
     # System
     getMDL(hash: String!): GetMDLResult!
@@ -1272,6 +1303,7 @@ export const typeDefs = gql`
     resetCurrentProject: Boolean!
     updateCurrentProject(data: UpdateCurrentProjectInput!): Boolean!
     updateDataSource(data: UpdateDataSourceInput!): DataSource!
+    refreshDenodoSemanticAssets: Boolean!
 
     # preview
     previewSql(data: PreviewSQLDataInput): JSON!

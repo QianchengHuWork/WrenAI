@@ -19,6 +19,7 @@ class ServiceContainer:
     ask_feedback_service: services.AskFeedbackService
     question_recommendation: services.QuestionRecommendation
     relationship_recommendation: services.RelationshipRecommendation
+    semantic_dictionary_service: services.SemanticDictionaryService
     semantics_description: services.SemanticsDescription
     semantics_preparation_service: services.SemanticsPreparationService
     chart_service: services.ChartService
@@ -220,6 +221,13 @@ def create_service_container(
                 )
             },
             **query_cache,
+        ),
+        semantic_dictionary_service=services.SemanticDictionaryService(
+            pipelines={
+                "semantic_dictionary": generation.SemanticDictionary(
+                    **pipe_components["semantic_dictionary"],
+                )
+            }
         ),
         question_recommendation=services.QuestionRecommendation(
             pipelines={

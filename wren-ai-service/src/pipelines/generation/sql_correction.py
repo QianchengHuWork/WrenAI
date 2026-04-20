@@ -73,6 +73,11 @@ sql_correction_user_prompt_template = """
 {% endfor %}
 {% endif %}
 
+{% if semantic_context %}
+### SEMANTIC DICTIONARY ###
+{{ semantic_context }}
+{% endif %}
+
 {% if sql_samples %}
 ### SQL SAMPLES ###
 {% for sample in sql_samples %}
@@ -98,6 +103,7 @@ def prompt(
     instructions: list[dict] | None = None,
     sql_samples: list[dict] | None = None,
     sql_functions: list[SqlFunction] | None = None,
+    semantic_context: str | None = None,
 ) -> dict:
     _prompt = prompt_builder.run(
         documents=documents,
@@ -105,6 +111,7 @@ def prompt(
         instructions=construct_instructions(
             instructions=instructions,
         ),
+        semantic_context=semantic_context or "",
         sql_samples=sql_samples,
         sql_functions=sql_functions,
     )
@@ -197,6 +204,7 @@ class SQLCorrection(BasicPipeline):
         instructions: list[dict] | None = None,
         sql_samples: list[dict] | None = None,
         sql_functions: list[SqlFunction] | None = None,
+        semantic_context: str | None = None,
         project_id: str | None = None,
         use_dry_plan: bool = False,
         allow_dry_plan_fallback: bool = True,
@@ -216,6 +224,7 @@ class SQLCorrection(BasicPipeline):
                 "invalid_generation_result": invalid_generation_result,
                 "documents": contexts,
                 "instructions": instructions,
+                "semantic_context": semantic_context,
                 "sql_samples": sql_samples,
                 "sql_functions": sql_functions,
                 "project_id": project_id,

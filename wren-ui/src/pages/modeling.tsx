@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useSearchParams } from 'next/navigation';
 import { forwardRef, useEffect, useMemo, useRef } from 'react';
 import { message } from 'antd';
+import { gql, useQuery } from '@apollo/client';
 import styled from 'styled-components';
 import { MORE_ACTION, NODE_TYPE } from '@/utils/enum';
 import { editCalculatedField } from '@/utils/modelingHelper';
@@ -44,6 +45,8 @@ import {
   useDeleteRelationshipMutation,
   useUpdateRelationshipMutation,
 } from '@/apollo/client/graphql/relationship.generated';
+import type { DataSourceSetupProgress as DataSourceSetupProgressState } from '@/hooks/useSetupConnectionDataSource';
+import DataSourceSetupProgress from '@/components/pages/setup/DataSourceSetupProgress';
 import * as events from '@/utils/events';
 
 const Diagram = dynamic(() => import('@/components/diagram'), { ssr: false });
@@ -57,10 +60,34 @@ const DiagramWrapper = styled.div`
   height: 100%;
 `;
 
+const DATA_SOURCE_SETUP_PROGRESS = gql`
+  query DataSourceSetupProgressForModeling {
+    dataSourceSetupProgress {
+      status
+      dataSourceType
+      currentStepKey
+      error
+      updatedAt
+      steps {
+        key
+        title
+        status
+        description
+      }
+    }
+  }
+`;
+
 export default function Modeling() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const diagramRef = useRef(null);
+  const { data: setupProgressData } = useQuery<{
+    dataSourceSetupProgress: DataSourceSetupProgressState;
+  }>(DATA_SOURCE_SETUP_PROGRESS, {
+    pollInterval: 1500,
+    fetchPolicy: 'network-only',
+  });
 
   const { data } = useDiagramQuery({
     fetchPolicy: 'cache-and-network',
@@ -387,6 +414,18 @@ export default function Modeling() {
           onSelect,
         }}
       >
+        <DataSourceSetupProgress
+          progress={
+            setupProgressData?.dataSourceSetupProgress?.dataSourceType ===
+            'DENODO_MCP'
+              ? setupProgressData?.dataSourceSetupProgress
+              : null
+          }
+          title="正在后台构建 Semantic Dictionary"
+          subtitle="核心语义层已可用；词典会按批次继续生成，并在完成后自动参与 SQL 生成与校验。"
+          errorTitle="Semantic Dictionary 构建失败"
+          hideWhenCompleted
+        />
         <DiagramWrapper>
           <ForwardDiagram
             ref={diagramRef}

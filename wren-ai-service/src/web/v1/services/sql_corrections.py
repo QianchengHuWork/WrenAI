@@ -64,6 +64,7 @@ class SqlCorrectionService:
         use_dry_plan: bool = False
         allow_dry_plan_fallback: bool = True
         validation_mode: Literal["engine", "none"] = "engine"
+        semantic_context: Optional[str] = None
 
     @observe(name="SQL Correction")
     @trace_metadata
@@ -83,6 +84,7 @@ class SqlCorrectionService:
         use_dry_plan = request.use_dry_plan
         allow_dry_plan_fallback = request.allow_dry_plan_fallback
         validation_mode = request.validation_mode
+        semantic_context = request.semantic_context
         sql_knowledge = None
         instructions = []
         sql_samples = []
@@ -144,6 +146,7 @@ class SqlCorrectionService:
                 invalid_generation_result=_invalid,
                 instructions=instructions,
                 sql_samples=sql_samples,
+                semantic_context=semantic_context,
                 project_id=project_id,
                 use_dry_plan=use_dry_plan,
                 allow_dry_plan_fallback=allow_dry_plan_fallback,

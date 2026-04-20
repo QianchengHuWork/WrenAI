@@ -943,7 +943,13 @@ export class ModelResolver {
     const project = projectId
       ? await ctx.projectService.getProjectById(parseInt(projectId))
       : await ctx.projectService.getCurrentProject();
-    const { manifest } = await ctx.deployService.getLastDeployment(project.id);
+    const lastDeployment = await ctx.deployService.getLastDeployment(project.id);
+    if (!lastDeployment) {
+      throw new Error(
+        'Current project has no successful deployment yet. Please deploy the semantic layer first.',
+      );
+    }
+    const { manifest } = lastDeployment;
     return await ctx.queryService.preview(sql, {
       project,
       limit: limit,

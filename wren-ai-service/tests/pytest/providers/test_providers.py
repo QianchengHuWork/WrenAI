@@ -3,7 +3,7 @@ from pytest_mock import MockerFixture
 from src.core.engine import Engine
 from src.core.pipeline import PipelineComponent
 from src.core.provider import DocumentStoreProvider, EmbedderProvider, LLMProvider
-from src.providers import Configuration, generate_components, transform
+from src.providers import Configuration, generate_components, llm_processor, transform
 
 
 def test_transform():
@@ -101,3 +101,42 @@ def test_generate_components(mocker: MockerFixture):
     assert isinstance(result["indexing"].llm_provider, LLMProvider)
     assert isinstance(result["indexing"].document_store_provider, DocumentStoreProvider)
     assert isinstance(result["indexing"].engine, Engine)
+
+
+def test_llm_processor_includes_api_key_in_fallback_router_params(
+    mocker: MockerFixture,
+):
+    mocker.patch.dict("os.environ", {"SILICONFLOW_API_KEY": "test-key"})
+
+    result = llm_processor(
+        {
+            "type": "llm",
+            "provider": "litellm_llm",
+            "models": [
+                {
+                    "alias": "default",
+                    "model": "openai/Pro/moonshotai/Kimi-K2.5",
+                    "api_base": "https://api.siliconflow.cn/v1",
+                    "api_key_name": "SILICONFLOW_API_KEY",
+                    "kwargs": {"temperature": 0, "n": 1},
+                    "fallbacks": ["openai/deepseek-ai/DeepSeek-V3"],
+                },
+                {
+                    "alias": "fallback",
+                    "model": "openai/deepseek-ai/DeepSeek-V3",
+                    "api_base": "https://api.siliconflow.cn/v1",
+                    "api_key_name": "SILICONFLOW_API_KEY",
+                    "kwargs": {"temperature": 0, "n": 1},
+                },
+            ],
+        }
+    )
+
+    fallback_model_list = result["litellm_llm.default"]["fallback_model_list"]
+
+    assert [item["model_name"] for item in fallback_model_list] == [
+        "openai/Pro/moonshotai/Kimi-K2.5",
+        "openai/deepseek-ai/DeepSeek-V3",
+    ]
+    assert fallback_model_list[0]["litellm_params"]["api_key"] == "test-key"
+    assert fallback_model_list[1]["litellm_params"]["api_key"] == "test-key"

@@ -21,6 +21,7 @@ import {
   IInstructionRepository,
   IApiHistoryRepository,
   IDashboardItemRefreshJobRepository,
+  ISemanticDictionaryBuildJobRepository,
 } from '@server/repositories';
 import {
   IQueryService,
@@ -37,6 +38,7 @@ import {
   ProjectRecommendQuestionBackgroundTracker,
   ThreadRecommendQuestionBackgroundTracker,
   DashboardCacheBackgroundTracker,
+  SemanticDictionaryBuildBackgroundTracker,
 } from '@server/backgrounds';
 import { ISqlPairService } from '../services/sqlPairService';
 
@@ -78,9 +80,11 @@ export interface IContext {
   instructionRepository: IInstructionRepository;
   apiHistoryRepository: IApiHistoryRepository;
   dashboardItemRefreshJobRepository: IDashboardItemRefreshJobRepository;
+  semanticDictionaryBuildJobRepository: ISemanticDictionaryBuildJobRepository;
 
   // background trackers
   projectRecommendQuestionBackgroundTracker: ProjectRecommendQuestionBackgroundTracker;
   threadRecommendQuestionBackgroundTracker: ThreadRecommendQuestionBackgroundTracker;
   dashboardCacheBackgroundTracker: DashboardCacheBackgroundTracker;
+  semanticDictionaryBuildBackgroundTracker: SemanticDictionaryBuildBackgroundTracker;
 }

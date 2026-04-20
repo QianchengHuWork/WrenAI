@@ -72,5 +72,6 @@ export default function useSetupConnection() {
     onNext,
     submitting,
     connectError,
+    setupProgress: setupConnectionDataSource.setupProgress,
   };
 }

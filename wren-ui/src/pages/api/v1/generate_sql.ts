@@ -15,7 +15,12 @@ import {
   transformHistoryInput,
 } from '@/apollo/server/utils/apiUtils';
 import { DataSourceName } from '@server/types';
-import { toDenodoNativeSql } from '@server/utils/denodoMcp';
+import {
+  isDenodoSemanticDictionaryEnabled,
+  readDenodoSemanticDictionary,
+  toDenodoNativeSql,
+  toDenodoSemanticContext,
+} from '@server/utils/denodoMcp';
 
 const logger = getLogger('API_GENERATE_SQL');
 logger.level = 'debug';
@@ -83,6 +88,13 @@ export default async function handler(
       deployId: lastDeploy.hash,
       projectId: project.id,
       histories: transformHistoryInput(histories) as any,
+      semanticContext:
+        project.type === DataSourceName.DENODO_MCP &&
+        isDenodoSemanticDictionaryEnabled()
+          ? toDenodoSemanticContext(
+              await readDenodoSemanticDictionary(project.id),
+            )
+          : undefined,
       configurations: {
         language:
           language || WrenAILanguage[project.language] || WrenAILanguage.EN,

@@ -23,6 +23,7 @@ class PostRequest(BaseRequest):
     use_dry_plan: bool = False
     allow_dry_plan_fallback: bool = True
     validation_mode: Literal["engine", "none"] = "engine"
+    semantic_context: Optional[str] = None
 
 
 class PostResponse(BaseModel):

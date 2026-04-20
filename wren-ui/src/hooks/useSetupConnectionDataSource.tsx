@@ -1,5 +1,6 @@
 import { useRouter } from 'next/router';
 import { useState, useCallback } from 'react';
+import { gql, useQuery } from '@apollo/client';
 import {
   Path,
   REDSHIFT_AUTH_METHOD,
@@ -10,9 +11,51 @@ import { DataSourceName } from '@/apollo/client/graphql/__types__';
 
 const PASSWORD_PLACEHOLDER = '************';
 
+const DATA_SOURCE_SETUP_PROGRESS = gql`
+  query DataSourceSetupProgress {
+    dataSourceSetupProgress {
+      status
+      dataSourceType
+      currentStepKey
+      error
+      updatedAt
+      steps {
+        key
+        title
+        status
+        description
+      }
+    }
+  }
+`;
+
+export type DataSourceSetupProgress = {
+  status: 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  dataSourceType?: string | null;
+  currentStepKey?: string | null;
+  error?: string | null;
+  updatedAt: string;
+  steps: Array<{
+    key: string;
+    title: string;
+    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+    description?: string | null;
+  }>;
+};
+
 export default function useSetupConnectionDataSource() {
   const router = useRouter();
   const [selected, setSelected] = useState<DataSourceName>();
+  const [trackingProgress, setTrackingProgress] = useState(false);
+
+  const { data: progressData } = useQuery<{
+    dataSourceSetupProgress: DataSourceSetupProgress;
+  }>(DATA_SOURCE_SETUP_PROGRESS, {
+    skip: !trackingProgress || selected !== DataSourceName.DENODO_MCP,
+    pollInterval:
+      trackingProgress && selected === DataSourceName.DENODO_MCP ? 1500 : 0,
+    fetchPolicy: 'network-only',
+  });
 
   const [saveDataSourceMutation, { loading, error }] =
     useSaveDataSourceMutation({
@@ -30,6 +73,9 @@ export default function useSetupConnectionDataSource() {
 
   const saveDataSource = useCallback(
     async (properties?: Record<string, any>) => {
+      if (selected === DataSourceName.DENODO_MCP) {
+        setTrackingProgress(true);
+      }
       await saveDataSourceMutation({
         variables: {
           data: {
@@ -43,6 +89,7 @@ export default function useSetupConnectionDataSource() {
   );
 
   const completedDataSourceSave = useCallback(async () => {
+    setTrackingProgress(false);
     if (selected === DataSourceName.DENODO_MCP) {
       router.push(Path.Modeling);
       return;
@@ -54,10 +101,14 @@ export default function useSetupConnectionDataSource() {
     loading,
     error,
     selected,
+    setupProgress: progressData?.dataSourceSetupProgress,
     saveDataSource,
     selectDataSourceNext,
     completedDataSourceSave,
-    reset: () => setSelected(undefined),
+    reset: () => {
+      setTrackingProgress(false);
+      setSelected(undefined);
+    },
   };
 }
 

@@ -27,6 +27,11 @@ sql_generation_reasoning_user_prompt_template = """
     {{ document }}
 {% endfor %}
 
+{% if semantic_context %}
+### SEMANTIC CONTEXT ###
+{{ semantic_context }}
+{% endif %}
+
 {% if sql_samples %}
 ### SQL SAMPLES ###
 {% for sql_sample in sql_samples %}
@@ -60,6 +65,7 @@ def prompt(
     documents: list[str],
     sql_samples: list[dict],
     instructions: list[dict],
+    semantic_context: str | None,
     prompt_builder: PromptBuilder,
     configuration: Configuration | None = Configuration(),
 ) -> dict:
@@ -70,6 +76,7 @@ def prompt(
         instructions=construct_instructions(
             instructions=instructions,
         ),
+        semantic_context=semantic_context or "",
         language=configuration.language,
         current_time=configuration.show_current_time(),
     )
@@ -158,6 +165,7 @@ class SQLGenerationReasoning(BasicPipeline):
         contexts: list[str],
         sql_samples: Optional[list[dict]] = None,
         instructions: Optional[list[str]] = None,
+        semantic_context: str | None = None,
         configuration: Configuration = Configuration(),
         query_id: Optional[str] = None,
     ):
@@ -169,6 +177,7 @@ class SQLGenerationReasoning(BasicPipeline):
                 "documents": contexts,
                 "sql_samples": sql_samples or [],
                 "instructions": instructions or [],
+                "semantic_context": semantic_context,
                 "configuration": configuration,
                 "query_id": query_id,
                 **self._components,

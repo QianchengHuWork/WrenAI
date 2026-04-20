@@ -15,6 +15,7 @@ import {
 } from './metadataService';
 import { DataSourceName } from '../types';
 import {
+  DEFAULT_PROJECT_LANGUAGE,
   RecommendationQuestion,
   RecommendationQuestionStatus,
   WrenAIError,
@@ -221,6 +222,7 @@ export class ProjectService implements IProjectService {
     const projectValue = {
       displayName: projectData.displayName,
       type: projectData.type,
+      language: DEFAULT_PROJECT_LANGUAGE,
       catalog:
         projectData.type === DataSourceName.DENODO_MCP ? 'denodo' : 'wrenai',
       schema:

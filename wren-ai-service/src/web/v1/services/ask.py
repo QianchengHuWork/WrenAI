@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Dict, List, Literal, Optional
 
 from cachetools import TTLCache
@@ -11,6 +12,86 @@ from src.utils import trace_metadata
 from src.web.v1.services import BaseRequest, SSEEvent
 
 logger = logging.getLogger("wren-ai-service")
+
+CONVERSION_RATE_PRIORITY_TABLE = "dv_clew_ord_conversion_core"
+CONVERSION_RATE_PRIORITY_INSTRUCTION = (
+    "For conversion-rate, conversion-trend, and month-over-month conversion "
+    "questions, you MUST use `table: dv_clew_ord_conversion_core` as the "
+    "primary table when it is available in the retrieved schema. Use "
+    "`column: dv_clew_ord_conversion_core.assign_year_month`, "
+    "`column: dv_clew_ord_conversion_core.clew_count`, and "
+    "`column: dv_clew_ord_conversion_core.order_count` to calculate the monthly "
+    "conversion rate. Do NOT calculate conversion rate by directly joining "
+    "`table: dv_clew_total_core` with `table: dv_ord_core` on month or year."
+)
+_CONVERSION_RATE_QUERY_PATTERNS = [
+    re.compile(r"转化率"),
+    re.compile(r"转化趋势"),
+    re.compile(r"环比.{0,6}转化"),
+    re.compile(r"转化.{0,6}环比"),
+    re.compile(r"conversion rate", re.IGNORECASE),
+    re.compile(r"conversion trend", re.IGNORECASE),
+    re.compile(r"month[- ]over[- ]month.{0,10}conversion", re.IGNORECASE),
+]
+
+
+def is_conversion_rate_query(query: str) -> bool:
+    normalized = query.strip()
+    if not normalized:
+        return False
+
+    if any(pattern.search(normalized) for pattern in _CONVERSION_RATE_QUERY_PATTERNS):
+        return True
+
+    lowered = normalized.lower()
+    return "conversion" in lowered and (
+        "mom" in lowered
+        or "month over month" in lowered
+        or "month-over-month" in lowered
+        or "trend" in lowered
+    )
+
+
+def prioritize_conversion_core_documents(
+    query: str, documents: list[dict]
+) -> list[dict]:
+    if not is_conversion_rate_query(query):
+        return documents
+
+    return sorted(
+        documents,
+        key=lambda document: (
+            0
+            if document.get("table_name") == CONVERSION_RATE_PRIORITY_TABLE
+            else 1
+        ),
+    )
+
+
+def build_runtime_sql_instructions(
+    query: str, table_names: list[str], instructions: list[dict] | None = None
+) -> list[dict]:
+    runtime_instructions = list(instructions or [])
+    if (
+        not is_conversion_rate_query(query)
+        or CONVERSION_RATE_PRIORITY_TABLE not in table_names
+    ):
+        return runtime_instructions
+
+    if any(
+        item.get("instruction") == CONVERSION_RATE_PRIORITY_INSTRUCTION
+        for item in runtime_instructions
+    ):
+        return runtime_instructions
+
+    runtime_instructions.append(
+        {
+            "instruction": CONVERSION_RATE_PRIORITY_INSTRUCTION,
+            "question": query,
+            "instruction_id": "runtime_conversion_rate_priority",
+        }
+    )
+    return runtime_instructions
 
 
 class AskHistory(BaseModel):
@@ -30,6 +111,7 @@ class AskRequest(BaseRequest):
     use_dry_plan: bool = False
     allow_dry_plan_fallback: bool = True
     custom_instruction: Optional[str] = None
+    semantic_context: Optional[str] = None
 
 
 class AskResponse(BaseModel):
@@ -176,6 +258,7 @@ class AskService:
         use_dry_plan = ask_request.use_dry_plan
         allow_dry_plan_fallback = ask_request.allow_dry_plan_fallback
         sql_knowledge = None
+        semantic_context = ask_request.semantic_context
 
         try:
             user_query = ask_request.query
@@ -352,9 +435,17 @@ class AskService:
                 _retrieval_result = retrieval_result.get(
                     "construct_retrieval_results", {}
                 )
-                documents = _retrieval_result.get("retrieval_results", [])
+                documents = prioritize_conversion_core_documents(
+                    user_query,
+                    _retrieval_result.get("retrieval_results", []),
+                )
                 table_names = [document.get("table_name") for document in documents]
                 table_ddls = [document.get("table_ddl") for document in documents]
+                instructions = build_runtime_sql_instructions(
+                    user_query,
+                    table_names,
+                    instructions,
+                )
 
                 if not documents:
                     logger.exception(f"ask pipeline - NO_RELEVANT_DATA: {user_query}")
@@ -397,10 +488,11 @@ class AskService:
                             contexts=table_ddls,
                             histories=histories,
                             sql_samples=sql_samples,
-                            instructions=instructions,
-                            configuration=ask_request.configurations,
-                            query_id=query_id,
-                        )
+                                instructions=instructions,
+                                semantic_context=semantic_context,
+                                configuration=ask_request.configurations,
+                                query_id=query_id,
+                            )
                     ).get("post_process", {})
                 else:
                     sql_generation_reasoning = (
@@ -409,6 +501,7 @@ class AskService:
                             contexts=table_ddls,
                             sql_samples=sql_samples,
                             instructions=instructions,
+                            semantic_context=semantic_context,
                             configuration=ask_request.configurations,
                             query_id=query_id,
                         )
@@ -470,6 +563,7 @@ class AskService:
                         project_id=ask_request.project_id,
                         sql_samples=sql_samples,
                         instructions=instructions,
+                        semantic_context=semantic_context,
                         has_calculated_field=has_calculated_field,
                         has_metric=has_metric,
                         has_json_field=has_json_field,
@@ -488,6 +582,7 @@ class AskService:
                         project_id=ask_request.project_id,
                         sql_samples=sql_samples,
                         instructions=instructions,
+                        semantic_context=semantic_context,
                         has_calculated_field=has_calculated_field,
                         has_metric=has_metric,
                         has_json_field=has_json_field,
@@ -561,6 +656,7 @@ class AskService:
                             allow_dry_plan_fallback=allow_dry_plan_fallback,
                             sql_functions=sql_functions,
                             sql_knowledge=sql_knowledge,
+                            semantic_context=semantic_context,
                         )
 
                         if valid_generation_result := sql_correction_results[

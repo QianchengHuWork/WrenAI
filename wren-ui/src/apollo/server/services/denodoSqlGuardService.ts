@@ -15,10 +15,15 @@ import { toIbisConnectionInfo } from '@server/dataSource';
 import { getLogger } from '@server/utils';
 import * as Errors from '@server/utils/error';
 import {
+  isDenodoSemanticDictionaryEnabled,
   buildDenodoMcpValidateToolName,
   getDenodoManifestPath,
   getDenodoRawSchemaPath,
+  getDenodoSemanticDictionaryPath,
+  readDenodoSemanticDictionary,
+  toDenodoSemanticContext,
   toDenodoNativeSql,
+  applySemanticDictionaryToSql,
 } from '@server/utils/denodoMcp';
 
 const logger = getLogger('DenodoSqlGuardService');
@@ -169,8 +174,26 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
     let attempt = 1;
     let currentSql = toDenodoNativeSql(sql, manifest);
     let lastErrorMessage = '';
+    const semanticDictionary = isDenodoSemanticDictionaryEnabled()
+      ? await readDenodoSemanticDictionary(project.id)
+      : null;
+    const semanticContext =
+      semanticDictionary && isDenodoSemanticDictionaryEnabled()
+        ? toDenodoSemanticContext(semanticDictionary, {
+            models: retrievedTables,
+          })
+        : undefined;
 
     while (attempt <= MAX_VALIDATE_ATTEMPTS) {
+      if (semanticDictionary) {
+        const semanticRewrite = applySemanticDictionaryToSql(
+          currentSql,
+          manifest,
+          semanticDictionary,
+        );
+        currentSql = semanticRewrite.sql;
+        toolCalls.push(...semanticRewrite.appliedRewrites);
+      }
       logger.debug(
         `Validating Denodo SQL. projectId=${project.id}, attempt=${attempt}`,
       );
@@ -204,6 +227,7 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
         projectId: project.id.toString(),
         retrievedTables,
         validationMode: 'none',
+        semanticContext,
       });
       const correctionResult = await this.waitSqlCorrection(correctionTask.queryId);
 
@@ -258,10 +282,16 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
   }
 
   private getSemanticFiles(projectId: number) {
-    return [
+    const files = [
       `read semantic file: ${getDenodoRawSchemaPath(projectId)}`,
       `read semantic file: ${getDenodoManifestPath(projectId)}`,
     ];
+    if (isDenodoSemanticDictionaryEnabled()) {
+      files.push(
+        `read semantic file: ${getDenodoSemanticDictionaryPath(projectId)}`,
+      );
+    }
+    return files;
   }
 
   private prefixCandidateToolCalls(

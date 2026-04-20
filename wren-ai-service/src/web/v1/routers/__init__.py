@@ -8,6 +8,7 @@ from src.web.v1.routers import (
     instructions,
     question_recommendation,
     relationship_recommendation,
+    semantic_dictionary,
     semantics_description,
     semantics_preparation,
     sql_answers,
@@ -21,6 +22,7 @@ router.include_router(ask.router)
 router.include_router(ask_feedbacks.router)
 router.include_router(question_recommendation.router)
 router.include_router(relationship_recommendation.router)
+router.include_router(semantic_dictionary.router)
 router.include_router(semantics_description.router)
 router.include_router(semantics_preparation.router)
 router.include_router(sql_answers.router)

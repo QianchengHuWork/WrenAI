@@ -19,6 +19,7 @@ import {
   InstructionRepository,
   ApiHistoryRepository,
   DashboardItemRefreshJobRepository,
+  SemanticDictionaryBuildJobRepository,
 } from '@server/repositories';
 import {
   DenodoMcpAdaptor,
@@ -43,6 +44,7 @@ import {
   ProjectRecommendQuestionBackgroundTracker,
   ThreadRecommendQuestionBackgroundTracker,
   DashboardCacheBackgroundTracker,
+  SemanticDictionaryBuildBackgroundTracker,
 } from './apollo/server/backgrounds';
 import { SqlPairService } from './apollo/server/services/sqlPairService';
 
@@ -77,6 +79,8 @@ export const initComponents = () => {
   const apiHistoryRepository = new ApiHistoryRepository(knex);
   const dashboardItemRefreshJobRepository =
     new DashboardItemRefreshJobRepository(knex);
+  const semanticDictionaryBuildJobRepository =
+    new SemanticDictionaryBuildJobRepository(knex);
 
   // adaptors
   const wrenEngineAdaptor = new WrenEngineAdaptor({
@@ -126,6 +130,12 @@ export const initComponents = () => {
     wrenAIAdaptor,
     telemetry,
   });
+  const semanticDictionaryBuildBackgroundTracker =
+    new SemanticDictionaryBuildBackgroundTracker({
+      projectRepository,
+      semanticDictionaryBuildJobRepository,
+      wrenAIAdaptor,
+    });
   const askingTaskTracker = new AskingTaskTracker({
     wrenAIAdaptor,
     askingTaskRepository,
@@ -208,6 +218,7 @@ export const initComponents = () => {
     apiHistoryRepository,
     instructionRepository,
     dashboardItemRefreshJobRepository,
+    semanticDictionaryBuildJobRepository,
 
     // adaptors
     wrenEngineAdaptor,
@@ -232,8 +243,14 @@ export const initComponents = () => {
     projectRecommendQuestionBackgroundTracker,
     threadRecommendQuestionBackgroundTracker,
     dashboardCacheBackgroundTracker,
+    semanticDictionaryBuildBackgroundTracker,
   };
 };
 
 // singleton components
-export const components = initComponents();
+const globalState = globalThis as typeof globalThis & {
+  __wrenComponents?: ReturnType<typeof initComponents>;
+};
+
+export const components =
+  globalState.__wrenComponents || (globalState.__wrenComponents = initComponents());
