@@ -1,0 +1,101 @@
+services:
+  bootstrap:
+    image: ${WREN_BOOTSTRAP_IMAGE}
+    pull_policy: never
+    platform: linux/amd64
+    restart: on-failure
+    environment:
+      DATA_PATH: /app/data
+    volumes:
+      - ${CUSTOMER_SHARED_ETC_DIR:-./data/shared}:/app/data
+    command: /bin/sh /app/init.sh
+
+  wren-engine:
+    image: ${WREN_ENGINE_IMAGE}
+    pull_policy: never
+    platform: linux/amd64
+    restart: unless-stopped
+    expose:
+      - "${WREN_ENGINE_PORT:-8080}"
+      - "${WREN_ENGINE_SQL_PORT:-7432}"
+    volumes:
+      - ${CUSTOMER_SHARED_ETC_DIR:-./data/shared}:/usr/src/app/etc
+      - ${CUSTOMER_LOCAL_STORAGE_DIR:-./data/local-storage}:/usr/src/app/data
+    depends_on:
+      - bootstrap
+
+  ibis-server:
+    image: ${IBIS_SERVER_IMAGE}
+    pull_policy: never
+    platform: linux/amd64
+    restart: unless-stopped
+    expose:
+      - "${IBIS_SERVER_PORT:-8000}"
+    environment:
+      WREN_ENGINE_ENDPOINT: http://wren-engine:${WREN_ENGINE_PORT:-8080}
+    volumes:
+      - ${CUSTOMER_LOCAL_STORAGE_DIR:-./data/local-storage}:/usr/src/app/data
+
+  qdrant:
+    image: ${QDRANT_IMAGE}
+    pull_policy: never
+    platform: linux/amd64
+    restart: unless-stopped
+    expose:
+      - "6333"
+      - "6334"
+    volumes:
+      - ${CUSTOMER_QDRANT_STORAGE_DIR:-./data/qdrant}:/qdrant/storage
+
+  wren-ai-service:
+    image: ${WREN_AI_SERVICE_IMAGE_REPO}:${PACKAGE_TAG}
+    pull_policy: never
+    platform: linux/amd64
+    restart: unless-stopped
+    expose:
+      - "${WREN_AI_SERVICE_PORT:-5555}"
+    ports:
+      - ${AI_SERVICE_FORWARD_PORT:-5555}:${WREN_AI_SERVICE_PORT:-5555}
+    environment:
+      CONFIG_PATH: /app/config.yaml
+      PYTHONUNBUFFERED: 1
+      QDRANT_HOST: qdrant
+      SHOULD_FORCE_DEPLOY: 1
+      WREN_AI_SERVICE_PORT: ${WREN_AI_SERVICE_PORT:-5555}
+      WREN_UI_PORT: ${WREN_UI_PORT:-3000}
+    depends_on:
+      - qdrant
+
+  wren-ui:
+    image: ${WREN_UI_IMAGE_REPO}:${PACKAGE_TAG}
+    pull_policy: never
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - ${HOST_PORT:-3000}:3000
+    environment:
+      DB_TYPE: sqlite
+      SQLITE_FILE: /app/data/db.sqlite3
+      WREN_ENGINE_ENDPOINT: http://wren-engine:${WREN_ENGINE_PORT:-8080}
+      WREN_AI_ENDPOINT: http://wren-ai-service:${WREN_AI_SERVICE_PORT:-5555}
+      IBIS_SERVER_ENDPOINT: http://ibis-server:${IBIS_SERVER_PORT:-8000}
+      GENERATION_MODEL: ${GENERATION_MODEL:-Kimi-K2.5-via-SiliconFlow}
+      WREN_ENGINE_PORT: ${WREN_ENGINE_PORT:-8080}
+      WREN_AI_SERVICE_VERSION: ${WREN_AI_SERVICE_VERSION:-customer}
+      WREN_UI_VERSION: ${WREN_UI_VERSION:-customer}
+      WREN_ENGINE_VERSION: ${WREN_ENGINE_VERSION:-0.22.0}
+      USER_UUID: ${USER_UUID:-00000000-0000-0000-0000-000000000000}
+      POSTHOG_API_KEY: ""
+      POSTHOG_HOST: ""
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
+      NEXT_PUBLIC_USER_UUID: ${USER_UUID:-00000000-0000-0000-0000-000000000000}
+      NEXT_PUBLIC_POSTHOG_API_KEY: ""
+      NEXT_PUBLIC_POSTHOG_HOST: ""
+      NEXT_PUBLIC_TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
+      EXPERIMENTAL_ENGINE_RUST_VERSION: ${EXPERIMENTAL_ENGINE_RUST_VERSION:-false}
+      WREN_PRODUCT_VERSION: ${WREN_PRODUCT_VERSION:-customer-poc}
+    volumes:
+      - ${CUSTOMER_UI_DATA_DIR:-./data/ui}:/app/data
+    depends_on:
+      - wren-ai-service
+      - wren-engine

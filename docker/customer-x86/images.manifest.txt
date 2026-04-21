@@ -1,0 +1,2 @@
+# package.sh writes a release-specific manifest into dist/images.manifest.txt.
+# This tracked placeholder documents the expected artifact name.

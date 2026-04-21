@@ -2,4 +2,7 @@
 !src
 !entrypoint.sh
 !pyproject.toml
+!config.yaml
+!config.customer.yaml
+!docker/Dockerfile
 src/eval
