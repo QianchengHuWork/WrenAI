@@ -91,7 +91,7 @@ export default function useSetupConnectionDataSource() {
   const completedDataSourceSave = useCallback(async () => {
     setTrackingProgress(false);
     if (selected === DataSourceName.DENODO_MCP) {
-      router.push(Path.Modeling);
+      router.push(Path.OnboardingModels);
       return;
     }
     router.push(Path.OnboardingModels);

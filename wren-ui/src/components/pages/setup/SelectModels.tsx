@@ -3,11 +3,15 @@ import { Button, Col, Form, Row, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ERROR_TEXTS } from '@/utils/error';
 import MultiSelectBox from '@/components/table/MultiSelectBox';
-import { CompactTable } from '@/apollo/client/graphql/__types__';
+import {
+  CompactTable,
+  DataSourceName,
+} from '@/apollo/client/graphql/__types__';
 
 const { Title, Text } = Typography;
 
 interface Props {
+  dataSourceType?: DataSourceName;
   fetching: boolean;
   tables: CompactTable[];
   onNext: (data: { selectedTables: string[] }) => void;
@@ -23,8 +27,10 @@ const columns: ColumnsType<CompactTable> = [
 ];
 
 export default function SelectModels(props: Props) {
-  const { fetching, tables, onBack, onNext, submitting } = props;
+  const { dataSourceType, fetching, tables, onBack, onNext, submitting } =
+    props;
   const [form] = Form.useForm();
+  const isDenodo = dataSourceType === DataSourceName.DENODO_MCP;
 
   const items = tables.map((item) => ({
     ...item,
@@ -45,10 +51,12 @@ export default function SelectModels(props: Props) {
   return (
     <div>
       <Title level={1} className="mb-3">
-        选择要用于创建数据模型的表
+        {isDenodo ? '选择要用于创建语义层的视图' : '选择要用于创建数据模型的表'}
       </Title>
       <Text>
-        我们会基于所选表创建数据模型，帮助 AI 更好地理解你的数据。
+        {isDenodo
+          ? '我们会基于所选视图创建首批语义层模型，帮助 AI 先在你关注的业务域内稳定生成 SQL。'
+          : '我们会基于所选表创建数据模型，帮助 AI 更好地理解你的数据。'}
         <br />
         <Link
           href="https://docs.getwren.ai/oss/guide/modeling/overview"
@@ -73,6 +81,7 @@ export default function SelectModels(props: Props) {
             <MultiSelectBox
               columns={columns}
               items={items}
+              itemLabel={isDenodo ? '视图' : '表'}
               loading={fetching}
             />
           </Form.Item>

@@ -94,6 +94,7 @@ export interface DENODO_MCP_CONNECTION_INFO {
   databaseName: string;
   username: string;
   password: string;
+  selectedViews?: string[];
 }
 
 export interface ATHENA_CONNECTION_INFO {

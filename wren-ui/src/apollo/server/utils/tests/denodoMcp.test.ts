@@ -6,6 +6,7 @@ import {
   buildDenodoSemanticDictionary,
   buildFallbackDenodoSemanticDictionaryEntries,
   buildDenodoSemanticDictionaryTasks,
+  filterDenodoRawSchemaViews,
   normalizeDenodoSemanticDictionaryEntries,
   toDenodoSemanticContext,
   toDenodoCompactTables,
@@ -95,6 +96,37 @@ describe('denodoMcp utils', () => {
     ]);
   });
 
+  it('filters raw schema down to the selected Denodo views', () => {
+    const rawSchema = {
+      structuredContent: {
+        views: [
+          { view_name: 'dv_ord_core', columns: [] },
+          { view_name: 'dm_ord_month_city', columns: [] },
+        ],
+      },
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            views: [
+              { view_name: 'dv_ord_core', columns: [] },
+              { view_name: 'dm_ord_month_city', columns: [] },
+            ],
+          }),
+        },
+      ],
+    };
+
+    const result = filterDenodoRawSchemaViews(rawSchema, ['dm_ord_month_city']);
+
+    expect(result.structuredContent.views).toEqual([
+      { view_name: 'dm_ord_month_city', columns: [] },
+    ]);
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      views: [{ view_name: 'dm_ord_month_city', columns: [] }],
+    });
+  });
+
   it('builds semantic dictionary tasks from candidate columns and batches by column scope', () => {
     const manifest = {
       models: [
@@ -141,9 +173,21 @@ describe('denodoMcp utils', () => {
             view_name: 'dv_ord_core',
             description: '订单核心事实表',
             columns: [
-              { name: 'order_status', data_type: 'VARCHAR', description: 'B端订单状态' },
-              { name: 'order_amount', data_type: 'DECIMAL', description: '订单总金额' },
-              { name: 'city', data_type: 'VARCHAR', description: '订单所在城市' },
+              {
+                name: 'order_status',
+                data_type: 'VARCHAR',
+                description: 'B端订单状态',
+              },
+              {
+                name: 'order_amount',
+                data_type: 'DECIMAL',
+                description: '订单总金额',
+              },
+              {
+                name: 'city',
+                data_type: 'VARCHAR',
+                description: '订单所在城市',
+              },
             ],
           },
         ],

@@ -184,14 +184,20 @@ export const readDenodoSemanticDictionary = async (
 export const readDenodoRawSchema = async (
   projectId: number,
 ): Promise<Record<string, any>> => {
-  const raw = await fs.promises.readFile(getDenodoRawSchemaPath(projectId), 'utf-8');
+  const raw = await fs.promises.readFile(
+    getDenodoRawSchemaPath(projectId),
+    'utf-8',
+  );
   return JSON.parse(raw);
 };
 
 export const readDenodoManifest = async (
   projectId: number,
 ): Promise<Manifest> => {
-  const raw = await fs.promises.readFile(getDenodoManifestPath(projectId), 'utf-8');
+  const raw = await fs.promises.readFile(
+    getDenodoManifestPath(projectId),
+    'utf-8',
+  );
   return JSON.parse(raw) as Manifest;
 };
 
@@ -289,7 +295,8 @@ const extractDescriptionPrefix = (description?: string) => {
 };
 
 const deriveConceptFromTask = (task: DenodoSemanticDictionaryTask) =>
-  extractDescriptionPrefix(task.description) || humanizeIdentifier(task.scope.column);
+  extractDescriptionPrefix(task.description) ||
+  humanizeIdentifier(task.scope.column);
 
 const splitEnumSegments = (value: string) =>
   value
@@ -359,7 +366,11 @@ const scoreCandidateColumn = ({
   if (valueAliasCandidate) score += 10;
   if (columnHintCandidate) score += 4;
   if (/^is_/i.test(column) || /^has_/i.test(column)) score += 6;
-  if (/status|state|type|amount|price|date|time|city|channel|customer|order/i.test(column)) {
+  if (
+    /status|state|type|amount|price|date|time|city|channel|customer|order/i.test(
+      column,
+    )
+  ) {
     score += 5;
   }
   return score;
@@ -373,7 +384,8 @@ const collectDenodoSemanticCandidateColumns = ({
   rawSchema: Record<string, any>;
 }): DenodoSemanticCandidateColumn[] => {
   const rawViews =
-    extractDenodoStructuredContent<DenodoDatabaseSchema>(rawSchema)?.views || [];
+    extractDenodoStructuredContent<DenodoDatabaseSchema>(rawSchema)?.views ||
+    [];
   const rawViewMap = new Map(
     rawViews.map((view) => [view.view_name.toLowerCase(), view]),
   );
@@ -382,7 +394,10 @@ const collectDenodoSemanticCandidateColumns = ({
     .flatMap((model) => {
       const rawView = rawViewMap.get(model.name.toLowerCase());
       const rawColumnMap = new Map(
-        (rawView?.columns || []).map((column) => [column.name.toLowerCase(), column]),
+        (rawView?.columns || []).map((column) => [
+          column.name.toLowerCase(),
+          column,
+        ]),
       );
 
       return (model.columns || []).map<DenodoSemanticCandidateColumn | null>(
@@ -432,7 +447,10 @@ export const buildDenodoSemanticDictionaryTasks = ({
   manifest: Manifest;
   rawSchema: Record<string, any>;
 }): DenodoSemanticDictionaryTask[] => {
-  const candidates = collectDenodoSemanticCandidateColumns({ manifest, rawSchema });
+  const candidates = collectDenodoSemanticCandidateColumns({
+    manifest,
+    rawSchema,
+  });
 
   const valueAliasColumns = candidates
     .filter((candidate) => candidate.valueAliasCandidate)
@@ -441,7 +459,8 @@ export const buildDenodoSemanticDictionaryTasks = ({
 
   const valueAliasKeys = new Set(
     valueAliasColumns.map(
-      (candidate) => `${candidate.model.toLowerCase()}.${candidate.column.toLowerCase()}`,
+      (candidate) =>
+        `${candidate.model.toLowerCase()}.${candidate.column.toLowerCase()}`,
     ),
   );
 
@@ -484,16 +503,13 @@ export const buildDenodoSemanticDictionaryBatches = (
   tasks: DenodoSemanticDictionaryTask[],
   batchSize = DEFAULT_DICTIONARY_BATCH_SIZE,
 ) => {
-  const groupedByScope = tasks.reduce(
-    (acc, task) => {
-      const key = `${task.scope.model}.${task.scope.column}`;
-      const group = acc.get(key) || [];
-      group.push(task);
-      acc.set(key, group);
-      return acc;
-    },
-    new Map<string, DenodoSemanticDictionaryTask[]>(),
-  );
+  const groupedByScope = tasks.reduce((acc, task) => {
+    const key = `${task.scope.model}.${task.scope.column}`;
+    const group = acc.get(key) || [];
+    group.push(task);
+    acc.set(key, group);
+    return acc;
+  }, new Map<string, DenodoSemanticDictionaryTask[]>());
 
   const groups = Array.from(groupedByScope.values());
   const batches: DenodoSemanticDictionaryTask[][] = [];
@@ -512,21 +528,19 @@ export const buildDenodoSemanticDictionaryBatchContext = ({
   manifest: Manifest;
   rawSchema: Record<string, any>;
 }) => {
-  const modelColumns = tasks.reduce(
-    (acc, task) => {
-      const next = acc.get(task.scope.model) || new Set<string>();
-      next.add(task.scope.column);
-      acc.set(task.scope.model, next);
-      return acc;
-    },
-    new Map<string, Set<string>>(),
-  );
+  const modelColumns = tasks.reduce((acc, task) => {
+    const next = acc.get(task.scope.model) || new Set<string>();
+    next.add(task.scope.column);
+    acc.set(task.scope.model, next);
+    return acc;
+  }, new Map<string, Set<string>>());
 
   const manifestSummary = {
     models: (manifest.models || [])
       .filter((model) => modelColumns.has(model.name))
       .map((model) => {
-        const selectedColumns = modelColumns.get(model.name) || new Set<string>();
+        const selectedColumns =
+          modelColumns.get(model.name) || new Set<string>();
         return {
           name: model.name,
           description: model.properties?.description,
@@ -542,7 +556,8 @@ export const buildDenodoSemanticDictionaryBatchContext = ({
   };
 
   const rawViews =
-    extractDenodoStructuredContent<DenodoDatabaseSchema>(rawSchema)?.views || [];
+    extractDenodoStructuredContent<DenodoDatabaseSchema>(rawSchema)?.views ||
+    [];
   const rawSchemaSummary = {
     views: rawViews
       .filter((view) => modelColumns.has(view.view_name))
@@ -573,7 +588,9 @@ const uniqueStrings = (values: Array<string | undefined | null>) =>
   Array.from(
     new Set(
       values
-        .filter((value): value is string => !!value && typeof value === 'string')
+        .filter(
+          (value): value is string => !!value && typeof value === 'string',
+        )
         .map((value) => value.trim())
         .filter(Boolean),
     ),
@@ -721,7 +738,10 @@ export const buildFallbackDenodoSemanticDictionaryEntries = ({
         scope: task.scope,
         concept,
         description,
-        aliases: uniqueStrings([concept, humanizeIdentifier(task.scope.column)]),
+        aliases: uniqueStrings([
+          concept,
+          humanizeIdentifier(task.scope.column),
+        ]),
         rewriteMode: 'COLUMN_HINT',
       });
       return;
@@ -824,6 +844,38 @@ export const extractDenodoStructuredContent = <T = any>(
   } catch {
     return {} as T;
   }
+};
+
+export const filterDenodoRawSchemaViews = (
+  rawSchema: Record<string, any>,
+  selectedViews: string[],
+): Record<string, any> => {
+  const structured =
+    extractDenodoStructuredContent<DenodoDatabaseSchema>(rawSchema);
+  const views = structured?.views || [];
+  const selectedViewSet = new Set(
+    selectedViews.map((view) => view.toLowerCase()),
+  );
+  const filteredStructured = {
+    ...structured,
+    views: views.filter((view) =>
+      selectedViewSet.has(view.view_name.toLowerCase()),
+    ),
+  };
+
+  const nextRawSchema: Record<string, any> = {
+    ...rawSchema,
+    structuredContent: filteredStructured,
+  };
+  if (Array.isArray(rawSchema?.content)) {
+    nextRawSchema.content = rawSchema.content.map((item) =>
+      item?.type === 'text'
+        ? { ...item, text: JSON.stringify(filteredStructured) }
+        : item,
+    );
+  }
+
+  return nextRawSchema;
 };
 
 export const toDenodoCompactTables = (
@@ -1629,7 +1681,9 @@ const tryRewritePredicate = (
   const literalValue = getStringLiteralValue(literalExpr);
   if (!literalValue) return null;
   const normalizedLiteralValue =
-    normalizedOperator === 'LIKE' ? trimLikePattern(literalValue) : literalValue;
+    normalizedOperator === 'LIKE'
+      ? trimLikePattern(literalValue)
+      : literalValue;
 
   const matchedEntry = matchSemanticEntry(
     entries,
@@ -1713,8 +1767,7 @@ const unwrapLowerFunction = (expr: any) => {
   return expr;
 };
 
-const normalizeSemanticAlias = (value: string) =>
-  value.trim().toLowerCase();
+const normalizeSemanticAlias = (value: string) => value.trim().toLowerCase();
 
 const trimLikePattern = (value: string) => {
   if (!value.includes('%')) return value;

@@ -37,6 +37,7 @@ import DataSourceSchemaDetector, {
 import { encryptConnectionInfo } from '../dataSource';
 import { TelemetryEvent } from '../telemetry/telemetry';
 import {
+  filterDenodoRawSchemaViews,
   isDenodoSemanticDictionaryEnabled,
   toDenodoCompactTables,
   writeDenodoSemanticArtifacts,
@@ -48,12 +49,11 @@ import {
   failDataSourceSetupProgress,
   getDataSourceSetupProgress,
   startDataSourceSetupProgress,
+  startDataSourceSetupProgressWithMode,
   updateDataSourceSetupProgress,
 } from '@server/utils/dataSourceSetupProgress';
 import { toIbisConnectionInfo } from '@server/dataSource';
-import {
-  DENODO_MCP_CONNECTION_INFO,
-} from '@server/repositories';
+import { DENODO_MCP_CONNECTION_INFO } from '@server/repositories';
 import { Manifest } from '@server/mdl/type';
 
 const logger = getLogger('DataSourceResolver');
@@ -76,6 +76,15 @@ For Denodo SQL generation:
 6. Do not generate LIMIT, FETCH, or TOP.
 7. Only use views and columns that exist in the manifest.
 `.trim();
+
+const normalizeDenodoSelectedViews = (views?: string[] | null): string[] =>
+  Array.from(
+    new Set(
+      (views || [])
+        .map((view) => view?.trim())
+        .filter((view): view is string => Boolean(view)),
+    ),
+  );
 
 export class ProjectResolver {
   constructor() {
@@ -114,7 +123,7 @@ export class ProjectResolver {
         properties: {
           displayName: project.displayName,
           ...generalConnectionInfo,
-      } as DataSourceProperties,
+        } as DataSourceProperties,
         sampleDataset: project.sampleDataset,
       },
       language: project.language || DEFAULT_PROJECT_LANGUAGE,
@@ -297,7 +306,11 @@ export class ProjectResolver {
     ctx: IContext,
   ) {
     const { type, properties } = args.data;
-    startDataSourceSetupProgress(type);
+    if (type === DataSourceName.DENODO_MCP) {
+      startDataSourceSetupProgressWithMode(type, 'denodo_connection');
+    } else {
+      startDataSourceSetupProgress(type);
+    }
     const eventName = TelemetryEvent.CONNECTION_SAVE_DATA_SOURCE;
     const eventProperties = {
       dataSourceType: type,
@@ -331,10 +344,7 @@ export class ProjectResolver {
 
       // handle duckdb connection
       if (type === DataSourceName.DUCKDB) {
-        updateDataSourceSetupProgress(
-          'CONNECTING',
-          '正在准备 DuckDB 运行环境',
-        );
+        updateDataSourceSetupProgress('CONNECTING', '正在准备 DuckDB 运行环境');
         connectionInfo as DUCKDB_CONNECTION_INFO;
         await this.buildDuckDbEnvironment(ctx, {
           initSql: connectionInfo.initSql,
@@ -342,15 +352,23 @@ export class ProjectResolver {
           configurations: connectionInfo.configurations,
         });
       } else if (type === DataSourceName.DENODO_MCP) {
-        await this.refreshDenodoSemanticAssetsForProject(
-          project,
-          ctx,
-          connectionInfo as DENODO_MCP_CONNECTION_INFO,
+        updateDataSourceSetupProgress(
+          'CONNECTING',
+          '正在连接 Denodo MCP 并读取可用视图',
         );
+        await ctx.projectService.getProjectDataSourceTables(project);
+        const version =
+          await ctx.projectService.getProjectDataSourceVersion(project);
+        await ctx.projectService.updateProject(project.id, {
+          version,
+        });
+        updateDataSourceSetupProgress(
+          'FINALIZING',
+          '正在完成连接初始化并准备视图选择',
+        );
+        await this.ensureDefaultDenodoInstruction(project.id, ctx);
         completeDataSourceSetupProgress(
-          isDenodoSemanticDictionaryEnabled()
-            ? '核心语义层已完成，Semantic Dictionary 已转入后台构建'
-            : '核心语义层已完成，Semantic Dictionary 已暂时禁用',
+          'Denodo 连接已完成，请先选择要纳入语义层的视图',
         );
       } else {
         // handle other data source
@@ -365,10 +383,7 @@ export class ProjectResolver {
           version,
         });
         logger.debug(`Data source tables fetched`);
-        updateDataSourceSetupProgress(
-          'FINALIZING',
-          '正在完成项目初始化',
-        );
+        updateDataSourceSetupProgress('FINALIZING', '正在完成项目初始化');
       }
       if (type !== DataSourceName.DENODO_MCP) {
         completeDataSourceSetupProgress('数据源初始化完成');
@@ -409,10 +424,11 @@ export class ProjectResolver {
     projectId: number,
     ctx: IContext,
   ) {
-    const existingDefaultInstruction = await ctx.instructionRepository.findOneBy({
-      projectId,
-      isDefault: true,
-    } as any);
+    const existingDefaultInstruction =
+      await ctx.instructionRepository.findOneBy({
+        projectId,
+        isDefault: true,
+      } as any);
 
     if (existingDefaultInstruction) {
       return;
@@ -475,24 +491,40 @@ export class ProjectResolver {
       connectionInfo: { ...project.connectionInfo, ...toUpdateConnectionInfo },
     });
     if (dataSourceType === DataSourceName.DENODO_MCP) {
-      startDataSourceSetupProgress(dataSourceType);
-      try {
-        updateDataSourceSetupProgress(
-          'CREATING_PROJECT',
-          '正在更新连接配置',
+      await this.ensureDefaultDenodoInstruction(updatedProject.id, ctx);
+      const selectedViews = await this.resolveDenodoSelectedViews(
+        updatedProject,
+        ctx,
+      );
+      if (selectedViews.length) {
+        startDataSourceSetupProgressWithMode(
+          dataSourceType,
+          'denodo_semantic_refresh',
         );
-        await this.refreshDenodoSemanticAssetsForProject(updatedProject, ctx);
-        completeDataSourceSetupProgress(
-          isDenodoSemanticDictionaryEnabled()
-            ? '核心语义层已刷新，Semantic Dictionary 已转入后台构建'
-            : '核心语义层已刷新，Semantic Dictionary 已暂时禁用',
-        );
-      } catch (error: any) {
-        failDataSourceSetupProgress(
-          error.message,
-          '刷新 Denodo 语义资产失败',
-        );
-        throw error;
+        try {
+          updateDataSourceSetupProgress(
+            'FETCHING_SCHEMA',
+            '正在拉取最新 Denodo Schema',
+          );
+          await this.refreshDenodoSemanticAssetsForProject(
+            updatedProject,
+            ctx,
+            {
+              selectedViews,
+            },
+          );
+          completeDataSourceSetupProgress(
+            isDenodoSemanticDictionaryEnabled()
+              ? '核心语义层已刷新，Semantic Dictionary 已转入后台构建'
+              : '核心语义层已刷新，Semantic Dictionary 已暂时禁用',
+          );
+        } catch (error: any) {
+          failDataSourceSetupProgress(
+            error.message,
+            '刷新 Denodo 语义资产失败',
+          );
+          throw error;
+        }
       }
     }
     return {
@@ -514,29 +546,40 @@ export class ProjectResolver {
       throw new Error('Current project is not a Denodo MCP project');
     }
 
-    startDataSourceSetupProgress(project.type);
+    const selectedViews = await this.resolveDenodoSelectedViews(project, ctx);
+    if (!selectedViews.length) {
+      throw new Error('请先选择要纳入语义层的 Denodo 视图后再刷新');
+    }
+
+    startDataSourceSetupProgressWithMode(
+      project.type,
+      'denodo_semantic_refresh',
+    );
     try {
       updateDataSourceSetupProgress(
         'FETCHING_SCHEMA',
         '正在拉取最新 Denodo Schema',
       );
-      await this.refreshDenodoSemanticAssetsForProject(project, ctx);
+      await this.refreshDenodoSemanticAssetsForProject(project, ctx, {
+        selectedViews,
+      });
       completeDataSourceSetupProgress(
         isDenodoSemanticDictionaryEnabled()
           ? '核心语义资产已刷新，Semantic Dictionary 已转入后台构建'
           : '核心语义资产已刷新，Semantic Dictionary 已暂时禁用',
       );
     } catch (error: any) {
-      failDataSourceSetupProgress(
-        error.message,
-        'Denodo 语义资产刷新失败',
-      );
+      failDataSourceSetupProgress(error.message, 'Denodo 语义资产刷新失败');
       throw error;
     }
     return true;
   }
 
-  public async getDataSourceSetupProgress(_root: any, _args: any, ctx: IContext) {
+  public async getDataSourceSetupProgress(
+    _root: any,
+    _args: any,
+    ctx: IContext,
+  ) {
     const inMemoryProgress = getDataSourceSetupProgress();
     if (inMemoryProgress.status !== 'IDLE') {
       return inMemoryProgress;
@@ -548,12 +591,11 @@ export class ProjectResolver {
         return inMemoryProgress;
       }
 
-      const dictionaryJob =
-        isDenodoSemanticDictionaryEnabled()
-          ? await ctx.semanticDictionaryBuildJobRepository.getByProjectId(
-              project.id,
-            )
-          : null;
+      const dictionaryJob = isDenodoSemanticDictionaryEnabled()
+        ? await ctx.semanticDictionaryBuildJobRepository.getByProjectId(
+            project.id,
+          )
+        : null;
       return (
         buildDataSourceSetupProgressFromSemanticDictionaryJob(dictionaryJob) ||
         inMemoryProgress
@@ -579,12 +621,25 @@ export class ProjectResolver {
     // get current project
     const project = await ctx.projectService.getCurrentProject();
     try {
-      // delete existing models and columns
-      const { models, columns } = await this.overwriteModelsAndColumns(
-        arg.data.tables,
-        ctx,
-        project,
-      );
+      let models;
+      let columns;
+      if (project.type === DataSourceName.DENODO_MCP) {
+        ({ models, columns } = await this.refreshDenodoSemanticAssetsForProject(
+          project,
+          ctx,
+          {
+            selectedViews: arg.data.tables,
+          },
+        ));
+      } else {
+        ({ models, columns } = await this.overwriteModelsAndColumns(
+          arg.data.tables,
+          ctx,
+          project,
+        ));
+        // async deploy to wren-engine and ai service
+        this.deploy(ctx);
+      }
       // telemetry
       ctx.telemetry.sendEvent(eventName, {
         dataSourceType: project.type,
@@ -592,8 +647,6 @@ export class ProjectResolver {
         columnsCount: columns.length,
       });
 
-      // async deploy to wren-engine and ai service
-      this.deploy(ctx);
       return { models: models, columns };
     } catch (err: any) {
       ctx.telemetry.sendEvent(
@@ -826,40 +879,115 @@ export class ProjectResolver {
     return deployRes;
   }
 
+  private async getCurrentDenodoModelSourceTables(
+    projectId: number,
+    ctx: IContext,
+  ): Promise<string[]> {
+    const models = await ctx.modelRepository.findAllBy({ projectId });
+    return normalizeDenodoSelectedViews(
+      models.map((model) => model.sourceTableName),
+    );
+  }
+
+  private async resolveDenodoSelectedViews(
+    project: Project,
+    ctx: IContext,
+  ): Promise<string[]> {
+    const connectionInfo = project.connectionInfo as DENODO_MCP_CONNECTION_INFO;
+    const selectedViews = normalizeDenodoSelectedViews(
+      connectionInfo?.selectedViews,
+    );
+    if (selectedViews.length) {
+      return selectedViews;
+    }
+
+    const derivedSelectedViews = await this.getCurrentDenodoModelSourceTables(
+      project.id,
+      ctx,
+    );
+    if (!derivedSelectedViews.length) {
+      return [];
+    }
+
+    await ctx.projectRepository.updateOne(project.id, {
+      connectionInfo: {
+        ...project.connectionInfo,
+        selectedViews: derivedSelectedViews,
+      },
+    });
+    return derivedSelectedViews;
+  }
+
+  private validateDenodoSelectedViews(
+    selectedViews: string[],
+    compactTables: CompactTable[],
+  ): string[] {
+    const normalizedSelectedViews = normalizeDenodoSelectedViews(selectedViews);
+    if (!normalizedSelectedViews.length) {
+      throw new Error('请至少选择一个 Denodo 视图来构建语义层');
+    }
+
+    const tableNameSet = new Set(
+      compactTables.map((table) => table.name.toLowerCase()),
+    );
+    const missingViews = normalizedSelectedViews.filter(
+      (view) => !tableNameSet.has(view.toLowerCase()),
+    );
+    if (missingViews.length) {
+      throw new Error(
+        `选定的 Denodo 视图在最新 Schema 中不存在: ${missingViews.join(', ')}`,
+      );
+    }
+
+    return normalizedSelectedViews;
+  }
+
   private async refreshDenodoSemanticAssetsForProject(
     project: Project,
     ctx: IContext,
-    plainConnectionInfo?: DENODO_MCP_CONNECTION_INFO,
-  ): Promise<{ rawSchema: Record<string, any>; manifest: Manifest }> {
-    const connectionInfo =
-      plainConnectionInfo ||
-      (toIbisConnectionInfo(
-        project.type,
-        project.connectionInfo,
-      ) as DENODO_MCP_CONNECTION_INFO);
+    options?: {
+      selectedViews?: string[];
+    },
+  ): Promise<{
+    rawSchema: Record<string, any>;
+    manifest: Manifest;
+    models: Model[];
+    columns: ModelColumn[];
+    selectedViews: string[];
+  }> {
+    const connectionInfo = toIbisConnectionInfo(
+      project.type,
+      project.connectionInfo,
+    ) as DENODO_MCP_CONNECTION_INFO;
 
     updateDataSourceSetupProgress(
       'FETCHING_SCHEMA',
       '正在从 Denodo MCP 拉取最新 Schema',
     );
-    const rawSchema = await ctx.denodoMcpAdaptor.getDatabaseSchema(
-      connectionInfo,
-    );
+    const rawSchema =
+      await ctx.denodoMcpAdaptor.getDatabaseSchema(connectionInfo);
     updateDataSourceSetupProgress(
       'BUILDING_MODELS',
       '正在根据 Schema 生成模型与字段',
     );
     const compactTables = toDenodoCompactTables(rawSchema);
-    const version = await ctx.projectService.getProjectDataSourceVersion({
-      ...project,
-      connectionInfo,
-    } as Project);
+    const selectedViews = this.validateDenodoSelectedViews(
+      options?.selectedViews ||
+        (await this.resolveDenodoSelectedViews(project, ctx)),
+      compactTables,
+    );
+    const version =
+      await ctx.projectService.getProjectDataSourceVersion(project);
 
     await ctx.projectService.updateProject(project.id, {
       version,
+      connectionInfo: {
+        ...project.connectionInfo,
+        selectedViews,
+      },
     });
-    await this.overwriteModelsAndColumns(
-      compactTables.map((table) => table.name),
+    const { models, columns } = await this.overwriteModelsAndColumns(
+      selectedViews,
       ctx,
       project,
       compactTables,
@@ -876,23 +1004,19 @@ export class ProjectResolver {
     );
     await writeDenodoSemanticArtifacts({
       projectId: project.id,
-      rawSchema,
+      rawSchema: filterDenodoRawSchemaViews(rawSchema, selectedViews),
       manifest,
-      semanticDictionary: isDenodoSemanticDictionaryEnabled() ? undefined : null,
+      semanticDictionary: isDenodoSemanticDictionaryEnabled()
+        ? undefined
+        : null,
     });
 
-    updateDataSourceSetupProgress(
-      'DEPLOYING',
-      '正在部署语义层并准备问答能力',
-    );
+    updateDataSourceSetupProgress('DEPLOYING', '正在部署语义层并准备问答能力');
     await this.deploy(ctx);
-    updateDataSourceSetupProgress(
-      'FINALIZING',
-      '正在完成默认规则和项目初始化',
-    );
+    updateDataSourceSetupProgress('FINALIZING', '正在完成默认规则和项目初始化');
     await this.ensureDefaultDenodoInstruction(project.id, ctx);
 
-    return { rawSchema, manifest };
+    return { rawSchema, manifest, models, columns, selectedViews };
   }
 
   private buildRelationInput(

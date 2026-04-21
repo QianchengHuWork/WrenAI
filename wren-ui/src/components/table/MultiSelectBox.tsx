@@ -35,12 +35,13 @@ interface Props {
   columns: ColumnsType<any>;
   loading: boolean;
   items: { [key: string]: any; value: string }[];
+  itemLabel?: string;
   value?: string[];
   onChange?: (value: string[]) => void;
 }
 
 export default function MultiSelectBox(props: Props) {
-  const { columns, loading, items, onChange, value } = props;
+  const { columns, itemLabel = '表', loading, items, onChange, value } = props;
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(
     new Set(value),
   );
@@ -78,14 +79,14 @@ export default function MultiSelectBox(props: Props) {
 
   const total =
     selectedRowKeys.size === 0
-      ? items.length
-      : `${selectedRowKeys.size}/${items.length}`;
+      ? `${items.length} 个${itemLabel}`
+      : `${selectedRowKeys.size}/${items.length} 个${itemLabel}`;
 
   return (
     <StyledBox
       className={status ? `multiSelectBox-input-${status}` : undefined}
     >
-      <StyledTotal>{total} 张表</StyledTotal>
+      <StyledTotal>{total}</StyledTotal>
       <div className="p-2">
         <Input
           prefix={<SearchOutlined />}

@@ -19,7 +19,11 @@ import { safeFormatSQL } from '@server/utils/sqlFormat';
 import { toDenodoNativeSql } from '@server/utils/denodoMcp';
 import { isEmpty, isNil } from 'lodash';
 import { replaceAllowableSyntax, validateDisplayName } from '../utils/regex';
-import { Model, ModelColumn } from '../repositories';
+import {
+  DENODO_MCP_CONNECTION_INFO,
+  Model,
+  ModelColumn,
+} from '../repositories';
 import {
   findColumnsToUpdate,
   getPreviewColumnsStr,
@@ -342,6 +346,10 @@ export class ModelResolver {
         fields,
         primaryKey,
       );
+      await this.syncDenodoSelectedViews(ctx, (selectedViews) => [
+        ...selectedViews,
+        sourceTableName,
+      ]);
       ctx.telemetry.sendEvent(TelemetryEvent.MODELING_CREATE_MODEL, {
         data: args.data,
       });
@@ -560,7 +568,63 @@ export class ModelResolver {
 
     // related columns and relationships will be deleted in cascade
     await ctx.modelRepository.deleteOne(modelId);
+    await this.syncDenodoSelectedViews(ctx, (selectedViews) =>
+      selectedViews.filter((view) => view !== model.sourceTableName),
+    );
     return true;
+  }
+
+  private normalizeDenodoSelectedViews(selectedViews?: string[] | null) {
+    return Array.from(
+      new Set(
+        (selectedViews || [])
+          .map((view) => view?.trim())
+          .filter((view): view is string => Boolean(view)),
+      ),
+    );
+  }
+
+  private async syncDenodoSelectedViews(
+    ctx: IContext,
+    mutate: (selectedViews: string[]) => string[],
+  ) {
+    const project = await ctx.projectService.getCurrentProject();
+    if (project.type !== DataSourceName.DENODO_MCP) {
+      return;
+    }
+
+    const connectionInfo = project.connectionInfo as DENODO_MCP_CONNECTION_INFO;
+    const storedSelectedViews = this.normalizeDenodoSelectedViews(
+      connectionInfo?.selectedViews,
+    );
+    const baseSelectedViews = storedSelectedViews.length
+      ? storedSelectedViews
+      : this.normalizeDenodoSelectedViews(
+          (
+            await ctx.modelRepository.findAllBy({
+              projectId: project.id,
+            })
+          ).map((model) => model.sourceTableName),
+        );
+    const nextSelectedViews = this.normalizeDenodoSelectedViews(
+      mutate(baseSelectedViews),
+    );
+
+    const isSame =
+      nextSelectedViews.length === storedSelectedViews.length &&
+      nextSelectedViews.every(
+        (view, index) => view === storedSelectedViews[index],
+      );
+    if (isSame) {
+      return;
+    }
+
+    await ctx.projectRepository.updateOne(project.id, {
+      connectionInfo: {
+        ...project.connectionInfo,
+        selectedViews: nextSelectedViews,
+      },
+    });
   }
 
   // update model metadata
@@ -943,7 +1007,9 @@ export class ModelResolver {
     const project = projectId
       ? await ctx.projectService.getProjectById(parseInt(projectId))
       : await ctx.projectService.getCurrentProject();
-    const lastDeployment = await ctx.deployService.getLastDeployment(project.id);
+    const lastDeployment = await ctx.deployService.getLastDeployment(
+      project.id,
+    );
     if (!lastDeployment) {
       throw new Error(
         'Current project has no successful deployment yet. Please deploy the semantic layer first.',

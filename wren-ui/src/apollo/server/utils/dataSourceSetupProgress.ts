@@ -28,6 +28,11 @@ export interface DataSourceSetupProgressState {
   updatedAt: string;
 }
 
+type DataSourceSetupMode =
+  | 'default'
+  | 'denodo_connection'
+  | 'denodo_semantic_refresh';
+
 const buildDefaultState = (): DataSourceSetupProgressState => ({
   status: 'IDLE',
   dataSourceType: null,
@@ -37,22 +42,41 @@ const buildDefaultState = (): DataSourceSetupProgressState => ({
   updatedAt: new Date().toISOString(),
 });
 
-const buildSteps = (dataSourceType?: string | null): DataSourceSetupStep[] => {
+const buildDenodoConnectionSteps = (): DataSourceSetupStep[] => [
+  { key: 'RESETTING_PROJECT', title: '清理旧项目', status: 'PENDING' },
+  { key: 'CREATING_PROJECT', title: '创建项目', status: 'PENDING' },
+  { key: 'CONNECTING', title: '校验 Denodo 连接', status: 'PENDING' },
+  { key: 'FINALIZING', title: '完成连接初始化', status: 'PENDING' },
+];
+
+const buildDenodoSemanticRefreshSteps = (): DataSourceSetupStep[] => {
+  const steps: DataSourceSetupStep[] = [
+    { key: 'FETCHING_SCHEMA', title: '拉取 Denodo Schema', status: 'PENDING' },
+    { key: 'BUILDING_MODELS', title: '生成模型与字段', status: 'PENDING' },
+    {
+      key: 'BUILDING_MANIFEST',
+      title: '生成语义层 Manifest',
+      status: 'PENDING',
+    },
+    { key: 'WRITING_ARTIFACTS', title: '写入基础语义文件', status: 'PENDING' },
+    { key: 'DEPLOYING', title: '部署核心语义层', status: 'PENDING' },
+    { key: 'FINALIZING', title: '完成项目初始化', status: 'PENDING' },
+  ];
+  if (isDenodoSemanticDictionaryEnabled()) {
+    steps.push(...buildSemanticDictionarySteps());
+  }
+  return steps;
+};
+
+const buildSteps = (
+  dataSourceType?: string | null,
+  mode: DataSourceSetupMode = 'default',
+): DataSourceSetupStep[] => {
   if (dataSourceType === DataSourceName.DENODO_MCP) {
-    const steps: DataSourceSetupStep[] = [
-      { key: 'RESETTING_PROJECT', title: '清理旧项目', status: 'PENDING' },
-      { key: 'CREATING_PROJECT', title: '创建项目', status: 'PENDING' },
-      { key: 'FETCHING_SCHEMA', title: '拉取 Denodo Schema', status: 'PENDING' },
-      { key: 'BUILDING_MODELS', title: '生成模型与字段', status: 'PENDING' },
-      { key: 'BUILDING_MANIFEST', title: '生成语义层 Manifest', status: 'PENDING' },
-      { key: 'WRITING_ARTIFACTS', title: '写入基础语义文件', status: 'PENDING' },
-      { key: 'DEPLOYING', title: '部署核心语义层', status: 'PENDING' },
-      { key: 'FINALIZING', title: '完成项目初始化', status: 'PENDING' },
-    ];
-    if (isDenodoSemanticDictionaryEnabled()) {
-      steps.push(...buildSemanticDictionarySteps());
+    if (mode === 'denodo_connection') {
+      return buildDenodoConnectionSteps();
     }
-    return steps;
+    return buildDenodoSemanticRefreshSteps();
   }
 
   return [
@@ -102,13 +126,29 @@ const touch = () => {
   progressState.updatedAt = new Date().toISOString();
 };
 
-export const startDataSourceSetupProgress = (dataSourceType?: string | null) => {
+export const startDataSourceSetupProgress = (
+  dataSourceType?: string | null,
+) => {
   progressState = {
     status: 'RUNNING',
     dataSourceType: dataSourceType || null,
     currentStepKey: null,
     error: null,
     steps: buildSteps(dataSourceType),
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+export const startDataSourceSetupProgressWithMode = (
+  dataSourceType?: string | null,
+  mode: DataSourceSetupMode = 'default',
+) => {
+  progressState = {
+    status: 'RUNNING',
+    dataSourceType: dataSourceType || null,
+    currentStepKey: null,
+    error: null,
+    steps: buildSteps(dataSourceType, mode),
     updatedAt: new Date().toISOString(),
   };
 };
@@ -145,7 +185,9 @@ export const updateDataSourceSetupProgress = (
   touch();
 };
 
-export const completeDataSourceSetupProgress = (description?: string | null) => {
+export const completeDataSourceSetupProgress = (
+  description?: string | null,
+) => {
   progressState.status = 'COMPLETED';
   progressState.error = null;
   progressState.steps = progressState.steps.map((step) =>
@@ -181,8 +223,8 @@ export const failDataSourceSetupProgress = (
   touch();
 };
 
-export const getDataSourceSetupProgress =
-  (): DataSourceSetupProgressState => progressState;
+export const getDataSourceSetupProgress = (): DataSourceSetupProgressState =>
+  progressState;
 
 export const buildDataSourceSetupProgressFromSemanticDictionaryJob = (
   job: SemanticDictionaryBuildJob | null,
