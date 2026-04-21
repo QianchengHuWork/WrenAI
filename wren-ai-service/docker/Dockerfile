@@ -1,5 +1,8 @@
 # reference: https://medium.com/@albertazzir/blazing-fast-python-docker-builds-with-poetry-a78a66f5aed0
-FROM python:3.12.0-bookworm as builder
+ARG PYTHON_BUILD_IMAGE=python:3.12.0-bookworm
+ARG PYTHON_RUNTIME_IMAGE=python:3.12.0-slim-bookworm
+
+FROM ${PYTHON_BUILD_IMAGE} as builder
 
 RUN pip install poetry==1.8.3
 
@@ -14,7 +17,7 @@ COPY pyproject.toml ./
 
 RUN poetry install --without dev,eval,test --no-root && rm -rf $POETRY_CACHE_DIR
 
-FROM python:3.12.0-slim-bookworm as runtime
+FROM ${PYTHON_RUNTIME_IMAGE} as runtime
 
 RUN apt-get update && apt install -y --no-install-recommends netcat-traditional && rm -rf /var/lib/apt/lists/*
 

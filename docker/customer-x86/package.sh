@@ -21,6 +21,20 @@ WREN_ENGINE_IMAGE="${WREN_ENGINE_IMAGE:-ghcr.io/canner/wren-engine:0.22.0}"
 IBIS_SERVER_IMAGE="${IBIS_SERVER_IMAGE:-ghcr.io/canner/wren-engine-ibis:0.22.0}"
 QDRANT_IMAGE="${QDRANT_IMAGE:-qdrant/qdrant:v1.11.0}"
 
+SOURCE_WREN_BOOTSTRAP_IMAGE="ghcr.io/canner/wren-bootstrap:0.1.5"
+SOURCE_WREN_ENGINE_IMAGE="ghcr.io/canner/wren-engine:0.22.0"
+SOURCE_IBIS_SERVER_IMAGE="ghcr.io/canner/wren-engine-ibis:0.22.0"
+SOURCE_NODE_BASE_IMAGE="node:18-bookworm-slim"
+SOURCE_PYTHON_BUILD_IMAGE="python:3.12.0-bookworm"
+SOURCE_PYTHON_RUNTIME_IMAGE="python:3.12.0-slim-bookworm"
+
+LOCAL_NODE_BASE_IMAGE="wrenai-customer/base-node:18-bookworm-slim"
+LOCAL_PYTHON_BUILD_IMAGE="wrenai-customer/base-python-build:3.12.0-bookworm"
+LOCAL_PYTHON_RUNTIME_IMAGE="wrenai-customer/base-python-runtime:3.12.0-slim-bookworm"
+LOCAL_SOURCE_WREN_BOOTSTRAP_IMAGE="wrenai-customer/source-wren-bootstrap:0.1.5"
+LOCAL_SOURCE_WREN_ENGINE_IMAGE="wrenai-customer/source-wren-engine:0.22.0"
+LOCAL_SOURCE_IBIS_SERVER_IMAGE="wrenai-customer/source-wren-engine-ibis:0.22.0"
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required command: $1" >&2
@@ -60,6 +74,44 @@ prepare_ai_context() {
   cp "$SCRIPT_DIR/config.customer.yaml" "$target_dir/config.customer.yaml"
 }
 
+docker_pull_with_retry() {
+  local image="$1"
+  local attempts=3
+  local i
+
+  for i in $(seq 1 "$attempts"); do
+    if docker pull --platform "$PLATFORM" "$image"; then
+      return 0
+    fi
+    if [[ "$i" -lt "$attempts" ]]; then
+      sleep 2
+    fi
+  done
+
+  echo "Failed to pull image after ${attempts} attempts: $image" >&2
+  return 1
+}
+
+rebundle_dependency_image() {
+  local source_image="$1"
+  local target_image="$2"
+  local context_dir="$TMP_DIR/$(echo "$target_image" | tr '/:' '_')"
+
+  mkdir -p "$context_dir"
+  cat > "$context_dir/Dockerfile" <<EOF
+ARG SOURCE_IMAGE
+FROM \${SOURCE_IMAGE}
+EOF
+
+  docker buildx build \
+    --platform "$PLATFORM" \
+    --pull=false \
+    --build-arg SOURCE_IMAGE="$source_image" \
+    --load \
+    -t "$target_image" \
+    "$context_dir"
+}
+
 require_command docker
 require_command git
 require_command tar
@@ -87,11 +139,23 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 AI_CONTEXT="$TMP_DIR/wren-ai-service"
 prepare_ai_context "$AI_CONTEXT"
 
+echo "Pulling base images for local offline-tagged builds"
+docker_pull_with_retry "$SOURCE_NODE_BASE_IMAGE"
+docker_pull_with_retry "$SOURCE_PYTHON_BUILD_IMAGE"
+docker_pull_with_retry "$SOURCE_PYTHON_RUNTIME_IMAGE"
+
+docker tag "$SOURCE_NODE_BASE_IMAGE" "$LOCAL_NODE_BASE_IMAGE"
+docker tag "$SOURCE_PYTHON_BUILD_IMAGE" "$LOCAL_PYTHON_BUILD_IMAGE"
+docker tag "$SOURCE_PYTHON_RUNTIME_IMAGE" "$LOCAL_PYTHON_RUNTIME_IMAGE"
+
 echo "Building $WREN_AI_SERVICE_IMAGE"
 docker buildx build \
   --platform "$PLATFORM" \
+  --pull=false \
   --load \
   --build-arg AI_CONFIG_FILE=config.customer.yaml \
+  --build-arg PYTHON_BUILD_IMAGE="$LOCAL_PYTHON_BUILD_IMAGE" \
+  --build-arg PYTHON_RUNTIME_IMAGE="$LOCAL_PYTHON_RUNTIME_IMAGE" \
   --build-arg SILICONFLOW_API_KEY="$SILICONFLOW_API_KEY" \
   --label "org.opencontainers.image.revision=$FULL_SHA" \
   --label "org.opencontainers.image.created=$BUILD_TIME" \
@@ -102,7 +166,9 @@ docker buildx build \
 echo "Building $WREN_UI_IMAGE"
 docker buildx build \
   --platform "$PLATFORM" \
+  --pull=false \
   --load \
+  --build-arg NODE_BASE_IMAGE="$LOCAL_NODE_BASE_IMAGE" \
   --label "org.opencontainers.image.revision=$FULL_SHA" \
   --label "org.opencontainers.image.created=$BUILD_TIME" \
   -t "$WREN_UI_IMAGE" \
@@ -110,10 +176,19 @@ docker buildx build \
   "$REPO_ROOT/wren-ui"
 
 echo "Pulling bundled dependency images"
-docker pull --platform "$PLATFORM" "$WREN_BOOTSTRAP_IMAGE"
-docker pull --platform "$PLATFORM" "$WREN_ENGINE_IMAGE"
-docker pull --platform "$PLATFORM" "$IBIS_SERVER_IMAGE"
-docker pull --platform "$PLATFORM" "$QDRANT_IMAGE"
+docker_pull_with_retry "$SOURCE_WREN_BOOTSTRAP_IMAGE"
+docker_pull_with_retry "$SOURCE_WREN_ENGINE_IMAGE"
+docker_pull_with_retry "$SOURCE_IBIS_SERVER_IMAGE"
+docker_pull_with_retry "$QDRANT_IMAGE"
+
+docker tag "$SOURCE_WREN_BOOTSTRAP_IMAGE" "$LOCAL_SOURCE_WREN_BOOTSTRAP_IMAGE"
+docker tag "$SOURCE_WREN_ENGINE_IMAGE" "$LOCAL_SOURCE_WREN_ENGINE_IMAGE"
+docker tag "$SOURCE_IBIS_SERVER_IMAGE" "$LOCAL_SOURCE_IBIS_SERVER_IMAGE"
+
+echo "Rebundling dependency images into customer-local tags"
+rebundle_dependency_image "$LOCAL_SOURCE_WREN_BOOTSTRAP_IMAGE" "$WREN_BOOTSTRAP_IMAGE"
+rebundle_dependency_image "$LOCAL_SOURCE_WREN_ENGINE_IMAGE" "$WREN_ENGINE_IMAGE"
+rebundle_dependency_image "$LOCAL_SOURCE_IBIS_SERVER_IMAGE" "$IBIS_SERVER_IMAGE"
 
 IMAGES_ARCHIVE="$DIST_DIR/images-${PACKAGE_SHA}.tar.gz"
 SOURCE_ARCHIVE="$DIST_DIR/source-${PACKAGE_SHA}.tar.gz"

@@ -1,4 +1,6 @@
-FROM node:18-bookworm-slim AS base
+ARG NODE_BASE_IMAGE=node:18-bookworm-slim
+
+FROM ${NODE_BASE_IMAGE} AS base
 
 # Install required packages
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
