@@ -16,7 +16,10 @@ import {
 import { getLogger, transformInvalidColumnName } from '@server/utils';
 import { DeployResponse } from '../services/deployService';
 import { safeFormatSQL } from '@server/utils/sqlFormat';
-import { toDenodoNativeSql } from '@server/utils/denodoMcp';
+import {
+  DENODO_ASSOCIATION_SOURCE,
+  toDenodoNativeSql,
+} from '@server/utils/denodoMcp';
 import { isEmpty, isNil } from 'lodash';
 import { replaceAllowableSyntax, validateDisplayName } from '../utils/regex';
 import {
@@ -316,11 +319,15 @@ export class ModelResolver {
       await ctx.relationRepository.findRelationsBy({
         columnIds: modelColumns.map((c) => c.id),
       })
-    ).map((r) => ({
-      ...r,
-      type: r.joinType,
-      properties: r.properties ? JSON.parse(r.properties) : {},
-    }));
+    ).map((r) => {
+      const properties = r.properties ? JSON.parse(r.properties) : {};
+      return {
+        ...r,
+        type: r.joinType,
+        properties,
+        isReadOnly: properties?.source === DENODO_ASSOCIATION_SOURCE,
+      };
+    });
 
     return {
       ...model,
@@ -718,11 +725,17 @@ export class ModelResolver {
       await ctx.relationRepository.findRelationsByIds(relationshipIds);
     for (const rel of relationships) {
       const requestedMetadata = data.relationships.find((r) => r.id === rel.id);
+      const properties = rel.properties ? JSON.parse(rel.properties) : {};
+      if (
+        !requestedMetadata ||
+        properties?.source === DENODO_ASSOCIATION_SOURCE
+      ) {
+        continue;
+      }
 
       const relationMetadata: any = {};
 
       if (!isNil(requestedMetadata.description)) {
-        const properties = rel.properties ? JSON.parse(rel.properties) : {};
         properties.description = this.determineMetadataValue(
           requestedMetadata.description,
         );

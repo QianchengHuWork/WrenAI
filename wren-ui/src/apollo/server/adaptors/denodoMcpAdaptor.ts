@@ -4,9 +4,12 @@ import { getLogger } from '@server/utils';
 import * as Errors from '@server/utils/error';
 import { DENODO_MCP_CONNECTION_INFO } from '@server/repositories';
 import {
+  buildDenodoDataCatalogBaseUrl,
+  buildDenodoDataCatalogUri,
   buildDenodoMcpQueryToolName,
   buildDenodoMcpSchemaToolName,
   buildDenodoMcpValidateToolName,
+  DenodoViewAssociation,
   extractDenodoStructuredContent,
 } from '@server/utils/denodoMcp';
 
@@ -27,6 +30,10 @@ export interface IDenodoMcpAdaptor {
   getDatabaseSchema(
     connectionInfo: DENODO_MCP_CONNECTION_INFO,
   ): Promise<Record<string, any>>;
+  getViewAssociations(
+    connectionInfo: DENODO_MCP_CONNECTION_INFO,
+    viewName: string,
+  ): Promise<DenodoViewAssociation[]>;
   validateSqlQuery(
     sql: string,
     connectionInfo: DENODO_MCP_CONNECTION_INFO,
@@ -60,6 +67,42 @@ export class DenodoMcpAdaptor implements IDenodoMcpAdaptor {
       buildDenodoMcpQueryToolName(connectionInfo.databaseName),
       { sql_query: sql },
     );
+  }
+
+  public async getViewAssociations(
+    connectionInfo: DENODO_MCP_CONNECTION_INFO,
+    viewName: string,
+  ): Promise<DenodoViewAssociation[]> {
+    const endpoint = `${buildDenodoDataCatalogBaseUrl(
+      connectionInfo.baseUrl,
+    )}/views/associations`;
+    const response = await axios.get(endpoint, {
+      headers: this.buildDataCatalogHeaders(connectionInfo),
+      timeout: this.timeout,
+      params: {
+        databaseName: connectionInfo.databaseName,
+        viewName,
+        uri: buildDenodoDataCatalogUri(connectionInfo.baseUrl),
+        serverId: 1,
+      },
+      validateStatus: () => true,
+    });
+
+    if (response.status >= 400) {
+      throw new Error(
+        `Error fetching Denodo associations for view "${viewName}" (HTTP ${response.status}): ${JSON.stringify(response.data)}`,
+      );
+    }
+
+    if (Array.isArray(response.data)) {
+      return response.data as DenodoViewAssociation[];
+    }
+
+    if (Array.isArray(response.data?.associations)) {
+      return response.data.associations as DenodoViewAssociation[];
+    }
+
+    return [];
   }
 
   public async validateSqlQuery(
@@ -242,15 +285,23 @@ export class DenodoMcpAdaptor implements IDenodoMcpAdaptor {
     connectionInfo: DENODO_MCP_CONNECTION_INFO,
     sessionId?: string,
   ) {
+    return {
+      ...this.buildDataCatalogHeaders(connectionInfo),
+      'Content-Type': 'application/json',
+      ...(sessionId ? { [SESSION_HEADER]: sessionId } : {}),
+    };
+  }
+
+  private buildDataCatalogHeaders(
+    connectionInfo: DENODO_MCP_CONNECTION_INFO,
+  ) {
     const authorization = Buffer.from(
       `${connectionInfo.username}:${connectionInfo.password}`,
     ).toString('base64');
 
     return {
       Accept: 'application/json, text/event-stream',
-      'Content-Type': 'application/json',
       Authorization: `Basic ${authorization}`,
-      ...(sessionId ? { [SESSION_HEADER]: sessionId } : {}),
     };
   }
 

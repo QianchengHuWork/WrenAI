@@ -1,8 +1,9 @@
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import path from 'path';
 import { Parser } from 'node-sql-parser';
 import { getConfig } from '@server/config';
-import { Manifest } from '@server/mdl/type';
+import { Manifest, RelationMDL } from '@server/mdl/type';
 import { CompactColumn, CompactTable } from '@server/services/metadataService';
 import * as Errors from '@server/utils/error';
 
@@ -27,6 +28,44 @@ export interface DenodoSchemaView {
 export interface DenodoDatabaseSchema {
   views?: DenodoSchemaView[];
 }
+
+export interface DenodoViewAssociation {
+  databaseOrigin?: string;
+  resourceOrigin?: string;
+  name?: string;
+  description?: string;
+  leftViewName?: string;
+  leftViewDescription?: string;
+  leftViewDatabase?: string;
+  leftRole?: string | null;
+  leftRoleDescription?: string | null;
+  leftRolePrecondition?: string | null;
+  leftMultiplicity?: string | null;
+  rightViewName?: string;
+  rightViewDescription?: string;
+  rightViewDatabase?: string;
+  rightRole?: string | null;
+  rightRoleDescription?: string | null;
+  rightRolePrecondition?: string | null;
+  rightMultiplicity?: string | null;
+  mapping?: string;
+  valid?: boolean;
+  leftPrincipal?: boolean | null;
+}
+
+export interface DenodoManifestRelationshipResult {
+  relationships: Partial<RelationMDL>[];
+  warnings: string[];
+}
+
+export interface DenodoAssociationMappingClause {
+  leftViewName: string;
+  leftColumnName: string;
+  rightViewName: string;
+  rightColumnName: string;
+}
+
+export const DENODO_ASSOCIATION_SOURCE = 'DENODO_ASSOCIATION';
 
 export type DenodoSemanticRewriteMode = 'COLUMN_HINT' | 'VALUE_ALIAS';
 
@@ -86,6 +125,19 @@ export const buildDenodoMcpQueryToolName = (databaseName: string) =>
 
 export const buildDenodoMcpValidateToolName = (databaseName: string) =>
   `denodo_${databaseName}_validate_sql_query`;
+
+const normalizeDenodoHost = (baseUrl: string) => {
+  const hostname = new URL(baseUrl).hostname;
+  return hostname.includes(':') ? `[${hostname}]` : hostname;
+};
+
+export const buildDenodoDataCatalogBaseUrl = (mcpBaseUrl: string) =>
+  `http://${normalizeDenodoHost(
+    mcpBaseUrl,
+  )}:9090/denodo-data-catalog/public/api`;
+
+export const buildDenodoDataCatalogUri = (mcpBaseUrl: string) =>
+  `//${normalizeDenodoHost(mcpBaseUrl)}:9999/admin`;
 
 export const getDenodoSemanticDir = (projectId: number) =>
   path.join(config.persistCredentialDir, 'denodo-mcp', `${projectId}`);
@@ -208,6 +260,292 @@ export const buildDenodoSemanticDictionary = (
   generatedAt: new Date().toISOString(),
   entries,
 });
+
+const normalizeDenodoAssociationMultiplicity = (
+  value?: string | null,
+): 'one' | 'many' | null => {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+  if (normalized === '1' || normalized === '0,1') return 'one';
+  if (
+    normalized === '0,*' ||
+    normalized === '1,*' ||
+    normalized === '*'
+  ) {
+    return 'many';
+  }
+  return null;
+};
+
+const toDenodoManifestJoinType = (
+  leftMultiplicity?: string | null,
+  rightMultiplicity?: string | null,
+): RelationMDL['joinType'] | null => {
+  const left = normalizeDenodoAssociationMultiplicity(leftMultiplicity);
+  const right = normalizeDenodoAssociationMultiplicity(rightMultiplicity);
+
+  if (!left || !right) return null;
+  if (left === 'one' && right === 'one') return 'ONE_TO_ONE';
+  if (left === 'one' && right === 'many') return 'ONE_TO_MANY';
+  if (left === 'many' && right === 'one') return 'MANY_TO_ONE';
+  return 'MANY_TO_MANY';
+};
+
+const MAPPING_CONDITION_PATTERN =
+  /^\s*([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\s*$/;
+
+export const parseDenodoAssociationMapping = ({
+  mapping,
+  leftViewName,
+  rightViewName,
+}: {
+  mapping?: string;
+  leftViewName: string;
+  rightViewName: string;
+}): DenodoAssociationMappingClause[] | null => {
+  if (!mapping?.trim()) return null;
+
+  const allowedViews = new Set([
+    leftViewName.toLowerCase(),
+    rightViewName.toLowerCase(),
+  ]);
+
+  const clauses = mapping
+    .split(/\s+AND\s+/iu)
+    .map((clause) => clause.trim())
+    .filter(Boolean)
+    .map((clause) => {
+      const match = clause.match(MAPPING_CONDITION_PATTERN);
+      if (!match) return null;
+
+      const [, leftModel, leftColumn, rightModel, rightColumn] = match;
+      if (
+        !allowedViews.has(leftModel.toLowerCase()) ||
+        !allowedViews.has(rightModel.toLowerCase())
+      ) {
+        return null;
+      }
+
+      return {
+        leftViewName: leftModel,
+        leftColumnName: leftColumn,
+        rightViewName: rightModel,
+        rightColumnName: rightColumn,
+      } satisfies DenodoAssociationMappingClause;
+    });
+
+  if (!clauses.length || clauses.some((clause) => !clause)) {
+    return null;
+  }
+
+  return clauses as DenodoAssociationMappingClause[];
+};
+
+const hasOwn = <T extends object>(value: T, key: keyof T) =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
+export const buildDenodoAssociationProperties = (
+  association: DenodoViewAssociation,
+) => {
+  const properties: Record<string, any> = {};
+
+  if (association.description) properties.description = association.description;
+  if (association.leftRole) properties.leftRole = association.leftRole;
+  if (association.rightRole) properties.rightRole = association.rightRole;
+  if (association.leftRoleDescription) {
+    properties.leftRoleDescription = association.leftRoleDescription;
+  }
+  if (association.rightRoleDescription) {
+    properties.rightRoleDescription = association.rightRoleDescription;
+  }
+  if (hasOwn(association, 'leftPrincipal')) {
+    properties.leftPrincipal = association.leftPrincipal;
+  }
+  if (hasOwn(association, 'leftRolePrecondition')) {
+    properties.leftRolePrecondition = association.leftRolePrecondition;
+  }
+  if (hasOwn(association, 'rightRolePrecondition')) {
+    properties.rightRolePrecondition = association.rightRolePrecondition;
+  }
+  properties.source = DENODO_ASSOCIATION_SOURCE;
+
+  return Object.keys(properties).length ? properties : undefined;
+};
+
+const ensureUniqueDenodoRelationshipName = ({
+  baseName,
+  uniqueSeed,
+  usedNames,
+}: {
+  baseName: string;
+  uniqueSeed: string;
+  usedNames: Set<string>;
+}) => {
+  const normalizedBaseName = baseName.trim() || 'denodo_association';
+  if (!usedNames.has(normalizedBaseName.toLowerCase())) {
+    usedNames.add(normalizedBaseName.toLowerCase());
+    return normalizedBaseName;
+  }
+
+  const hashSuffix = createHash('sha1')
+    .update(uniqueSeed)
+    .digest('hex')
+    .slice(0, 8);
+  let candidate = `${normalizedBaseName}_${hashSuffix}`;
+  if (!usedNames.has(candidate.toLowerCase())) {
+    usedNames.add(candidate.toLowerCase());
+    return candidate;
+  }
+
+  let counter = 2;
+  while (usedNames.has(`${candidate}_${counter}`.toLowerCase())) {
+    counter += 1;
+  }
+  candidate = `${candidate}_${counter}`;
+  usedNames.add(candidate.toLowerCase());
+  return candidate;
+};
+
+const toDenodoManifestCondition = ({
+  clauses,
+  modelReferenceMap = {},
+  columnReferenceMap = {},
+}: {
+  clauses: DenodoAssociationMappingClause[];
+  modelReferenceMap?: Record<string, string>;
+  columnReferenceMap?: Record<string, Record<string, string>>;
+}) =>
+  clauses
+    .map((clause) => {
+      const leftModel =
+        modelReferenceMap[clause.leftViewName.toLowerCase()] ||
+        clause.leftViewName;
+      const rightModel =
+        modelReferenceMap[clause.rightViewName.toLowerCase()] ||
+        clause.rightViewName;
+      const leftColumn =
+        columnReferenceMap[clause.leftViewName.toLowerCase()]?.[
+          clause.leftColumnName.toLowerCase()
+        ] || clause.leftColumnName;
+      const rightColumn =
+        columnReferenceMap[clause.rightViewName.toLowerCase()]?.[
+          clause.rightColumnName.toLowerCase()
+        ] || clause.rightColumnName;
+
+      return `"${leftModel}".${leftColumn} = "${rightModel}".${rightColumn}`;
+    })
+    .join(' AND ');
+
+export const toDenodoManifestRelationships = ({
+  associations,
+  selectedViews,
+  reservedNames = [],
+  modelReferenceMap = {},
+  columnReferenceMap = {},
+}: {
+  associations: DenodoViewAssociation[];
+  selectedViews: string[];
+  reservedNames?: string[];
+  modelReferenceMap?: Record<string, string>;
+  columnReferenceMap?: Record<string, Record<string, string>>;
+}): DenodoManifestRelationshipResult => {
+  const selectedViewSet = new Set(
+    selectedViews.map((view) => view.trim().toLowerCase()).filter(Boolean),
+  );
+  const usedNames = new Set(
+    reservedNames.map((name) => name.trim().toLowerCase()).filter(Boolean),
+  );
+  const seenKeys = new Set<string>();
+  const warnings: string[] = [];
+  const relationships: Partial<RelationMDL>[] = [];
+
+  associations.forEach((association) => {
+    if (association?.valid !== true) return;
+
+    const leftViewName = association.leftViewName?.trim();
+    const rightViewName = association.rightViewName?.trim();
+    const relationDisplayName =
+      association.name?.trim() ||
+      `${leftViewName || 'unknown'}_${rightViewName || 'unknown'}`;
+
+    if (!leftViewName || !rightViewName) {
+      warnings.push(
+        `跳过关联 "${relationDisplayName}"，因为缺少 leftViewName 或 rightViewName`,
+      );
+      return;
+    }
+
+    if (
+      !selectedViewSet.has(leftViewName.toLowerCase()) ||
+      !selectedViewSet.has(rightViewName.toLowerCase())
+    ) {
+      return;
+    }
+
+    const joinType = toDenodoManifestJoinType(
+      association.leftMultiplicity,
+      association.rightMultiplicity,
+    );
+    if (!joinType) {
+      warnings.push(
+        `跳过关联 "${relationDisplayName}"，无法识别基数 left=${association.leftMultiplicity} right=${association.rightMultiplicity}`,
+      );
+      return;
+    }
+
+    const clauses = parseDenodoAssociationMapping({
+      mapping: association.mapping,
+      leftViewName,
+      rightViewName,
+    });
+    if (!clauses) {
+      warnings.push(
+        `跳过关联 "${relationDisplayName}"，无法安全解析 mapping: ${association.mapping || '<empty>'}`,
+      );
+      return;
+    }
+    const condition = toDenodoManifestCondition({
+      clauses,
+      modelReferenceMap,
+      columnReferenceMap,
+    });
+
+    const dedupeKey = [
+      relationDisplayName,
+      leftViewName,
+      rightViewName,
+      joinType,
+      association.mapping?.replace(/\s+/g, ' ').trim() || '',
+    ]
+      .join('::')
+      .toLowerCase();
+    if (seenKeys.has(dedupeKey)) {
+      return;
+    }
+    seenKeys.add(dedupeKey);
+
+    const relationshipName = ensureUniqueDenodoRelationshipName({
+      baseName: relationDisplayName,
+      uniqueSeed: dedupeKey,
+      usedNames,
+    });
+    const properties = buildDenodoAssociationProperties(association);
+    const mappedLeftModel =
+      modelReferenceMap[leftViewName.toLowerCase()] || leftViewName;
+    const mappedRightModel =
+      modelReferenceMap[rightViewName.toLowerCase()] || rightViewName;
+
+    relationships.push({
+      name: relationshipName,
+      models: [mappedLeftModel, mappedRightModel],
+      joinType,
+      condition,
+      ...(properties ? { properties } : {}),
+    });
+  });
+
+  return { relationships, warnings };
+};
 
 const VALUE_ALIAS_CANDIDATE_PATTERNS = [
   /status/i,

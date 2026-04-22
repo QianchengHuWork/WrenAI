@@ -88,4 +88,48 @@ describe('DenodoMcpAdaptor', () => {
       validateStatus: expect.any(Function),
     });
   });
+
+  it('fetches Denodo associations from the derived Data Catalog endpoint', async () => {
+    mockedAxios.get.mockResolvedValue({
+      data: [
+        {
+          name: 'assoc_profile_assign',
+          leftViewName: 'j_cfc_clew_profile_semantic_std',
+          rightViewName: 'j_clew_assign_event_semantic_std',
+          leftMultiplicity: '1',
+          rightMultiplicity: '0,*',
+          mapping:
+            'j_cfc_clew_profile_semantic_std.clew_id=j_clew_assign_event_semantic_std.clew_id',
+          valid: true,
+        },
+      ],
+      headers: { 'content-type': 'application/json' },
+      status: 200,
+      statusText: 'OK',
+      config: {} as any,
+    });
+
+    const result = await adaptor.getViewAssociations(
+      connectionInfo,
+      'j_cfc_clew_profile_semantic_std',
+    );
+
+    expect(result).toHaveLength(1);
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'http://denodo.example.com:9090/denodo-data-catalog/public/api/views/associations',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: expect.stringMatching(/^Basic /),
+        }),
+        params: {
+          databaseName: 'admin',
+          viewName: 'j_cfc_clew_profile_semantic_std',
+          uri: '//denodo.example.com:9999/admin',
+          serverId: 1,
+        },
+        timeout: 30000,
+        validateStatus: expect.any(Function),
+      }),
+    );
+  });
 });

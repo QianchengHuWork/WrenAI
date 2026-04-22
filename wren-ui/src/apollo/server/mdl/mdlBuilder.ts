@@ -427,7 +427,10 @@ export class MDLBuilder implements IMDLBuilder {
   }
 
   protected getRelationCondition(relation: RelationInfo): string {
-    //TODO phase2: implement the expression for relation condition
+    if (relation.condition?.trim()) {
+      return relation.condition;
+    }
+
     const { fromColumnName, toColumnName, fromModelName, toModelName } =
       relation;
     return `"${fromModelName}".${fromColumnName} = "${toModelName}".${toColumnName}`;

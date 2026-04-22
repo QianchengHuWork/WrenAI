@@ -1,6 +1,8 @@
 import { Manifest } from '@server/mdl/type';
 import {
   applySemanticDictionaryToSql,
+  buildDenodoDataCatalogBaseUrl,
+  buildDenodoDataCatalogUri,
   buildDenodoSemanticDictionaryBatchContext,
   buildDenodoSemanticDictionaryBatches,
   buildDenodoSemanticDictionary,
@@ -8,6 +10,7 @@ import {
   buildDenodoSemanticDictionaryTasks,
   filterDenodoRawSchemaViews,
   normalizeDenodoSemanticDictionaryEntries,
+  toDenodoManifestRelationships,
   toDenodoSemanticContext,
   toDenodoCompactTables,
   toDenodoNativeSql,
@@ -125,6 +128,103 @@ describe('denodoMcp utils', () => {
     expect(JSON.parse(result.content[0].text)).toEqual({
       views: [{ view_name: 'dm_ord_month_city', columns: [] }],
     });
+  });
+
+  it('derives Denodo Data Catalog endpoints from MCP baseUrl', () => {
+    expect(
+      buildDenodoDataCatalogBaseUrl(
+        'http://180.153.254.194:19090/admin_database/mcp',
+      ),
+    ).toBe('http://180.153.254.194:9090/denodo-data-catalog/public/api');
+    expect(
+      buildDenodoDataCatalogUri(
+        'http://180.153.254.194:19090/admin_database/mcp',
+      ),
+    ).toBe('//180.153.254.194:9999/admin');
+  });
+
+  it('converts Denodo associations into manifest relationships and skips unsafe mappings', () => {
+    const result = toDenodoManifestRelationships({
+      associations: [
+        {
+          name: 'assoc_profile_assign',
+          description: '主档到分配事件',
+          leftViewName: 'j_cfc_clew_profile_semantic_std',
+          rightViewName: 'j_clew_assign_event_semantic_std',
+          leftMultiplicity: '1',
+          rightMultiplicity: '0,*',
+          mapping:
+            'j_cfc_clew_profile_semantic_std.clew_id=j_clew_assign_event_semantic_std.clew_id AND j_cfc_clew_profile_semantic_std.bizline_id=j_clew_assign_event_semantic_std.bizline_id',
+          valid: true,
+          leftRole: 'profile',
+          rightRole: 'assign_events',
+          leftRoleDescription: '主档端',
+          rightRoleDescription: '事件端',
+          leftPrincipal: false,
+        },
+        {
+          name: 'assoc_profile_assign',
+          leftViewName: 'j_cfc_clew_profile_semantic_std',
+          rightViewName: 'j_clew_assign_event_semantic_std',
+          leftMultiplicity: '1',
+          rightMultiplicity: '0,*',
+          mapping:
+            'j_cfc_clew_profile_semantic_std.clew_id=j_clew_assign_event_semantic_std.clew_id AND j_cfc_clew_profile_semantic_std.bizline_id=j_clew_assign_event_semantic_std.bizline_id',
+          valid: true,
+        },
+        {
+          name: 'assoc_profile_conversion',
+          leftViewName: 'j_cfc_clew_profile_semantic_std',
+          rightViewName: 'j_clew_ord_conversion_semantic_std',
+          leftMultiplicity: '1',
+          rightMultiplicity: '0,*',
+          mapping:
+            'lower(j_cfc_clew_profile_semantic_std.clew_id)=j_clew_ord_conversion_semantic_std.clew_id',
+          valid: true,
+        },
+        {
+          name: 'assoc_out_of_scope',
+          leftViewName: 'j_cfc_clew_profile_semantic_std',
+          rightViewName: 'j_external_view',
+          leftMultiplicity: '1',
+          rightMultiplicity: '*',
+          mapping:
+            'j_cfc_clew_profile_semantic_std.clew_id=j_external_view.clew_id',
+          valid: true,
+        },
+      ],
+      selectedViews: [
+        'j_cfc_clew_profile_semantic_std',
+        'j_clew_assign_event_semantic_std',
+        'j_clew_ord_conversion_semantic_std',
+      ],
+      reservedNames: ['existing_relation'],
+    });
+
+    expect(result.relationships).toEqual([
+      {
+        name: 'assoc_profile_assign',
+        models: [
+          'j_cfc_clew_profile_semantic_std',
+          'j_clew_assign_event_semantic_std',
+        ],
+        joinType: 'ONE_TO_MANY',
+        condition:
+          '"j_cfc_clew_profile_semantic_std".clew_id = "j_clew_assign_event_semantic_std".clew_id AND "j_cfc_clew_profile_semantic_std".bizline_id = "j_clew_assign_event_semantic_std".bizline_id',
+        properties: {
+          description: '主档到分配事件',
+          leftRole: 'profile',
+          rightRole: 'assign_events',
+          leftRoleDescription: '主档端',
+          rightRoleDescription: '事件端',
+          leftPrincipal: false,
+          source: 'DENODO_ASSOCIATION',
+        },
+      },
+    ]);
+    expect(result.warnings).toEqual([
+      expect.stringContaining('assoc_profile_conversion'),
+    ]);
   });
 
   it('builds semantic dictionary tasks from candidate columns and batches by column scope', () => {

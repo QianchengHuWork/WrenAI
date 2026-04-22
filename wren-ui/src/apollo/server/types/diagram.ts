@@ -80,6 +80,8 @@ export interface DiagramModelRelationField {
   nodeType: NodeType;
   displayName: string;
   referenceName: string;
+  properties: Record<string, any>;
+  isReadOnly: boolean;
   fromModelId: number;
   fromModelName: string;
   fromModelDisplayName: string;

@@ -19,6 +19,8 @@ const RELATION_FIELD = gql`
     nodeType
     displayName
     referenceName
+    properties
+    isReadOnly
     fromModelId
     fromModelName
     fromModelDisplayName

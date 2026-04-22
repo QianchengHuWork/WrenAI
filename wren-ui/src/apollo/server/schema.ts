@@ -406,6 +406,7 @@ export const typeDefs = gql`
     type: RelationType!
     name: String!
     properties: JSON!
+    isReadOnly: Boolean!
   }
 
   type DetailedModel {
@@ -540,6 +541,8 @@ export const typeDefs = gql`
     displayName: String!
     referenceName: String!
     description: String
+    properties: JSON!
+    isReadOnly: Boolean!
     fromModelId: Int!
     fromModelName: String!
     fromModelDisplayName: String!

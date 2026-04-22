@@ -20,6 +20,7 @@ import {
   Model,
   ModelColumn,
   Project,
+  Relation,
 } from '../repositories';
 import {
   SampleDatasetName,
@@ -37,8 +38,10 @@ import DataSourceSchemaDetector, {
 import { encryptConnectionInfo } from '../dataSource';
 import { TelemetryEvent } from '../telemetry/telemetry';
 import {
+  DENODO_ASSOCIATION_SOURCE,
   filterDenodoRawSchemaViews,
   isDenodoSemanticDictionaryEnabled,
+  toDenodoManifestRelationships,
   toDenodoCompactTables,
   writeDenodoSemanticArtifacts,
 } from '@server/utils/denodoMcp';
@@ -995,9 +998,82 @@ export class ProjectResolver {
 
     updateDataSourceSetupProgress(
       'BUILDING_MANIFEST',
+      '正在拉取 Denodo 视图关联并同步建模关系',
+    );
+    const modelReferenceMap = models.reduce(
+      (acc, model) => {
+        acc[model.sourceTableName.toLowerCase()] = model.referenceName;
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+    const columnReferenceMap = columns.reduce(
+      (acc, column) => {
+        const model = models.find((item) => item.id === column.modelId);
+        if (!model) return acc;
+        const modelKey = model.sourceTableName.toLowerCase();
+        acc[modelKey] = acc[modelKey] || {};
+        acc[modelKey][column.sourceColumnName.toLowerCase()] =
+          column.referenceName;
+        return acc;
+      },
+      {} as Record<string, Record<string, string>>,
+    );
+    const associations = (
+      await Promise.all(
+        selectedViews.map(async (viewName) => {
+          try {
+            return await ctx.denodoMcpAdaptor.getViewAssociations(
+              connectionInfo,
+              viewName,
+            );
+          } catch (error: any) {
+            logger.warn(
+              `Failed to fetch Denodo associations for project ${project.id}, view ${viewName}: ${error.message}`,
+            );
+            return [];
+          }
+        }),
+      )
+    ).flat();
+    const { relationships, warnings } = toDenodoManifestRelationships({
+      associations,
+      selectedViews,
+      modelReferenceMap,
+      columnReferenceMap,
+    });
+    warnings.forEach((warning) => {
+      logger.warn(
+        `Skip Denodo association while building manifest for project ${project.id}: ${warning}`,
+      );
+    });
+    await this.syncDenodoAssociationRelations({
+      projectId: project.id,
+      models,
+      columns,
+      relationships,
+      ctx,
+    });
+
+    updateDataSourceSetupProgress(
+      'BUILDING_MANIFEST',
       '正在构建语义层 Manifest',
     );
     const { manifest } = await ctx.mdlService.makeCurrentModelMDL();
+    const manifestRelationshipNames = new Set(
+      (manifest.relationships || [])
+        .map((relationship) => relationship?.name?.trim())
+        .filter((name): name is string => Boolean(name))
+        .map((name) => name.toLowerCase()),
+    );
+    manifest.relationships = [
+      ...(manifest.relationships || []),
+      ...relationships.filter(
+        (relationship) =>
+          !manifestRelationshipNames.has(relationship.name.toLowerCase()),
+      ),
+    ];
+
     updateDataSourceSetupProgress(
       'WRITING_ARTIFACTS',
       '正在写入 raw schema 和 manifest',
@@ -1140,6 +1216,98 @@ export class ProjectResolver {
     await ctx.modelNestedColumnRepository.createMany(nestedColumnValues);
 
     return { models, columns };
+  }
+
+  private async syncDenodoAssociationRelations({
+    projectId,
+    models,
+    columns,
+    relationships,
+    ctx,
+  }: {
+    projectId: number;
+    models: Model[];
+    columns: ModelColumn[];
+    relationships: Partial<Manifest['relationships'][number]>[];
+    ctx: IContext;
+  }) {
+    const modelIdByReference = new Map(
+      models.map((model) => [model.referenceName.toLowerCase(), model.id]),
+    );
+    const columnIdByModelAndReference = new Map(
+      columns.map((column) => {
+        const model = models.find((item) => item.id === column.modelId);
+        return [
+          `${model?.referenceName.toLowerCase()}.${column.referenceName.toLowerCase()}`,
+          column.id,
+        ] as const;
+      }),
+    );
+    const relationValues: Partial<Relation>[] = [];
+
+    relationships.forEach((relationship) => {
+      if (!relationship?.name || !relationship.condition || !relationship.joinType) {
+        return;
+      }
+
+      if (relationship.joinType === 'MANY_TO_MANY') {
+        logger.warn(
+          `Skip syncing MANY_TO_MANY Denodo association "${relationship.name}" into relationRepository`,
+        );
+        return;
+      }
+
+      const firstClause = relationship.condition
+        .split(/\s+AND\s+/iu)
+        .map((item) => item.trim())
+        .find(Boolean);
+      const clauseMatch = firstClause?.match(
+        /^"([^"]+)"\.([A-Za-z0-9_]+)\s*=\s*"([^"]+)"\.([A-Za-z0-9_]+)$/u,
+      );
+      if (!clauseMatch) {
+        logger.warn(
+          `Skip syncing Denodo association "${relationship.name}" because the condition is not repository-compatible: ${relationship.condition}`,
+        );
+        return;
+      }
+
+      const [, fromModelName, fromColumnName, toModelName, toColumnName] =
+        clauseMatch;
+      const fromModelId = modelIdByReference.get(fromModelName.toLowerCase());
+      const toModelId = modelIdByReference.get(toModelName.toLowerCase());
+      const fromColumnId = columnIdByModelAndReference.get(
+        `${fromModelName.toLowerCase()}.${fromColumnName.toLowerCase()}`,
+      );
+      const toColumnId = columnIdByModelAndReference.get(
+        `${toModelName.toLowerCase()}.${toColumnName.toLowerCase()}`,
+      );
+
+      if (!fromModelId || !toModelId || !fromColumnId || !toColumnId) {
+        logger.warn(
+          `Skip syncing Denodo association "${relationship.name}" because the mapped model/column ids cannot be resolved`,
+        );
+        return;
+      }
+
+      relationValues.push({
+        projectId,
+        name: relationship.name,
+        joinType: relationship.joinType,
+        condition: relationship.condition,
+        fromColumnId,
+        toColumnId,
+        properties: JSON.stringify({
+          ...(relationship.properties || {}),
+          source: DENODO_ASSOCIATION_SOURCE,
+        }),
+      });
+    });
+
+    if (!relationValues.length) {
+      return;
+    }
+
+    await ctx.relationRepository.createMany(relationValues);
   }
 
   private concatInitSql(initSql: string, extensions: string[]) {

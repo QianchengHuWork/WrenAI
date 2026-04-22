@@ -320,6 +320,14 @@ export default function Modeling() {
   const onMoreClick = (payload) => {
     const { type, data } = payload;
     const { nodeType } = data;
+    if (
+      nodeType === NODE_TYPE.RELATION &&
+      data.isReadOnly &&
+      [MORE_ACTION.EDIT, MORE_ACTION.DELETE].includes(type)
+    ) {
+      message.info('自动同步关系暂不支持编辑或删除');
+      return;
+    }
     const action = {
       [MORE_ACTION.UPDATE_COLUMNS]: () => {
         switch (nodeType) {

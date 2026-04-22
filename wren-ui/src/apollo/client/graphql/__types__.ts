@@ -344,6 +344,38 @@ export enum DataSourceName {
   TRINO = 'TRINO'
 }
 
+export type DataSourceSetupProgress = {
+  __typename?: 'DataSourceSetupProgress';
+  currentStepKey?: Maybe<Scalars['String']>;
+  dataSourceType?: Maybe<Scalars['String']>;
+  error?: Maybe<Scalars['String']>;
+  status: DataSourceSetupStatus;
+  steps: Array<DataSourceSetupStep>;
+  updatedAt: Scalars['String'];
+};
+
+export enum DataSourceSetupStatus {
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  IDLE = 'IDLE',
+  RUNNING = 'RUNNING'
+}
+
+export type DataSourceSetupStep = {
+  __typename?: 'DataSourceSetupStep';
+  description?: Maybe<Scalars['String']>;
+  key: Scalars['String'];
+  status: DataSourceSetupStepStatus;
+  title: Scalars['String'];
+};
+
+export enum DataSourceSetupStepStatus {
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING'
+}
+
 export enum DatabricksConnectionType {
   service_principal = 'service_principal',
   token = 'token'
@@ -443,6 +475,7 @@ export type DetailedRelation = {
   __typename?: 'DetailedRelation';
   fromColumnId: Scalars['Int'];
   fromModelId: Scalars['Int'];
+  isReadOnly: Scalars['Boolean'];
   name: Scalars['String'];
   properties: Scalars['JSON'];
   toColumnId: Scalars['Int'];
@@ -517,7 +550,9 @@ export type DiagramModelRelationField = {
   fromModelId: Scalars['Int'];
   fromModelName: Scalars['String'];
   id: Scalars['String'];
+  isReadOnly: Scalars['Boolean'];
   nodeType: NodeType;
+  properties: Scalars['JSON'];
   referenceName: Scalars['String'];
   relationId: Scalars['Int'];
   toColumnDisplayName: Scalars['String'];
@@ -717,6 +752,7 @@ export type Mutation = {
   previewModelData: Scalars['JSON'];
   previewSql: Scalars['JSON'];
   previewViewData: Scalars['JSON'];
+  refreshDenodoSemanticAssets: Scalars['Boolean'];
   rerunAdjustmentTask: Scalars['Boolean'];
   rerunAskingTask: Task;
   resetCurrentProject: Scalars['Boolean'];
@@ -1150,6 +1186,7 @@ export type Query = {
   autoGenerateRelation: Array<RecommendRelations>;
   dashboard: DetailedDashboard;
   dashboardItems: Array<DashboardItem>;
+  dataSourceSetupProgress: DataSourceSetupProgress;
   diagram: Diagram;
   getMDL: GetMdlResult;
   getProjectRecommendationQuestions: RecommendedQuestionsTask;

@@ -34,6 +34,8 @@ const COMMON_RELATION = gql`
     toColumnId
     type
     name
+    properties
+    isReadOnly
   }
 `;
 

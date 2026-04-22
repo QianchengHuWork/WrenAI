@@ -49,6 +49,8 @@ export type ComposeDiagramField = (
       | 'toColumnName'
       | 'toColumnDisplayName'
       | 'relationId'
+      | 'properties'
+      | 'isReadOnly'
     >
   >;
 

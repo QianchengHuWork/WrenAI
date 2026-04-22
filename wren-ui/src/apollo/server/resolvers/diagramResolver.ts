@@ -19,6 +19,7 @@ import {
 import { ColumnMDL, Manifest } from '@server/mdl/type';
 import { getLogger } from '@server/utils';
 import { MDLBuilder } from '../mdl/mdlBuilder';
+import { DENODO_ASSOCIATION_SOURCE } from '@server/utils/denodoMcp';
 
 const logger = getLogger('DiagramResolver');
 logger.level = 'debug';
@@ -232,6 +233,8 @@ export class DiagramResolver {
       displayName,
       referenceName,
       type: relation.joinType as RelationType,
+      properties: properties || {},
+      isReadOnly: properties?.source === DENODO_ASSOCIATION_SOURCE,
       fromModelId: relation.fromModelId,
       fromModelName: relation.fromModelName,
       fromModelDisplayName: relation.fromModelDisplayName,

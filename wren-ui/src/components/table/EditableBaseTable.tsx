@@ -60,12 +60,14 @@ export const makeEditableBaseTable = (BaseTable: React.FC<BaseTableProps>) => {
       setData(newData);
     };
 
-    const tableColumns = columns.map((column) => ({
-      ...column,
-      onCell: (record) => ({
-        editable: [COLUMN.ALIAS.title, COLUMN.DESCRIPTION.title].includes(
-          column.title as string,
-        ),
+      const tableColumns = columns.map((column) => ({
+        ...column,
+        onCell: (record) => ({
+        editable:
+          !record?.isReadOnly &&
+          [COLUMN.ALIAS.title, COLUMN.DESCRIPTION.title].includes(
+            column.title as string,
+          ),
         dataIndex: (column as any).dataIndex,
         record,
         handleSave,

@@ -30,6 +30,7 @@ import {} from '@server/utils/regex';
 import * as Errors from '@server/utils/error';
 import { DataSourceName } from '@server/types';
 import { IQueryService } from './queryService';
+import { DENODO_ASSOCIATION_SOURCE } from '@server/utils/denodoMcp';
 
 const logger = getLogger('ModelService');
 logger.level = 'debug';
@@ -416,6 +417,13 @@ export class ModelService implements IModelService {
     relation: UpdateRelationData,
     id: number,
   ): Promise<Relation> {
+    const existingRelation = await this.relationRepository.findOneBy({ id });
+    if (!existingRelation) {
+      throw new Error('Relation not found');
+    }
+    if (this.isDenodoAssociationRelation(existingRelation)) {
+      throw new Error('自动同步关系暂不支持编辑，请先转为手工关系');
+    }
     const updatedRelation = await this.relationRepository.updateOne(id, {
       joinType: relation.type,
     });
@@ -427,6 +435,9 @@ export class ModelService implements IModelService {
     if (!relation) {
       throw new Error('Relation not found');
     }
+    if (this.isDenodoAssociationRelation(relation)) {
+      throw new Error('自动同步关系暂不支持删除，请先忽略或转为手工关系');
+    }
     const calculatedFields = await this.getCalculatedFieldByRelation(id);
     if (calculatedFields.length > 0) {
       // delete related calculated fields
@@ -435,6 +446,11 @@ export class ModelService implements IModelService {
       );
     }
     await this.relationRepository.deleteOne(id);
+  }
+
+  private isDenodoAssociationRelation(relation: Relation) {
+    const properties = relation.properties ? safeParseJson(relation.properties) : {};
+    return properties?.source === DENODO_ASSOCIATION_SOURCE;
   }
 
   public async getCalculatedFieldByRelation(

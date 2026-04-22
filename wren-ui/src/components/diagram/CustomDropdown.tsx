@@ -102,7 +102,7 @@ export const ViewDropdown = makeDropdown((props: Props) => {
 
 export const ColumnDropdown = makeDropdown((props: Props) => {
   const { onMoreClick, data } = props;
-  const { nodeType } = data;
+  const { nodeType, isReadOnly } = data;
 
   const DeleteColumnModal =
     {
@@ -119,6 +119,7 @@ export const ColumnDropdown = makeDropdown((props: Props) => {
         </>
       ),
       key: MORE_ACTION.EDIT,
+      disabled: nodeType === NODE_TYPE.RELATION && isReadOnly,
       onClick: () => onMoreClick(MORE_ACTION.EDIT),
     },
     {
@@ -127,6 +128,7 @@ export const ColumnDropdown = makeDropdown((props: Props) => {
       ),
       className: 'red-5',
       key: MORE_ACTION.DELETE,
+      disabled: nodeType === NODE_TYPE.RELATION && isReadOnly,
       onClick: ({ domEvent }) => domEvent.stopPropagation(),
     },
   ];
