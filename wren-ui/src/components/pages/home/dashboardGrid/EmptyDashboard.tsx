@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Row, Col } from 'antd';
-import { Logo } from '@/components/Logo';
 import { makeIterable } from '@/utils/iteration';
 
 const StepTemplate = (props: { title: string; image: string }) => {
@@ -44,7 +43,6 @@ const EmptyDashboard = (props: {
         className="d-flex align-center justify-center flex-column -mt-8"
         style={{ height: '100%' }}
       >
-        <Logo size={48} color="var(--gray-8)" />
         <div className="text-lg text-medium text-center gray-8 mt-3">
           还没有添加任何图表
         </div>

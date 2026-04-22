@@ -502,6 +502,14 @@ export class AskingService implements IAskingService {
   public async getThreadRecommendationQuestions(
     threadId: number,
   ): Promise<ThreadRecommendQuestionResult> {
+    if (!config.enableRecommendedQuestions) {
+      return {
+        status: RecommendQuestionResultStatus.NOT_STARTED,
+        questions: [],
+        error: null,
+      };
+    }
+
     const thread = await this.threadRepository.findOneBy({ id: threadId });
     if (!thread) {
       throw new Error(`Thread ${threadId} not found`);
@@ -526,6 +534,10 @@ export class AskingService implements IAskingService {
   public async generateThreadRecommendationQuestions(
     threadId: number,
   ): Promise<void> {
+    if (!config.enableRecommendedQuestions) {
+      return;
+    }
+
     const thread = await this.threadRepository.findOneBy({ id: threadId });
     if (!thread) {
       throw new Error(`Thread ${threadId} not found`);

@@ -13,6 +13,7 @@ import {
   useGetProjectRecommendationQuestionsLazyQuery,
   useGenerateProjectRecommendationQuestionsMutation,
 } from '@/apollo/client/graphql/home.generated';
+import { isRecommendedQuestionsEnabled } from '@/utils/recommendedQuestions';
 
 export interface GroupedQuestion {
   category: string;
@@ -32,6 +33,7 @@ const getGroupedQuestions = (
 };
 
 export default function useRecommendedQuestionsInstruction() {
+  const enabled = isRecommendedQuestionsEnabled();
   const [showRetry, setShowRetry] = useState<boolean>(false);
   const [generating, setGenerating] = useState<boolean>(false);
   const [isRegenerate, setIsRegenerate] = useState<boolean>(false);
@@ -60,6 +62,8 @@ export default function useRecommendedQuestionsInstruction() {
   );
 
   useEffect(() => {
+    if (!enabled) return;
+
     const fetchRecommendationQuestionsData = async () => {
       const result = await fetchRecommendationQuestions();
       const data = result.data?.getProjectRecommendationQuestions;
@@ -76,9 +80,11 @@ export default function useRecommendedQuestionsInstruction() {
     };
 
     fetchRecommendationQuestionsData();
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
+
     if (isRecommendedFinished(recommendedQuestionsTask?.status)) {
       recommendationQuestionsResult.stopPolling();
 
@@ -104,9 +110,11 @@ export default function useRecommendedQuestionsInstruction() {
 
       setGenerating(false);
     }
-  }, [recommendedQuestionsTask]);
+  }, [enabled, recommendedQuestionsTask]);
 
   const onGetRecommendationQuestions = async () => {
+    if (!enabled) return;
+
     setGenerating(true);
     setIsRegenerate(true);
     try {
@@ -147,6 +155,7 @@ export default function useRecommendedQuestionsInstruction() {
   }, [generating, isRegenerate, showRetry, showRecommendedQuestionsPromptMode]);
 
   return {
+    enabled,
     recommendedQuestions,
     generating,
     showRetry,

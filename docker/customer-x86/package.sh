@@ -228,6 +228,7 @@ EOF
 
 cp "$SCRIPT_DIR/docker-compose.customer.yaml" "$DIST_DIR/"
 cp "$SCRIPT_DIR/README.customer.md" "$DIST_DIR/"
+cp "$SCRIPT_DIR/USAGE.md" "$DIST_DIR/"
 cp "$SCRIPT_DIR/config.customer.yaml" "$DIST_DIR/"
 cp "$SCRIPT_DIR/.env.customer.example" "$DIST_DIR/"
 cp "$SCRIPT_DIR/install.sh" "$DIST_DIR/"

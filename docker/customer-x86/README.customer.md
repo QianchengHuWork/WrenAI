@@ -1,39 +1,41 @@
-# Customer x86 Linux Deployment Bundle
+# 客户版 x86 Linux 部署包
 
-This directory contains the source-controlled assets used to produce a customer delivery bundle for a single-node Docker Compose deployment.
+这个目录保存的是客户交付包的源码级说明和打包脚本，目标是单机 `Docker Compose` 部署。
 
-## What gets built
+更详细的本地试跑和客户服务器部署步骤请看 [USAGE.md](/Users/qianchenghu/PycharmProjects/workspace/WrenAI/docker/customer-x86/USAGE.md)。
 
-- `wren-ui`: built from the current branch source
-- `wren-ai-service`: built from the current branch source
-- `wren-engine`, `ibis-server`, `bootstrap`, `qdrant`: pulled as pinned dependency images and bundled for offline loading
+## 打包内容
 
-## Prerequisites
+- `wren-ui`：基于当前分支源码构建
+- `wren-ai-service`：基于当前分支源码构建
+- `wren-engine`、`ibis-server`、`bootstrap`、`qdrant`：使用固定版本镜像并随包打出，支持离线加载
 
-### Packaging host
+## 前置条件
 
-- Docker with `buildx`
-- Git
-- gzip / tar
-- outbound access to the image registries and `https://api.siliconflow.cn`
+### 打包机
 
-### Customer host
+- 安装 Docker，且支持 `buildx`
+- 安装 Git
+- 安装 `gzip` / `tar`
+- 能访问镜像仓库和 `https://api.siliconflow.cn`
 
-- Docker
-- Docker Compose plugin
-- outbound access to `https://api.siliconflow.cn`
+### 客户机
 
-The customer host does not need Node.js, Python, Poetry, Yarn, or SQLite installed.
+- 安装 Docker
+- 安装 Docker Compose 插件
+- 能访问 `https://api.siliconflow.cn`
 
-## Package
+客户机不需要预装 Node.js、Python、Poetry、Yarn 或 SQLite。
+
+## 打包
 
 ```bash
 cd docker/customer-x86
-export SILICONFLOW_API_KEY=your-real-key
+export SILICONFLOW_API_KEY=你的真实密钥
 ./package.sh
 ```
 
-Generated artifacts are written to `dist/`:
+生成结果会写到 `dist/`：
 
 - `images-<git_sha>.tar.gz`
 - `source-<git_sha>.tar.gz`
@@ -42,20 +44,22 @@ Generated artifacts are written to `dist/`:
 - `.env.customer`
 - `docker-compose.customer.yaml`
 - `install.sh`
+- `README.customer.md`
 
-## Install on the customer host
+## 在客户机上安装
 
-1. Copy the full `dist/` directory to the target machine.
-2. Review `.env.customer` if ports or data paths must change.
-3. Run:
+1. 把完整的 `dist/` 目录拷到目标机器。
+2. 如需调整端口或数据目录，先检查 `.env.customer`。
+3. 执行：
 
 ```bash
 cd dist
 ./install.sh
 ```
 
-## Notes
+## 说明
 
-- SQLite is stored inside the UI data directory defined by `CUSTOMER_UI_DATA_DIR`.
-- The deployment is single-instance only. Do not run multiple `wren-ui` containers against the same SQLite file.
-- The package process bakes `SILICONFLOW_API_KEY` into the customer AI image. This is intentionally high risk and should only be used for the current POC.
+- SQLite 文件保存在 `CUSTOMER_UI_DATA_DIR` 指定的 UI 数据目录内。
+- 这是单实例部署，不要让多个 `wren-ui` 容器共用同一个 SQLite 文件。
+- 打包时会把 `SILICONFLOW_API_KEY` 写入客户版 AI 镜像。这个做法安全风险较高，只建议用于当前 POC。
+- 推荐问题功能默认关闭。如需启用，请在 `.env.customer` 里设置 `NEXT_PUBLIC_ENABLE_RECOMMENDED_QUESTIONS=true`。

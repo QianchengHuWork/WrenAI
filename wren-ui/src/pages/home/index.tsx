@@ -1,7 +1,6 @@
 import { ComponentRef, useMemo, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { Button, Typography } from 'antd';
-import { Logo } from '@/components/Logo';
 import { Path } from '@/utils/enum';
 import SiderLayout from '@/components/layouts/SiderLayout';
 import Prompt from '@/components/pages/home/prompt';
@@ -10,6 +9,7 @@ import useHomeSidebar from '@/hooks/useHomeSidebar';
 import useAskPrompt from '@/hooks/useAskPrompt';
 import useRecommendedQuestionsInstruction from '@/hooks/useRecommendedQuestionsInstruction';
 import RecommendedQuestionsPrompt from '@/components/pages/home/prompt/RecommendedQuestionsPrompt';
+import { isRecommendedQuestionsEnabled } from '@/utils/recommendedQuestions';
 import {
   useSuggestedQuestionsQuery,
   useCreateThreadMutation,
@@ -26,7 +26,6 @@ const Wrapper = ({ children }) => {
       className="d-flex align-center justify-center flex-column"
       style={{ height: '100%' }}
     >
-      <Logo size={48} color="var(--gray-8)" />
       <div className="text-md text-medium gray-8 mt-3">更了解你的数据</div>
       {children}
     </div>
@@ -47,12 +46,15 @@ function RecommendedQuestionsInstruction(props) {
   const { onSelect, loading } = props;
 
   const {
+    enabled,
     buttonProps,
     generating,
     recommendedQuestions,
     showRetry,
     showRecommendedQuestionsPromptMode,
   } = useRecommendedQuestionsInstruction();
+
+  if (!enabled) return null;
 
   return showRecommendedQuestionsPromptMode ? (
     <div
@@ -108,6 +110,7 @@ export default function Home() {
     () => Boolean(settings?.dataSource?.sampleDataset),
     [settings],
   );
+  const recommendedQuestionsEnabled = isRecommendedQuestionsEnabled();
 
   const sampleQuestions = useMemo(
     () => suggestedQuestionsData?.suggestedQuestions.questions || [],
@@ -139,7 +142,7 @@ export default function Home() {
         />
       )}
 
-      {!isSampleDataset && (
+      {!isSampleDataset && recommendedQuestionsEnabled && (
         <RecommendedQuestionsInstruction
           onSelect={onCreateResponse}
           loading={threadCreating}

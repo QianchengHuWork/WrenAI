@@ -40,6 +40,7 @@ export interface IConfig {
   wrenEngineVersion?: string;
   wrenAIVersion?: string;
   wrenProductVersion?: string;
+  enableRecommendedQuestions?: boolean;
 
   // generate recommendation questions max categories
   projectRecommendationQuestionMaxCategories?: number;
@@ -130,6 +131,10 @@ const config = {
   wrenEngineVersion: process.env.WREN_ENGINE_VERSION,
   wrenAIVersion: process.env.WREN_AI_SERVICE_VERSION,
   wrenProductVersion: process.env.WREN_PRODUCT_VERSION,
+  enableRecommendedQuestions:
+    (process.env.NEXT_PUBLIC_ENABLE_RECOMMENDED_QUESTIONS ??
+      process.env.ENABLE_RECOMMENDED_QUESTIONS ??
+      'false') === 'true',
 
   // generate recommendation questions max questions
   projectRecommendationQuestionMaxCategories: process.env

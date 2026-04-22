@@ -137,6 +137,10 @@ export class ProjectService implements IProjectService {
   }
 
   public async generateProjectRecommendationQuestions(): Promise<void> {
+    if (!config.enableRecommendedQuestions) {
+      return;
+    }
+
     const project = await this.getCurrentProject();
     if (!project) {
       throw new Error(`Project not found`);
@@ -167,6 +171,14 @@ export class ProjectService implements IProjectService {
   }
 
   public async getProjectRecommendationQuestions() {
+    if (!config.enableRecommendedQuestions) {
+      return {
+        status: RecommendQuestionResultStatus.NOT_STARTED,
+        questions: [],
+        error: null,
+      };
+    }
+
     const project = await this.projectRepository.getCurrentProject();
     if (!project) {
       throw new Error(`Project not found`);

@@ -17,7 +17,7 @@ function App({ Component, pageProps }: AppProps) {
     <>
       <Head>
         <title>Zen-SmartBI</title>
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="data:," />
       </Head>
       <GlobalConfigProvider>
         <ApolloProvider client={apolloClient}>

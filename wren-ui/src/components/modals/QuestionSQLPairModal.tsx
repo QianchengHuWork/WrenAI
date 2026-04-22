@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { Alert, Button, Form, Input, Modal, Typography } from 'antd';
-import { Logo } from '@/components/Logo';
 import InfoCircleOutlined from '@ant-design/icons/InfoCircleOutlined';
 import SelectOutlined from '@ant-design/icons/SelectOutlined';
 import { ERROR_TEXTS } from '@/utils/error';
@@ -39,10 +38,7 @@ const Toolbar = (props: { dataSource: string; onClick: () => void }) => {
   const name = getDataSourceName(dataSource);
   return (
     <div className="d-flex justify-space-between align-center px-1">
-      <span className="d-flex align-center gx-2">
-        <Logo size={16} />
-        Wren SQL
-      </span>
+      <span className="d-flex align-center gx-2">SQL 编辑器</span>
       <Button className="px-0" type="link" size="small" onClick={onClick}>
         <SelectOutlined />从 {name} SQL 导入
       </Button>

@@ -48,6 +48,7 @@ import {
   CreateSqlPairInput,
 } from '@/apollo/client/graphql/__types__';
 import { useCreateSqlPairMutation } from '@/apollo/client/graphql/sqlPairs.generated';
+import { isRecommendedQuestionsEnabled } from '@/utils/recommendedQuestions';
 
 const getThreadResponseIsFinished = (threadResponse: ThreadResponse) => {
   const { answerDetail, breakdownDetail, chartDetail } = threadResponse || {};
@@ -76,6 +77,7 @@ export default function HomeThread() {
   const params = useParams();
   const homeSidebar = useHomeSidebar();
   const threadId = useMemo(() => Number(params?.id) || null, [params]);
+  const recommendedQuestionsEnabled = isRecommendedQuestionsEnabled();
   const askPrompt = useAskPrompt(threadId);
   const adjustAnswer = useAdjustAnswer(threadId);
   const saveAsViewModal = useModalAction();
@@ -210,6 +212,8 @@ export default function HomeThread() {
   };
 
   const onGenerateThreadRecommendedQuestions = async () => {
+    if (!recommendedQuestionsEnabled) return;
+
     await generateThreadRecommendationQuestions({ variables: { threadId } });
     fetchThreadRecommendationQuestions({ variables: { threadId } });
   };
@@ -255,8 +259,10 @@ export default function HomeThread() {
   // stop all requests when change thread
   useEffect(() => {
     if (threadId !== null) {
-      fetchThreadRecommendationQuestions({ variables: { threadId } });
-      setShowRecommendedQuestions(true);
+      if (recommendedQuestionsEnabled) {
+        fetchThreadRecommendationQuestions({ variables: { threadId } });
+      }
+      setShowRecommendedQuestions(recommendedQuestionsEnabled);
     }
     return () => {
       askPrompt.onStopPolling();
@@ -264,7 +270,7 @@ export default function HomeThread() {
       threadRecommendationQuestionsResult.stopPolling();
       $prompt.current?.close();
     };
-  }, [threadId]);
+  }, [threadId, recommendedQuestionsEnabled]);
 
   // initialize asking task
   useEffect(() => {
@@ -276,9 +282,9 @@ export default function HomeThread() {
   useEffect(() => {
     if (isPollingResponseFinished) {
       threadResponseResult.stopPolling();
-      setShowRecommendedQuestions(true);
+      setShowRecommendedQuestions(recommendedQuestionsEnabled);
     }
-  }, [isPollingResponseFinished]);
+  }, [isPollingResponseFinished, recommendedQuestionsEnabled]);
 
   const recommendedQuestions = useMemo(
     () =>
@@ -288,10 +294,12 @@ export default function HomeThread() {
   );
 
   useEffect(() => {
+    if (!recommendedQuestionsEnabled) return;
+
     if (isRecommendedFinished(recommendedQuestions?.status)) {
       threadRecommendationQuestionsResult.stopPolling();
     }
-  }, [recommendedQuestions]);
+  }, [recommendedQuestions, recommendedQuestionsEnabled]);
 
   const onCreateResponse = async (payload: CreateThreadResponseInput) => {
     try {
