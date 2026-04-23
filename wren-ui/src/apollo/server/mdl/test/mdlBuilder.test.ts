@@ -793,4 +793,5 @@ describe('MDLBuilder', () => {
       expect(manifest.dataSource).not.toBeNull();
     },
   );
+
 });

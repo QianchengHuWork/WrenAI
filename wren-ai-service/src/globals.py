@@ -83,6 +83,20 @@ def create_service_container(
     _sql_diagnosis_pipeline = generation.SQLDiagnosis(
         **pipe_components["sql_diagnosis"],
     )
+    _scope_resolution_pipeline = (
+        generation.ScopeResolution(
+            **pipe_components["scope_resolution"],
+        )
+        if "scope_resolution" in pipe_components
+        else None
+    )
+    _query_normalization_pipeline = (
+        generation.QueryNormalization(
+            **pipe_components["query_normalization"],
+        )
+        if "query_normalization" in pipe_components
+        else None
+    )
 
     return ServiceContainer(
         semantics_description=services.SemanticsDescription(
@@ -153,6 +167,16 @@ def create_service_container(
                 "sql_diagnosis": _sql_diagnosis_pipeline,
                 "sql_knowledge_retrieval": retrieval.SqlKnowledges(
                     **pipe_components["sql_knowledge_retrieval"],
+                ),
+                **(
+                    {"scope_resolution": _scope_resolution_pipeline}
+                    if _scope_resolution_pipeline
+                    else {}
+                ),
+                **(
+                    {"query_normalization": _query_normalization_pipeline}
+                    if _query_normalization_pipeline
+                    else {}
                 ),
             },
             allow_intent_classification=settings.allow_intent_classification,

@@ -69,6 +69,30 @@ export interface AskingTask {
   intentReasoning?: string;
   sqlGenerationReasoning?: string;
   retrievedTables?: string[];
+  candidateModels?: Array<{
+    model: string;
+    description?: string;
+    keyFields?: string[];
+    normalizableFields?: string[];
+    availableCanonicalMappings?: string[];
+    fieldDescriptions?: string[];
+  }>;
+  selectedModels?: {
+    primaryModel: string;
+    secondaryModels: string[];
+    needsJoin: boolean;
+    reasoning?: string[];
+  };
+  normalizedQuery?: string;
+  matchedRewrites?: Array<{
+    scope: {
+      model: string;
+      column: string;
+    };
+    userPhrase: string;
+    canonicalValue: string;
+    reason?: string;
+  }>;
   toolCalls?: string[];
   semanticFiles?: string[];
   invalidSql?: string;
@@ -856,6 +880,10 @@ export class AskingResolver {
       intentReasoning: askingTask.intentReasoning,
       sqlGenerationReasoning: askingTask.sqlGenerationReasoning,
       retrievedTables: askingTask.retrievedTables,
+      candidateModels: askingTask.candidateModels,
+      selectedModels: askingTask.selectedModels,
+      normalizedQuery: askingTask.normalizedQuery,
+      matchedRewrites: askingTask.matchedRewrites,
       toolCalls,
       semanticFiles,
       invalidSql: askingTask.invalidSql

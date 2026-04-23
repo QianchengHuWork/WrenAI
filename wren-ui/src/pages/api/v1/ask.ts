@@ -9,6 +9,7 @@ import {
   handleApiError,
   MAX_WAIT_TIME,
   isAskResultFinished,
+  validateAskResult,
   validateSummaryResult,
   transformHistoryInput,
 } from '@/apollo/server/utils/apiUtils';
@@ -22,6 +23,8 @@ import {
   WrenAIError,
 } from '@/apollo/server/models/adaptor';
 import { getLogger } from '@server/utils';
+import { DataSourceName } from '@server/types';
+import { buildDenodoAskAugmentation } from '@server/utils/denodoMcp';
 
 const logger = getLogger('API_ASK');
 logger.level = 'debug';
@@ -32,6 +35,7 @@ const {
   deployService,
   wrenAIAdaptor,
   queryService,
+  denodoSqlGuardService,
 } = components;
 
 interface AskRequest {
@@ -81,6 +85,13 @@ export default async function handler(
       : undefined;
 
     // Step 1: Generate SQL
+    const denodoAskAugmentation =
+      project.type === DataSourceName.DENODO_MCP
+        ? await buildDenodoAskAugmentation(project.id)
+        : {
+            semanticContext: undefined,
+            semanticDictionary: undefined,
+          };
     const askTask = await wrenAIAdaptor.ask({
       query: question,
       deployId: lastDeploy.hash,
@@ -90,6 +101,8 @@ export default async function handler(
         language:
           language || WrenAILanguage[project.language] || WrenAILanguage.EN,
       },
+      semanticContext: denodoAskAugmentation.semanticContext,
+      semanticDictionary: denodoAskAugmentation.semanticDictionary,
     });
 
     // Poll for the SQL generation result
@@ -130,6 +143,15 @@ export default async function handler(
         askResult.error?.code || Errors.GeneralErrorCodes.INTERNAL_SERVER_ERROR,
         additionalData,
       );
+    }
+
+    if (project.type === DataSourceName.DENODO_MCP) {
+      askResult = await denodoSqlGuardService.guardAskResult({
+        askResult,
+        manifest: lastDeploy.manifest,
+        project,
+      });
+      validateAskResult(askResult, askTask.queryId);
     }
 
     // Check for general type response (explanation streaming)
@@ -186,6 +208,7 @@ export default async function handler(
 
     // Get the generated SQL
     const sql = askResult.response?.[0]?.sql;
+    const sqlDialect = askResult.response?.[0]?.sqlDialect;
     if (!sql) {
       throw new ApiError('No SQL generated', 400);
     }
@@ -198,6 +221,7 @@ export default async function handler(
         limit: sampleSize || 500,
         manifest: lastDeploy.manifest,
         modelingOnly: false,
+        sqlDialect,
       });
       sqlData = queryResult;
     } catch (queryError) {

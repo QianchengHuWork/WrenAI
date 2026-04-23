@@ -12,6 +12,7 @@ from src.globals import (
     get_service_metadata,
 )
 from src.web.v1.services import BaseRequest, SqlCorrectionService
+from src.web.v1.services.denodo_scope_normalization import MatchedRewrite, SelectedModels
 
 router = APIRouter()
 
@@ -24,6 +25,10 @@ class PostRequest(BaseRequest):
     allow_dry_plan_fallback: bool = True
     validation_mode: Literal["engine", "none"] = "engine"
     semantic_context: Optional[str] = None
+    original_query: Optional[str] = None
+    normalized_query: Optional[str] = None
+    selected_models: Optional[SelectedModels] = None
+    matched_rewrites: Optional[List[MatchedRewrite]] = None
 
 
 class PostResponse(BaseModel):

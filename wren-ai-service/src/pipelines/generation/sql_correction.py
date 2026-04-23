@@ -21,6 +21,11 @@ from src.pipelines.generation.utils.sql import (
 from src.pipelines.retrieval.sql_functions import SqlFunction
 from src.pipelines.retrieval.sql_knowledge import SqlKnowledge
 from src.utils import loads_llm_json, trace_cost
+from src.web.v1.services.denodo_scope_normalization import (
+    format_rewrite_summaries,
+    format_selected_models,
+    safe_log_value,
+)
 
 logger = logging.getLogger("wren-ai-service")
 
@@ -78,12 +83,36 @@ sql_correction_user_prompt_template = """
 {{ semantic_context }}
 {% endif %}
 
+{% if selected_models %}
+### SELECTED MODELS ###
+Primary Model: {{ selected_models.primary_model }}
+Secondary Models: {{ selected_models.secondary_models | join(", ") if selected_models.secondary_models else "" }}
+Needs Join: {{ selected_models.needs_join }}
+{% endif %}
+
+{% if matched_rewrites %}
+### MATCHED REWRITES ###
+{% for rewrite in matched_rewrites %}
+- scope: {{ rewrite.scope.model }}.{{ rewrite.scope.column }} | user_phrase: {{ rewrite.user_phrase }} | canonical_value: {{ rewrite.canonical_value }}{% if rewrite.reason %} | reason: {{ rewrite.reason }}{% endif %}
+{% endfor %}
+{% endif %}
+
 {% if sql_samples %}
 ### SQL SAMPLES ###
 {% for sample in sql_samples %}
 Question: {{ sample.question }}
 SQL: {{ sample.sql }}
 {% endfor %}
+{% endif %}
+
+{% if original_query %}
+### ORIGINAL QUESTION ###
+{{ original_query }}
+{% endif %}
+
+{% if normalized_query and normalized_query != original_query %}
+### NORMALIZED QUESTION ###
+{{ normalized_query }}
 {% endif %}
 
 ### QUESTION ###
@@ -104,6 +133,10 @@ def prompt(
     sql_samples: list[dict] | None = None,
     sql_functions: list[SqlFunction] | None = None,
     semantic_context: str | None = None,
+    original_query: str | None = None,
+    normalized_query: str | None = None,
+    matched_rewrites: list[dict] | None = None,
+    selected_models: dict | None = None,
 ) -> dict:
     _prompt = prompt_builder.run(
         documents=documents,
@@ -114,6 +147,10 @@ def prompt(
         semantic_context=semantic_context or "",
         sql_samples=sql_samples,
         sql_functions=sql_functions,
+        original_query=original_query,
+        normalized_query=normalized_query,
+        matched_rewrites=matched_rewrites or [],
+        selected_models=selected_models,
     )
     return {"prompt": clean_up_new_lines(_prompt.get("prompt"))}
 
@@ -210,8 +247,27 @@ class SQLCorrection(BasicPipeline):
         allow_dry_plan_fallback: bool = True,
         validation_mode: str = "engine",
         sql_knowledge: SqlKnowledge | None = None,
+        original_query: str | None = None,
+        normalized_query: str | None = None,
+        matched_rewrites: list[dict] | None = None,
+        selected_models: dict | None = None,
     ):
         logger.info("SQLCorrection pipeline is running...")
+        has_normalization_context = bool(
+            semantic_context
+            or selected_models
+            or (matched_rewrites or [])
+            or (normalized_query or "") != (original_query or "")
+        )
+        if has_normalization_context:
+            logger.info(
+                "denodo_sql_correction.context project_id=%s selected_models=%s normalized_query=%s rewrite_count=%s rewrites=%s",
+                safe_log_value(project_id, limit=80),
+                format_selected_models(selected_models),
+                safe_log_value(normalized_query or original_query),
+                len(matched_rewrites or []),
+                format_rewrite_summaries(matched_rewrites or [], limit=6),
+            )
 
         if use_dry_plan:
             metadata = await retrieve_metadata(project_id or "", self._retriever)
@@ -233,6 +289,10 @@ class SQLCorrection(BasicPipeline):
                 "validation_mode": validation_mode,
                 "data_source": metadata.get("data_source", "local_file"),
                 "sql_knowledge": sql_knowledge,
+                "original_query": original_query,
+                "normalized_query": normalized_query,
+                "matched_rewrites": matched_rewrites or [],
+                "selected_models": selected_models,
                 **self._components,
             },
         )

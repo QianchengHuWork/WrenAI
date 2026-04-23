@@ -4,14 +4,14 @@ from src.pipelines.generation.semantic_dictionary import validated
 def test_semantic_dictionary_validated_keeps_known_task_ids_and_filters_unknown():
     tasks = [
         {
-            "taskId": "dv_ord_core.order_status.COLUMN_HINT",
+            "taskId": "dv_ord_core.order_status.已完成",
             "scope": {"model": "dv_ord_core", "column": "order_status"},
-            "rewriteMode": "COLUMN_HINT",
+            "canonicalValue": "已完成",
         },
         {
-            "taskId": "dv_ord_core.order_status.VALUE_ALIAS",
-            "scope": {"model": "dv_ord_core", "column": "order_status"},
-            "rewriteMode": "VALUE_ALIAS",
+            "taskId": "dv_ord_core.is_paid.1",
+            "scope": {"model": "dv_ord_core", "column": "is_paid"},
+            "canonicalValue": "1",
         },
     ]
 
@@ -19,23 +19,16 @@ def test_semantic_dictionary_validated_keeps_known_task_ids_and_filters_unknown(
         normalized={
             "items": [
                 {
-                    "taskId": "dv_ord_core.order_status.COLUMN_HINT",
-                    "concept": "订单履约状态",
-                    "aliases": ["订单状态", "履约状态"],
+                    "taskId": "dv_ord_core.order_status.已完成",
+                    "description": "订单已完成状态",
+                    "aliases": ["已交付", "交付完成"],
                 },
                 {
-                    "taskId": "dv_ord_core.order_status.VALUE_ALIAS",
-                    "concept": "订单履约状态",
-                    "valueMappings": [
-                        {
-                            "canonicalValue": "已完成",
-                            "aliases": ["已交付", "交付完成"],
-                        }
-                    ],
+                    "taskId": "dv_ord_core.is_paid.1",
+                    "aliases": ["付款成功", "支付完成"],
                 },
                 {
                     "taskId": "missing.task",
-                    "concept": "无效任务",
                     "aliases": ["无效"],
                 },
             ]
@@ -46,35 +39,25 @@ def test_semantic_dictionary_validated_keeps_known_task_ids_and_filters_unknown(
     assert result == {
         "items": [
             {
-                "taskId": "dv_ord_core.order_status.COLUMN_HINT",
-                "concept": "订单履约状态",
-                "description": None,
-                "aliases": ["订单状态", "履约状态"],
-                "valueMappings": [],
+                "taskId": "dv_ord_core.order_status.已完成",
+                "description": "订单已完成状态",
+                "aliases": ["已交付", "交付完成"],
             },
             {
-                "taskId": "dv_ord_core.order_status.VALUE_ALIAS",
-                "concept": "订单履约状态",
+                "taskId": "dv_ord_core.is_paid.1",
                 "description": None,
-                "aliases": [],
-                "valueMappings": [
-                    {
-                        "canonicalValue": "已完成",
-                        "aliases": ["已交付", "交付完成"],
-                        "description": None,
-                    }
-                ],
+                "aliases": ["付款成功", "支付完成"],
             },
         ]
     }
 
 
-def test_semantic_dictionary_validated_backfills_task_id_from_legacy_shape():
+def test_semantic_dictionary_validated_filters_blank_aliases():
     tasks = [
         {
-            "taskId": "dv_ord_core.order_status.VALUE_ALIAS",
+            "taskId": "dv_ord_core.order_status.已完成",
             "scope": {"model": "dv_ord_core", "column": "order_status"},
-            "rewriteMode": "VALUE_ALIAS",
+            "canonicalValue": "已完成",
         }
     ]
 
@@ -82,11 +65,8 @@ def test_semantic_dictionary_validated_backfills_task_id_from_legacy_shape():
         normalized={
             "items": [
                 {
-                    "model": "dv_ord_core",
-                    "column": "order_status",
-                    "rewriteMode": "VALUE_ALIAS",
-                    "canonicalValue": "已完成",
-                    "aliases": ["已交付"],
+                    "taskId": "dv_ord_core.order_status.已完成",
+                    "aliases": ["已交付", "  ", "已交付", None],
                 }
             ]
         },
@@ -96,17 +76,9 @@ def test_semantic_dictionary_validated_backfills_task_id_from_legacy_shape():
     assert result == {
         "items": [
             {
-                "taskId": "dv_ord_core.order_status.VALUE_ALIAS",
-                "concept": None,
+                "taskId": "dv_ord_core.order_status.已完成",
                 "description": None,
                 "aliases": ["已交付"],
-                "valueMappings": [
-                    {
-                        "canonicalValue": "已完成",
-                        "aliases": ["已交付"],
-                        "description": None,
-                    }
-                ],
             }
         ]
     }

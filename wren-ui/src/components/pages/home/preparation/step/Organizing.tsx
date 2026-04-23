@@ -5,6 +5,21 @@ import { Spinner } from '@/components/PageLoading';
 
 interface Props {
   stream: string;
+  selectedModels?: {
+    primaryModel: string;
+    secondaryModels: string[];
+    needsJoin: boolean;
+  } | null;
+  normalizedQuery?: string | null;
+  matchedRewrites?: Array<{
+    scope: {
+      model: string;
+      column: string;
+    };
+    userPhrase: string;
+    canonicalValue: string;
+    reason?: string | null;
+  }> | null;
   loading?: boolean;
   isAdjustment?: boolean;
 }
@@ -63,7 +78,14 @@ const parseNumberedSteps = (content: string): ReasoningStep[] => {
 
 export default function Organizing(props: Props) {
   const $wrapper = useRef<HTMLDivElement>(null);
-  const { stream, loading, isAdjustment } = props;
+  const {
+    stream,
+    loading,
+    isAdjustment,
+    selectedModels,
+    normalizedQuery,
+    matchedRewrites,
+  } = props;
 
   const isDone = stream && !loading;
   const steps = useMemo(() => parseNumberedSteps(stream), [stream]);
@@ -101,6 +123,38 @@ export default function Organizing(props: Props) {
           </div>
         ) : steps.length ? (
           <div className="d-flex flex-column gy-3">
+            {!!selectedModels && (
+              <div>
+                <div className="gray-8 font-medium">已选作用域</div>
+                <div className="mt-1 pl-4">
+                  主模型: {selectedModels.primaryModel}
+                  {!!selectedModels.secondaryModels?.length &&
+                    `；辅助模型: ${selectedModels.secondaryModels.join(', ')}`}
+                  {selectedModels.needsJoin ? '；需要 Join' : ''}
+                </div>
+              </div>
+            )}
+            {!!normalizedQuery && (
+              <div>
+                <div className="gray-8 font-medium">归一化问题</div>
+                <div className="mt-1 pl-4">{normalizedQuery}</div>
+              </div>
+            )}
+            {!!matchedRewrites?.length && (
+              <div>
+                <div className="gray-8 font-medium">命中改写</div>
+                <div className="mt-1 pl-4">
+                  {matchedRewrites.map((rewrite) => (
+                    <div
+                      key={`${rewrite.scope.model}.${rewrite.scope.column}.${rewrite.userPhrase}.${rewrite.canonicalValue}`}
+                    >
+                      {rewrite.scope.model}.{rewrite.scope.column}: "
+                      {rewrite.userPhrase}" → "{rewrite.canonicalValue}"
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {steps.map((step) => (
               <div key={`${step.index}-${step.title}`}>
                 <div className="gray-8 font-medium">
@@ -115,7 +169,41 @@ export default function Organizing(props: Props) {
             ))}
           </div>
         ) : (
-          <MarkdownBlock content={stream} />
+          <div className="d-flex flex-column gy-3">
+            {!!selectedModels && (
+              <div>
+                <div className="gray-8 font-medium">已选作用域</div>
+                <div className="mt-1 pl-4">
+                  主模型: {selectedModels.primaryModel}
+                  {!!selectedModels.secondaryModels?.length &&
+                    `；辅助模型: ${selectedModels.secondaryModels.join(', ')}`}
+                  {selectedModels.needsJoin ? '；需要 Join' : ''}
+                </div>
+              </div>
+            )}
+            {!!normalizedQuery && (
+              <div>
+                <div className="gray-8 font-medium">归一化问题</div>
+                <div className="mt-1 pl-4">{normalizedQuery}</div>
+              </div>
+            )}
+            {!!matchedRewrites?.length && (
+              <div>
+                <div className="gray-8 font-medium">命中改写</div>
+                <div className="mt-1 pl-4">
+                  {matchedRewrites.map((rewrite) => (
+                    <div
+                      key={`${rewrite.scope.model}.${rewrite.scope.column}.${rewrite.userPhrase}.${rewrite.canonicalValue}`}
+                    >
+                      {rewrite.scope.model}.{rewrite.scope.column}: "
+                      {rewrite.userPhrase}" → "{rewrite.canonicalValue}"
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <MarkdownBlock content={stream} />
+          </div>
         )}
       </div>
     </>

@@ -46,9 +46,7 @@ import { getConfig } from '@server/config';
 import { TextBasedAnswerBackgroundTracker } from '../backgrounds/textBasedAnswerBackgroundTracker';
 import { IAskingTaskTracker, TrackedAskingResult } from './askingTaskTracker';
 import {
-  isDenodoSemanticDictionaryEnabled,
-  readDenodoSemanticDictionary,
-  toDenodoSemanticContext,
+  buildDenodoAskAugmentation,
 } from '@server/utils/denodoMcp';
 
 const config = getConfig();
@@ -621,13 +619,13 @@ export class AskingService implements IAskingService {
     const histories = threadId
       ? await this.getAskingHistory(threadId, threadResponseId)
       : null;
-    const semanticContext =
-      project.type === DataSourceName.DENODO_MCP &&
-      isDenodoSemanticDictionaryEnabled()
-        ? toDenodoSemanticContext(
-            await readDenodoSemanticDictionary(project.id),
-          )
-        : undefined;
+    const denodoAskAugmentation =
+      project.type === DataSourceName.DENODO_MCP
+        ? await buildDenodoAskAugmentation(project.id)
+        : {
+            semanticContext: undefined,
+            semanticDictionary: undefined,
+          };
 
     const response = await this.askingTaskTracker.createAskingTask({
       query: input.question,
@@ -635,7 +633,8 @@ export class AskingService implements IAskingService {
       histories,
       deployId,
       configurations: { language },
-      semanticContext,
+      semanticContext: denodoAskAugmentation.semanticContext,
+      semanticDictionary: denodoAskAugmentation.semanticDictionary,
       rerunFromCancelled,
       previousTaskId,
       threadResponseId,

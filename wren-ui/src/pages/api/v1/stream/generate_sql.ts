@@ -15,6 +15,7 @@ import {
   AskResultStatus,
   WrenAILanguage,
 } from '@/apollo/server/models/adaptor';
+import { DataSourceName } from '@server/types';
 import { getLogger } from '@server/utils';
 import {
   StateType,
@@ -25,12 +26,18 @@ import {
   getSqlGenerationState,
   endStream,
 } from '@/apollo/server/utils';
+import { buildDenodoAskAugmentation } from '@server/utils/denodoMcp';
 
 const logger = getLogger('API_STREAM_GENERATE_SQL');
 logger.level = 'debug';
 
-const { apiHistoryRepository, projectService, deployService, wrenAIAdaptor } =
-  components;
+const {
+  apiHistoryRepository,
+  projectService,
+  deployService,
+  wrenAIAdaptor,
+  denodoSqlGuardService,
+} = components;
 
 export default async function handler(
   req: NextApiRequest,
@@ -88,6 +95,13 @@ export default async function handler(
         language || WrenAILanguage[project.language] || WrenAILanguage.EN,
     });
 
+    const denodoAskAugmentation =
+      project.type === DataSourceName.DENODO_MCP
+        ? await buildDenodoAskAugmentation(project.id)
+        : {
+            semanticContext: undefined,
+            semanticDictionary: undefined,
+          };
     const askTask = await wrenAIAdaptor.ask({
       query: question,
       deployId: lastDeploy.hash,
@@ -97,6 +111,8 @@ export default async function handler(
         language:
           language || WrenAILanguage[project.language] || WrenAILanguage.EN,
       },
+      semanticContext: denodoAskAugmentation.semanticContext,
+      semanticDictionary: denodoAskAugmentation.semanticDictionary,
     });
 
     // Poll for the SQL generation result
@@ -117,6 +133,10 @@ export default async function handler(
           intentReasoning: askResult.intentReasoning,
           sqlGenerationReasoning: askResult.sqlGenerationReasoning,
           retrievedTables: askResult.retrievedTables,
+          candidateModels: askResult.candidateModels,
+          selectedModels: askResult.selectedModels,
+          normalizedQuery: askResult.normalizedQuery,
+          matchedRewrites: askResult.matchedRewrites,
           invalidSql: askResult.invalidSql,
           traceId: askResult.traceId,
         });
@@ -145,6 +165,15 @@ export default async function handler(
 
     // Validate the result
     validateAskResult(askResult, askTask.queryId);
+
+    if (project.type === DataSourceName.DENODO_MCP) {
+      askResult = await denodoSqlGuardService.guardAskResult({
+        askResult,
+        manifest: lastDeploy.manifest,
+        project,
+      });
+      validateAskResult(askResult, askTask.queryId);
+    }
 
     // Get the generated SQL
     const sql = askResult.response?.[0]?.sql;

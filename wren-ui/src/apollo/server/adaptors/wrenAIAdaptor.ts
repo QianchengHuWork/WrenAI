@@ -256,6 +256,7 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
         histories: this.transformHistoryInput(input.histories),
         configurations: input.configurations,
         semantic_context: input.semanticContext,
+        semantic_dictionary: input.semanticDictionary,
       });
       return { queryId: res.data.query_id };
     } catch (err: any) {
@@ -329,6 +330,10 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
           validation_mode: input.validationMode,
           configurations: input.configurations,
           semantic_context: input.semanticContext,
+          original_query: input.originalQuery,
+          normalized_query: input.normalizedQuery,
+          selected_models: input.selectedModels,
+          matched_rewrites: input.matchedRewrites,
         },
       );
       return { queryId: res.data.event_id };
@@ -941,6 +946,32 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
       intentReasoning: body?.intent_reasoning,
       sqlGenerationReasoning: body?.sql_generation_reasoning,
       retrievedTables: body?.retrieved_tables,
+      candidateModels: body?.candidate_models?.map((candidate: any) => ({
+        model: candidate?.model,
+        description: candidate?.description,
+        keyFields: candidate?.key_fields,
+        normalizableFields: candidate?.normalizable_fields,
+        availableCanonicalMappings: candidate?.available_canonical_mappings,
+        fieldDescriptions: candidate?.field_descriptions,
+      })),
+      selectedModels: body?.selected_models
+        ? {
+            primaryModel: body.selected_models.primary_model,
+            secondaryModels: body.selected_models.secondary_models || [],
+            needsJoin: !!body.selected_models.needs_join,
+            reasoning: body.selected_models.reasoning || [],
+          }
+        : undefined,
+      normalizedQuery: body?.normalized_query,
+      matchedRewrites: body?.matched_rewrites?.map((rewrite: any) => ({
+        scope: {
+          model: rewrite?.scope?.model,
+          column: rewrite?.scope?.column,
+        },
+        userPhrase: rewrite?.user_phrase,
+        canonicalValue: rewrite?.canonical_value,
+        reason: rewrite?.reason,
+      })),
       invalidSql: body?.invalid_sql,
       traceId: body?.trace_id,
     };

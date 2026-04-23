@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from src.core.pipeline import BasicPipeline
 from src.utils import trace_metadata
 from src.web.v1.services import BaseRequest, MetadataTraceable
+from src.web.v1.services.denodo_scope_normalization import MatchedRewrite, SelectedModels
 
 logger = logging.getLogger("wren-ai-service")
 
@@ -65,6 +66,10 @@ class SqlCorrectionService:
         allow_dry_plan_fallback: bool = True
         validation_mode: Literal["engine", "none"] = "engine"
         semantic_context: Optional[str] = None
+        original_query: Optional[str] = None
+        normalized_query: Optional[str] = None
+        selected_models: Optional[SelectedModels] = None
+        matched_rewrites: Optional[List[MatchedRewrite]] = None
 
     @observe(name="SQL Correction")
     @trace_metadata
@@ -85,6 +90,10 @@ class SqlCorrectionService:
         allow_dry_plan_fallback = request.allow_dry_plan_fallback
         validation_mode = request.validation_mode
         semantic_context = request.semantic_context
+        original_query = request.original_query
+        normalized_query = request.normalized_query
+        selected_models = request.selected_models
+        matched_rewrites = request.matched_rewrites or []
         sql_knowledge = None
         instructions = []
         sql_samples = []
@@ -94,6 +103,13 @@ class SqlCorrectionService:
                 "sql": sql,
                 "error": error,
             }
+
+            if not retrieved_tables:
+                if selected_models:
+                    retrieved_tables = [
+                        selected_models.primary_model,
+                        *selected_models.secondary_models,
+                    ]
 
             if not retrieved_tables:
                 retrieved_tables = (
@@ -152,6 +168,14 @@ class SqlCorrectionService:
                 allow_dry_plan_fallback=allow_dry_plan_fallback,
                 validation_mode=validation_mode,
                 sql_knowledge=sql_knowledge,
+                original_query=original_query,
+                normalized_query=normalized_query,
+                matched_rewrites=[
+                    rewrite.model_dump() for rewrite in matched_rewrites
+                ],
+                selected_models=(
+                    selected_models.model_dump() if selected_models else None
+                ),
             )
 
             post_process = res["post_process"]

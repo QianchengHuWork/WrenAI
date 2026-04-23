@@ -69,7 +69,16 @@ export default function PreparationSteps(
   const showGenerating = generatingNextStates.includes(processState);
 
   // data
-  const retrievedTables = preparedTask?.retrievedTables || [];
+  const retrievedTables =
+    preparedTask?.candidateModels?.map((item) => item.model) ||
+    preparedTask?.retrievedTables ||
+    [];
+  const selectedTables = preparedTask?.selectedModels
+    ? [
+        preparedTask.selectedModels.primaryModel,
+        ...(preparedTask.selectedModels.secondaryModels || []),
+      ]
+    : [];
   const sqlGenerationReasoning =
     preparedTask?.sqlGenerationReasoning || askingStreamTask || '';
   const toolCalls = preparedTask?.toolCalls || [];
@@ -95,6 +104,7 @@ export default function PreparationSteps(
           <Retrieving
             loading={retrieving}
             tables={retrievedTables}
+            selectedTables={selectedTables}
             isAdjustment={preparedTask.isAdjustment}
           />
         </Timeline.Item>
@@ -104,6 +114,9 @@ export default function PreparationSteps(
           <Organizing
             loading={organizing}
             stream={sqlGenerationReasoning}
+            selectedModels={preparedTask?.selectedModels}
+            normalizedQuery={preparedTask?.normalizedQuery}
+            matchedRewrites={preparedTask?.matchedRewrites}
             isAdjustment={preparedTask.isAdjustment}
           />
         </Timeline.Item>

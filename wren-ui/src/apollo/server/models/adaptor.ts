@@ -78,6 +78,47 @@ export interface ProjectConfigurations {
   timezone?: { name: string };
 }
 
+export interface SemanticScope {
+  model: string;
+  column: string;
+}
+
+export interface CandidateModelSummary {
+  model: string;
+  description?: string;
+  keyFields?: string[];
+  normalizableFields?: string[];
+  availableCanonicalMappings?: string[];
+  fieldDescriptions?: string[];
+}
+
+export interface SelectedModels {
+  primaryModel: string;
+  secondaryModels: string[];
+  needsJoin: boolean;
+  reasoning?: string[];
+}
+
+export interface MatchedRewrite {
+  scope: SemanticScope;
+  userPhrase: string;
+  canonicalValue: string;
+  reason?: string;
+}
+
+export interface SemanticDictionaryEntry {
+  scope: SemanticScope;
+  description?: string;
+  aliases: string[];
+  canonicalValue: string;
+}
+
+export interface SemanticDictionary {
+  version: string;
+  generatedAt: string;
+  entries: SemanticDictionaryEntry[];
+}
+
 export interface AskInput {
   query: string;
   deployId: string;
@@ -85,6 +126,7 @@ export interface AskInput {
   histories?: ThreadResponse[];
   configurations?: ProjectConfigurations;
   semanticContext?: string;
+  semanticDictionary?: SemanticDictionary;
 }
 
 export interface AsyncQueryResponse {
@@ -152,6 +194,10 @@ export type AskResult = AskResponse<
   intentReasoning?: string;
   sqlGenerationReasoning?: string;
   retrievedTables?: string[];
+  candidateModels?: CandidateModelSummary[];
+  selectedModels?: SelectedModels;
+  normalizedQuery?: string;
+  matchedRewrites?: MatchedRewrite[];
   toolCalls?: string[];
   semanticFiles?: string[];
   invalidSql?: string;
@@ -168,6 +214,10 @@ export interface SqlCorrectionInput {
   validationMode?: 'engine' | 'none';
   configurations?: ProjectConfigurations;
   semanticContext?: string;
+  originalQuery?: string;
+  normalizedQuery?: string;
+  selectedModels?: SelectedModels;
+  matchedRewrites?: MatchedRewrite[];
 }
 
 export interface SemanticDictionaryInput {
@@ -180,40 +230,17 @@ export interface SemanticDictionaryInput {
 
 export interface SemanticDictionaryTask {
   taskId: string;
-  scope: {
-    model: string;
-    column: string;
-  };
-  rewriteMode: 'COLUMN_HINT' | 'VALUE_ALIAS';
+  scope: SemanticScope;
+  canonicalValue: string;
   columnType?: string;
   description?: string;
   modelDescription?: string;
 }
 
-export interface SemanticDictionaryValueMapping {
-  canonicalValue: string;
-  aliases: string[];
-  description?: string;
-}
-
 export interface SemanticDictionaryBatchItem {
   taskId: string;
-  concept?: string;
   description?: string;
   aliases?: string[];
-  valueMappings?: SemanticDictionaryValueMapping[];
-}
-
-export interface SemanticDictionaryEntry {
-  scope: {
-    model: string;
-    column: string;
-  };
-  concept: string;
-  description?: string;
-  aliases: string[];
-  canonicalValue?: string | null;
-  rewriteMode: 'COLUMN_HINT' | 'VALUE_ALIAS';
 }
 
 export interface SemanticDictionaryResult {

@@ -24,24 +24,16 @@ class SemanticDictionaryTaskScope(BaseModel):
 class SemanticDictionaryTask(BaseModel):
     taskId: str
     scope: SemanticDictionaryTaskScope
-    rewriteMode: str
+    canonicalValue: str
     columnType: str | None = None
     description: str | None = None
     modelDescription: str | None = None
 
 
-class SemanticDictionaryValueMapping(BaseModel):
-    canonicalValue: str
-    aliases: list[str] = Field(default_factory=list)
-    description: str | None = None
-
-
 class SemanticDictionaryBatchItem(BaseModel):
     taskId: str
-    concept: str | None = None
     description: str | None = None
     aliases: list[str] = Field(default_factory=list)
-    valueMappings: list[SemanticDictionaryValueMapping] = Field(default_factory=list)
 
 
 class SemanticDictionaryBatchResult(BaseModel):
@@ -59,23 +51,17 @@ SEMANTIC_DICTIONARY_MODEL_KWARGS = {
 }
 
 system_prompt = """
-You fill semantic dictionary tasks for a BI semantic layer.
+You fill scoped canonical value dictionary tasks for a BI semantic layer.
 
 Return JSON only. Do not return prose.
 
 Rules:
 1. Only fill tasks listed in the input.
 2. Every output item must include taskId from the input.
-3. For rewriteMode = "COLUMN_HINT":
-   - provide a short concept
-   - provide a concise description when helpful
-   - provide user-facing aliases or synonyms
-4. For rewriteMode = "VALUE_ALIAS":
-   - provide concept and description when helpful
-   - provide valueMappings as a list of canonicalValue + aliases
-   - canonicalValue must be an exact database-side value only when clearly grounded in the input
-5. If a task is uncertain, omit it instead of guessing.
-6. Do not invent relationships, joins, measures, or values not grounded in the input descriptions.
+3. The input canonicalValue is already decided by the system. Do not change it.
+4. Only provide user-facing aliases or synonyms for that canonicalValue within the given scope.
+5. Do not invent joins, metrics, fields, or values that are not grounded in the input.
+6. If uncertain, omit the item instead of guessing.
 """
 
 user_prompt_template = """
@@ -85,7 +71,7 @@ Language: {{ language }}
 {% for task in tasks %}
 - taskId: {{ task.taskId }}
   scope: {{ task.scope.model }}.{{ task.scope.column }}
-  rewriteMode: {{ task.rewriteMode }}
+  canonicalValue: {{ task.canonicalValue }}
   {% if task.columnType %}columnType: {{ task.columnType }}{% endif %}
   {% if task.description %}columnDescription: {{ task.description }}{% endif %}
   {% if task.modelDescription %}modelDescription: {{ task.modelDescription }}{% endif %}
@@ -120,16 +106,8 @@ Return JSON in this shape:
   "items": [
     {
       "taskId": "task id from input",
-      "concept": "short concept",
       "description": "optional short explanation",
-      "aliases": ["alias 1", "alias 2"],
-      "valueMappings": [
-        {
-          "canonicalValue": "exact database value",
-          "aliases": ["user alias 1", "user alias 2"],
-          "description": "optional mapping note"
-        }
-      ]
+      "aliases": ["alias 1", "alias 2"]
     }
   ]
 }
@@ -182,92 +160,38 @@ async def generate(
     return await generator(prompt=prompt.get("prompt")), generator_name
 
 
-def _coerce_items(payload: Any) -> list[dict]:
-    if isinstance(payload, dict):
-        if isinstance(payload.get("items"), list):
-            return payload["items"]
-        if isinstance(payload.get("semanticDictionary"), list):
-            return payload["semanticDictionary"]
-    if isinstance(payload, list):
-        return payload
-    return []
-
-
 def _normalize_aliases(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     aliases = []
+    seen = set()
     for item in value:
-        if isinstance(item, str) and item.strip():
-            aliases.append(item.strip())
-    return list(dict.fromkeys(aliases))
-
-
-def _normalize_value_mappings(raw_item: dict) -> list[dict]:
-    if isinstance(raw_item.get("valueMappings"), list):
-        mappings = []
-        for mapping in raw_item["valueMappings"]:
-            if not isinstance(mapping, dict):
-                continue
-            canonical = mapping.get("canonicalValue")
-            aliases = _normalize_aliases(mapping.get("aliases"))
-            if not isinstance(canonical, str) or not canonical.strip() or not aliases:
-                continue
-            mappings.append(
-                {
-                    "canonicalValue": canonical.strip(),
-                    "aliases": aliases,
-                    "description": mapping.get("description"),
-                }
-            )
-        return mappings
-
-    canonical_value = raw_item.get("canonicalValue")
-    aliases = _normalize_aliases(raw_item.get("aliases"))
-    if isinstance(canonical_value, str) and canonical_value.strip() and aliases:
-        return [
-            {
-                "canonicalValue": canonical_value.strip(),
-                "aliases": aliases,
-                "description": raw_item.get("description"),
-            }
-        ]
-
-    if isinstance(canonical_value, list) and isinstance(raw_item.get("aliases"), list):
-        canonicals = [
-            item.strip()
-            for item in canonical_value
-            if isinstance(item, str) and item.strip()
-        ]
-        aliases_list = [
-            item.strip()
-            for item in raw_item.get("aliases", [])
-            if isinstance(item, str) and item.strip()
-        ]
-        if canonicals and len(canonicals) == len(aliases_list):
-            return [
-                {
-                    "canonicalValue": canonical,
-                    "aliases": [alias],
-                    "description": raw_item.get("description"),
-                }
-                for canonical, alias in zip(canonicals, aliases_list)
-            ]
-
-    return []
+        if not isinstance(item, str):
+            continue
+        cleaned = item.strip()
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        aliases.append(cleaned)
+    return aliases
 
 
 @observe(capture_input=False)
 def normalized(generate: dict) -> dict:
     normalized_result = loads_llm_json(generate.get("replies")[0])
-    items = _coerce_items(normalized_result)
+    items = normalized_result.get("items", []) if isinstance(normalized_result, dict) else []
     return {"items": items}
 
 
 @observe(capture_input=False)
 def validated(normalized: dict, tasks: list[dict]) -> dict:
     task_map = {
-        task["taskId"]: task for task in tasks if isinstance(task, dict) and task.get("taskId")
+        task["taskId"]: task
+        for task in tasks
+        if isinstance(task, dict) and isinstance(task.get("taskId"), str)
     }
 
     validated_items = []
@@ -278,38 +202,20 @@ def validated(normalized: dict, tasks: list[dict]) -> dict:
         task_id = item.get("taskId")
         task = task_map.get(task_id)
         if not task:
-            model_name = item.get("model")
-            column_name = item.get("column")
-            rewrite_mode = item.get("rewriteMode")
-            task = next(
-                (
-                    candidate
-                    for candidate in task_map.values()
-                    if candidate.get("scope", {}).get("model") == model_name
-                    and candidate.get("scope", {}).get("column") == column_name
-                    and candidate.get("rewriteMode") == rewrite_mode
-                ),
-                None,
-            )
-            task_id = task.get("taskId") if task else None
-
-        if not task_id or not task:
             continue
 
         aliases = _normalize_aliases(item.get("aliases"))
-        concept = item.get("concept") if isinstance(item.get("concept"), str) else None
         description = (
-            item.get("description") if isinstance(item.get("description"), str) else None
+            item.get("description").strip()
+            if isinstance(item.get("description"), str) and item.get("description").strip()
+            else None
         )
-        value_mappings = _normalize_value_mappings(item)
 
         validated_items.append(
             {
                 "taskId": task_id,
-                "concept": concept.strip() if concept else None,
-                "description": description.strip() if description else None,
+                "description": description,
                 "aliases": aliases,
-                "valueMappings": value_mappings,
             }
         )
 
@@ -335,7 +241,6 @@ class SemanticDictionary(BasicPipeline):
             ),
             "generator_name": llm_provider.get_model(),
         }
-        self._final = "validated"
 
         super().__init__(
             AsyncDriver({}, sys.modules[__name__], result_builder=base.DictResult())

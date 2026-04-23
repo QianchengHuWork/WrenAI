@@ -16,10 +16,8 @@ import {
 } from '@/apollo/server/utils/apiUtils';
 import { DataSourceName } from '@server/types';
 import {
-  isDenodoSemanticDictionaryEnabled,
-  readDenodoSemanticDictionary,
+  buildDenodoAskAugmentation,
   toDenodoNativeSql,
-  toDenodoSemanticContext,
 } from '@server/utils/denodoMcp';
 
 const logger = getLogger('API_GENERATE_SQL');
@@ -83,18 +81,20 @@ export default async function handler(
     const histories = threadId
       ? await apiHistoryRepository.findAllBy({ threadId })
       : undefined;
+    const denodoAskAugmentation =
+      project.type === DataSourceName.DENODO_MCP
+        ? await buildDenodoAskAugmentation(project.id)
+        : {
+            semanticContext: undefined,
+            semanticDictionary: undefined,
+          };
     const task = await wrenAIAdaptor.ask({
       query: question,
       deployId: lastDeploy.hash,
       projectId: project.id,
       histories: transformHistoryInput(histories) as any,
-      semanticContext:
-        project.type === DataSourceName.DENODO_MCP &&
-        isDenodoSemanticDictionaryEnabled()
-          ? toDenodoSemanticContext(
-              await readDenodoSemanticDictionary(project.id),
-            )
-          : undefined,
+      semanticContext: denodoAskAugmentation.semanticContext,
+      semanticDictionary: denodoAskAugmentation.semanticDictionary,
       configurations: {
         language:
           language || WrenAILanguage[project.language] || WrenAILanguage.EN,

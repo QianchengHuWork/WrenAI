@@ -424,6 +424,7 @@ def construct_retrieval_results(
             "has_calculated_field": has_calculated_field,
             "has_metric": has_metric,
             "has_json_field": has_json_field,
+            "db_schemas": construct_db_schemas,
         }
     else:
         retrieval_results = check_using_db_schemas_without_pruning["db_schemas"]
@@ -435,6 +436,7 @@ def construct_retrieval_results(
             ],
             "has_metric": check_using_db_schemas_without_pruning["has_metric"],
             "has_json_field": check_using_db_schemas_without_pruning["has_json_field"],
+            "db_schemas": construct_db_schemas,
         }
 
 
@@ -471,7 +473,7 @@ class DbSchemaRetrieval(BasicPipeline):
         llm_provider: LLMProvider,
         embedder_provider: EmbedderProvider,
         document_store_provider: DocumentStoreProvider,
-        table_retrieval_size: int = 10,
+        table_retrieval_size: int = 5,
         table_column_retrieval_size: int = 100,
         **kwargs,
     ):

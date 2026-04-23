@@ -67,18 +67,14 @@ export interface DenodoAssociationMappingClause {
 
 export const DENODO_ASSOCIATION_SOURCE = 'DENODO_ASSOCIATION';
 
-export type DenodoSemanticRewriteMode = 'COLUMN_HINT' | 'VALUE_ALIAS';
-
 export interface DenodoSemanticDictionaryEntry {
   scope: {
     model: string;
     column: string;
   };
-  concept: string;
   description?: string;
   aliases: string[];
-  canonicalValue?: string | null;
-  rewriteMode: DenodoSemanticRewriteMode;
+  canonicalValue: string;
 }
 
 export interface DenodoSemanticDictionary {
@@ -93,24 +89,16 @@ export interface DenodoSemanticDictionaryTask {
     model: string;
     column: string;
   };
-  rewriteMode: DenodoSemanticRewriteMode;
+  canonicalValue: string;
   columnType?: string;
   description?: string;
   modelDescription?: string;
 }
 
-export interface DenodoSemanticDictionaryBatchValueMapping {
-  canonicalValue: string;
-  aliases: string[];
-  description?: string;
-}
-
 export interface DenodoSemanticDictionaryBatchItem {
   taskId: string;
-  concept?: string;
   description?: string;
   aliases?: string[];
-  valueMappings?: DenodoSemanticDictionaryBatchValueMapping[];
 }
 
 export interface DenodoSemanticDictionaryBatchResult {
@@ -154,6 +142,9 @@ export const getDenodoSemanticDictionaryPath = (projectId: number) =>
 // Temporary kill switch until Denodo semantic dictionary quality is stable.
 export const isDenodoSemanticDictionaryEnabled = () =>
   process.env.ENABLE_DENODO_SEMANTIC_DICTIONARY === 'true';
+
+export const isDenodoScopeNormalizationEnabled = () =>
+  process.env.ENABLE_DENODO_SCOPE_NORMALIZATION === 'true';
 
 export const writeDenodoSemanticArtifacts = async ({
   projectId,
@@ -231,6 +222,29 @@ export const readDenodoSemanticDictionary = async (
     }
     throw error;
   }
+};
+
+export const buildDenodoAskAugmentation = async (
+  projectId: number,
+  options?: {
+    models?: string[];
+    maxEntries?: number;
+  },
+) => {
+  if (!isDenodoSemanticDictionaryEnabled()) {
+    return {
+      semanticContext: undefined,
+      semanticDictionary: undefined,
+    };
+  }
+
+  const semanticDictionary = await readDenodoSemanticDictionary(projectId);
+  return {
+    semanticContext: toDenodoSemanticContext(semanticDictionary, options),
+    semanticDictionary: isDenodoScopeNormalizationEnabled()
+      ? semanticDictionary || undefined
+      : undefined,
+  };
 };
 
 export const readDenodoRawSchema = async (
@@ -547,13 +561,16 @@ export const toDenodoManifestRelationships = ({
   return { relationships, warnings };
 };
 
-const VALUE_ALIAS_CANDIDATE_PATTERNS = [
+const NORMALIZABLE_CANDIDATE_PATTERNS = [
   /status/i,
   /state/i,
   /type/i,
   /level/i,
   /code/i,
   /flag/i,
+  /strategy/i,
+  /mode/i,
+  /category/i,
   /^is_/i,
   /^has_/i,
   /状态/,
@@ -562,32 +579,32 @@ const VALUE_ALIAS_CANDIDATE_PATTERNS = [
   /是否/,
   /渠道/,
   /来源/,
+  /策略/,
+  /模式/,
+  /分类/,
+  /编码/,
 ];
 
-const COLUMN_HINT_CANDIDATE_PATTERNS = [
-  ...VALUE_ALIAS_CANDIDATE_PATTERNS,
+const EXCLUDED_DICTIONARY_PATTERNS = [
   /amount/i,
   /price/i,
+  /actualprice/i,
+  /real_price/i,
+  /fee/i,
+  /cost/i,
   /date/i,
   /time/i,
-  /city/i,
-  /channel/i,
-  /store/i,
-  /customer/i,
-  /order/i,
+  /name/i,
+  /remark/i,
   /金额/,
   /价格/,
   /日期/,
   /时间/,
-  /城市/,
-  /渠道/,
-  /门店/,
-  /客户/,
-  /订单/,
+  /名称/,
+  /备注/,
 ];
 
-const MAX_VALUE_ALIAS_COLUMNS = 20;
-const MAX_COLUMN_HINT_COLUMNS = 30;
+const MAX_DICTIONARY_COLUMNS = 24;
 const DEFAULT_DICTIONARY_BATCH_SIZE = 2;
 
 type DenodoSemanticCandidateColumn = {
@@ -597,8 +614,11 @@ type DenodoSemanticCandidateColumn = {
   columnType?: string;
   description?: string;
   score: number;
-  valueAliasCandidate: boolean;
-  columnHintCandidate: boolean;
+  mappings: Array<{
+    canonicalValue: string;
+    aliases: string[];
+    description?: string;
+  }>;
 };
 
 const toCandidateText = (...values: Array<string | undefined>) =>
@@ -606,12 +626,6 @@ const toCandidateText = (...values: Array<string | undefined>) =>
 
 const matchesAny = (value: string, patterns: RegExp[]) =>
   patterns.some((pattern) => pattern.test(value));
-
-const humanizeIdentifier = (value: string) =>
-  value
-    .replace(/[_\-.]+/g, ' ')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .trim();
 
 const STATUS_VALUE_ALIAS_HEURISTICS: Record<string, string[]> = {
   已完成: ['已交付', '交付完成', '履约完成'],
@@ -624,18 +638,6 @@ const STATUS_VALUE_ALIAS_HEURISTICS: Record<string, string[]> = {
   否: ['false', '未开启'],
 };
 
-const extractDescriptionPrefix = (description?: string) => {
-  if (!description) return undefined;
-  return description
-    .replace(/枚举值[:：].*$/u, '')
-    .replace(/[。；;，,]\s*$/u, '')
-    .trim();
-};
-
-const deriveConceptFromTask = (task: DenodoSemanticDictionaryTask) =>
-  extractDescriptionPrefix(task.description) ||
-  humanizeIdentifier(task.scope.column);
-
 const splitEnumSegments = (value: string) =>
   value
     .split(/[，,；;、\n]+/u)
@@ -647,14 +649,24 @@ const expandCanonicalAliases = (value: string) =>
 
 const extractEnumMappingsFromDescription = (
   description?: string,
-): DenodoSemanticDictionaryBatchValueMapping[] => {
+): Array<{
+  canonicalValue: string;
+  aliases: string[];
+  description?: string;
+}> => {
   if (!description) return [];
 
-  const enumMatch = description.match(/枚举值[:：]\s*(.+)$/u);
+  const enumMatch = description.match(
+    /(?:枚举值|取值|取值范围)[:：]?\s*([^。;；\n]+)/u,
+  );
   if (!enumMatch?.[1]) return [];
 
   const segments = splitEnumSegments(enumMatch[1]);
-  const mappings: DenodoSemanticDictionaryBatchValueMapping[] = [];
+  const mappings: Array<{
+    canonicalValue: string;
+    aliases: string[];
+    description?: string;
+  }> = [];
 
   segments.forEach((segment) => {
     const kvMatch = segment.match(
@@ -688,27 +700,70 @@ const extractEnumMappingsFromDescription = (
   return mappings;
 };
 
+const isBooleanLikeColumn = ({
+  column,
+  columnType,
+  description,
+}: {
+  column: string;
+  columnType?: string;
+  description?: string;
+}) => {
+  const candidateText = toCandidateText(column, columnType, description);
+  return (
+    /^is_/i.test(column) ||
+    /^has_/i.test(column) ||
+    /boolean/i.test(columnType || '') ||
+    /是否|布尔|0\s*[=：:]\s*否|1\s*[=：:]\s*是/u.test(candidateText)
+  );
+};
+
+const extractCanonicalMappings = ({
+  column,
+  columnType,
+  description,
+}: {
+  column: string;
+  columnType?: string;
+  description?: string;
+}) => {
+  const explicitMappings = extractEnumMappingsFromDescription(description);
+  if (explicitMappings.length) {
+    return explicitMappings;
+  }
+
+  if (!isBooleanLikeColumn({ column, columnType, description })) {
+    return [];
+  }
+
+  return [
+    {
+      canonicalValue: '1',
+      aliases: expandCanonicalAliases('是'),
+      description,
+    },
+    {
+      canonicalValue: '0',
+      aliases: expandCanonicalAliases('否'),
+      description,
+    },
+  ];
+};
+
 const scoreCandidateColumn = ({
   column,
   description,
-  valueAliasCandidate,
-  columnHintCandidate,
+  mappings,
 }: {
   column: string;
   description?: string;
-  valueAliasCandidate: boolean;
-  columnHintCandidate: boolean;
+  mappings: Array<{ canonicalValue: string; aliases: string[] }>;
 }) => {
   let score = 0;
   if (description) score += 8;
-  if (valueAliasCandidate) score += 10;
-  if (columnHintCandidate) score += 4;
+  score += mappings.length * 8;
   if (/^is_/i.test(column) || /^has_/i.test(column)) score += 6;
-  if (
-    /status|state|type|amount|price|date|time|city|channel|customer|order/i.test(
-      column,
-    )
-  ) {
+  if (/status|state|type|level|code|channel|source|flag/i.test(column)) {
     score += 5;
   }
   return score;
@@ -743,18 +798,37 @@ const collectDenodoSemanticCandidateColumns = ({
           const rawColumn = rawColumnMap.get(column.name.toLowerCase());
           const description =
             column.properties?.description || rawColumn?.description;
-          const candidateText = toCandidateText(column.name, description);
-          const valueAliasCandidate = matchesAny(
-            candidateText,
-            VALUE_ALIAS_CANDIDATE_PATTERNS,
+          const candidateText = toCandidateText(
+            column.name,
+            column.type,
+            description,
           );
-          const columnHintCandidate = matchesAny(
+          const normalizableCandidate = matchesAny(
             candidateText,
-            COLUMN_HINT_CANDIDATE_PATTERNS,
+            NORMALIZABLE_CANDIDATE_PATTERNS,
           );
+          const excludedCandidate = matchesAny(
+            candidateText,
+            EXCLUDED_DICTIONARY_PATTERNS,
+          );
+          const explicitMappings = extractEnumMappingsFromDescription(description);
+          const mappings = explicitMappings.length
+            ? explicitMappings
+            : extractCanonicalMappings({
+                column: column.name,
+                columnType: column.type,
+                description,
+              });
 
-          if (!valueAliasCandidate && !columnHintCandidate) {
+          if (!mappings.length) {
             return null;
+          }
+
+          // If we have explicit mappings in description, we prioritize it even if it matches excluded patterns
+          if (explicitMappings.length === 0) {
+            if (!normalizableCandidate || excludedCandidate) {
+              return null;
+            }
           }
 
           return {
@@ -766,11 +840,9 @@ const collectDenodoSemanticCandidateColumns = ({
             score: scoreCandidateColumn({
               column: column.name,
               description,
-              valueAliasCandidate,
-              columnHintCandidate,
+              mappings,
             }),
-            valueAliasCandidate,
-            columnHintCandidate,
+            mappings,
           };
         },
       );
@@ -790,49 +862,26 @@ export const buildDenodoSemanticDictionaryTasks = ({
     rawSchema,
   });
 
-  const valueAliasColumns = candidates
-    .filter((candidate) => candidate.valueAliasCandidate)
+  const selectedColumns = candidates
     .sort((left, right) => right.score - left.score)
-    .slice(0, MAX_VALUE_ALIAS_COLUMNS);
-
-  const valueAliasKeys = new Set(
-    valueAliasColumns.map(
-      (candidate) =>
-        `${candidate.model.toLowerCase()}.${candidate.column.toLowerCase()}`,
-    ),
-  );
-
-  const columnHintColumns = candidates
-    .filter(
-      (candidate) =>
-        candidate.columnHintCandidate ||
-        valueAliasKeys.has(
-          `${candidate.model.toLowerCase()}.${candidate.column.toLowerCase()}`,
-        ),
-    )
-    .sort((left, right) => right.score - left.score)
-    .slice(0, MAX_COLUMN_HINT_COLUMNS);
+    .slice(0, MAX_DICTIONARY_COLUMNS);
 
   const tasks: DenodoSemanticDictionaryTask[] = [];
-  const addTask = (
-    candidate: DenodoSemanticCandidateColumn,
-    rewriteMode: DenodoSemanticRewriteMode,
-  ) => {
-    tasks.push({
-      taskId: `${candidate.model}.${candidate.column}.${rewriteMode}`,
-      scope: {
-        model: candidate.model,
-        column: candidate.column,
-      },
-      rewriteMode,
-      columnType: candidate.columnType,
-      description: candidate.description,
-      modelDescription: candidate.modelDescription,
+  selectedColumns.forEach((candidate) => {
+    candidate.mappings.forEach((mapping) => {
+      tasks.push({
+        taskId: `${candidate.model}.${candidate.column}.${mapping.canonicalValue}`,
+        scope: {
+          model: candidate.model,
+          column: candidate.column,
+        },
+        canonicalValue: mapping.canonicalValue,
+        columnType: candidate.columnType,
+        description: mapping.description || candidate.description,
+        modelDescription: candidate.modelDescription,
+      });
     });
-  };
-
-  columnHintColumns.forEach((candidate) => addTask(candidate, 'COLUMN_HINT'));
-  valueAliasColumns.forEach((candidate) => addTask(candidate, 'VALUE_ALIAS'));
+  });
 
   return tasks;
 };
@@ -934,42 +983,6 @@ const uniqueStrings = (values: Array<string | undefined | null>) =>
     ),
   );
 
-const normalizeBatchMappings = (item: Record<string, any>) => {
-  if (Array.isArray(item.valueMappings)) {
-    return item.valueMappings
-      .filter((mapping) => mapping && typeof mapping === 'object')
-      .map((mapping) => ({
-        canonicalValue:
-          typeof mapping.canonicalValue === 'string'
-            ? mapping.canonicalValue.trim()
-            : '',
-        aliases: uniqueStrings(mapping.aliases || []),
-        description:
-          typeof mapping.description === 'string'
-            ? mapping.description.trim()
-            : undefined,
-      }))
-      .filter((mapping) => mapping.canonicalValue && mapping.aliases.length);
-  }
-
-  if (typeof item.canonicalValue === 'string') {
-    const aliases = uniqueStrings(item.aliases || []);
-    if (!aliases.length) return [];
-    return [
-      {
-        canonicalValue: item.canonicalValue.trim(),
-        aliases,
-        description:
-          typeof item.description === 'string'
-            ? item.description.trim()
-            : undefined,
-      },
-    ];
-  }
-
-  return [];
-};
-
 const findTaskForBatchItem = (
   item: Record<string, any>,
   taskMap: Map<string, DenodoSemanticDictionaryTask>,
@@ -981,14 +994,14 @@ const findTaskForBatchItem = (
   if (
     typeof item.model === 'string' &&
     typeof item.column === 'string' &&
-    typeof item.rewriteMode === 'string'
+    typeof item.canonicalValue === 'string'
   ) {
     return (
       Array.from(taskMap.values()).find(
         (task) =>
           task.scope.model === item.model &&
           task.scope.column === item.column &&
-          task.rewriteMode === item.rewriteMode,
+          task.canonicalValue === item.canonicalValue,
       ) || null
     );
   }
@@ -1011,37 +1024,18 @@ export const normalizeDenodoSemanticDictionaryEntries = ({
     const task = findTaskForBatchItem(item as Record<string, any>, taskMap);
     if (!task) return;
 
-    const concept =
-      typeof item.concept === 'string' && item.concept.trim()
-        ? item.concept.trim()
-        : humanizeIdentifier(task.scope.column);
     const description =
       typeof item.description === 'string' && item.description.trim()
         ? item.description.trim()
         : task.description;
+    const aliases = uniqueStrings(item.aliases || []);
+    if (!aliases.length) return;
 
-    if (task.rewriteMode === 'COLUMN_HINT') {
-      const aliases = uniqueStrings([...(item.aliases || []), concept]);
-      entries.push({
-        scope: task.scope,
-        concept,
-        description,
-        aliases,
-        rewriteMode: 'COLUMN_HINT',
-      });
-      return;
-    }
-
-    const mappings = normalizeBatchMappings(item as Record<string, any>);
-    mappings.forEach((mapping) => {
-      entries.push({
-        scope: task.scope,
-        concept,
-        description: mapping.description || description,
-        aliases: mapping.aliases,
-        canonicalValue: mapping.canonicalValue,
-        rewriteMode: 'VALUE_ALIAS',
-      });
+    entries.push({
+      scope: task.scope,
+      description,
+      aliases,
+      canonicalValue: task.canonicalValue,
     });
   });
 
@@ -1058,47 +1052,30 @@ export const buildFallbackDenodoSemanticDictionaryEntries = ({
   const existingKeys = new Set(
     existingEntries.map(
       (entry) =>
-        `${entry.scope.model}.${entry.scope.column}.${entry.rewriteMode}.${entry.canonicalValue || ''}`,
+        `${entry.scope.model}.${entry.scope.column}.${entry.canonicalValue}`,
     ),
   );
   const fallbackEntries: DenodoSemanticDictionaryEntry[] = [];
 
   tasks.forEach((task) => {
-    const baseKey = `${task.scope.model}.${task.scope.column}.${task.rewriteMode}.`;
-    const concept = deriveConceptFromTask(task);
-    const description = task.description || concept;
-
-    if (task.rewriteMode === 'COLUMN_HINT') {
-      if (existingKeys.has(baseKey)) {
-        return;
-      }
-      fallbackEntries.push({
-        scope: task.scope,
-        concept,
-        description,
-        aliases: uniqueStrings([
-          concept,
-          humanizeIdentifier(task.scope.column),
-        ]),
-        rewriteMode: 'COLUMN_HINT',
-      });
+    const mappingKey = `${task.scope.model}.${task.scope.column}.${task.canonicalValue}`;
+    if (existingKeys.has(mappingKey)) {
       return;
     }
 
-    const mappings = extractEnumMappingsFromDescription(task.description);
-    mappings.forEach((mapping) => {
-      const mappingKey = `${task.scope.model}.${task.scope.column}.${task.rewriteMode}.${mapping.canonicalValue}`;
-      if (existingKeys.has(mappingKey)) {
-        return;
-      }
-      fallbackEntries.push({
-        scope: task.scope,
-        concept,
-        description,
-        aliases: mapping.aliases,
-        canonicalValue: mapping.canonicalValue,
-        rewriteMode: 'VALUE_ALIAS',
-      });
+    const aliases =
+      extractCanonicalMappings({
+        column: task.scope.column,
+        columnType: task.columnType,
+        description: task.description,
+      }).find((mapping) => mapping.canonicalValue === task.canonicalValue)
+        ?.aliases || expandCanonicalAliases(task.canonicalValue);
+
+    fallbackEntries.push({
+      scope: task.scope,
+      description: task.description,
+      aliases: uniqueStrings(aliases),
+      canonicalValue: task.canonicalValue,
     });
   });
 
@@ -1113,8 +1090,7 @@ export const dedupeDenodoSemanticDictionaryEntries = (
     const key = [
       entry.scope.model,
       entry.scope.column,
-      entry.rewriteMode,
-      entry.canonicalValue || '',
+      entry.canonicalValue,
       uniqueStrings(entry.aliases).join('|'),
     ].join('::');
     if (seen.has(key)) return false;
@@ -1140,10 +1116,6 @@ export const toDenodoSemanticContext = (
       if (!models.length) return true;
       return models.includes(entry.scope.model.toLowerCase());
     })
-    .sort((left, right) => {
-      if (left.rewriteMode === right.rewriteMode) return 0;
-      return left.rewriteMode === 'VALUE_ALIAS' ? -1 : 1;
-    })
     .slice(0, maxEntries);
 
   if (!prioritizedEntries.length) return undefined;
@@ -1152,13 +1124,11 @@ export const toDenodoSemanticContext = (
     .map((entry) => {
       const scope = `${entry.scope.model}.${entry.scope.column}`;
       const aliases = entry.aliases.join(', ');
-      const canonical = entry.canonicalValue
-        ? ` | canonical: ${entry.canonicalValue}`
-        : '';
+      const canonical = ` | canonical: ${entry.canonicalValue}`;
       const description = entry.description
         ? ` | description: ${entry.description}`
         : '';
-      return `- scope: ${scope} | concept: ${entry.concept} | rewriteMode: ${entry.rewriteMode}${canonical} | aliases: ${aliases}${description}`;
+      return `- scope: ${scope}${canonical} | aliases: ${aliases}${description}`;
     })
     .join('\n');
 };
@@ -1972,9 +1942,7 @@ const tryRewritePredicate = (
       const rawLiteral = getStringLiteralValue(item);
       if (!rawLiteral) return { original: item, next: item, rewritten: false };
       const alreadyCanonical = entries.some(
-        (entry) =>
-          entry.rewriteMode === 'VALUE_ALIAS' &&
-          entry.canonicalValue === rawLiteral,
+        (entry) => entry.canonicalValue === rawLiteral,
       );
       if (alreadyCanonical) {
         return { original: item, next: item, rewritten: false };
@@ -2124,9 +2092,6 @@ const matchSemanticEntry = (
   if (!candidateValue) return null;
 
   const matchedEntries = entries.filter((entry) => {
-    if (entry.rewriteMode !== 'VALUE_ALIAS' || !entry.canonicalValue) {
-      return false;
-    }
     return entry.aliases.some(
       (alias) => normalizeSemanticAlias(alias) === candidateValue,
     );

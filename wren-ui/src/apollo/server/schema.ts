@@ -660,6 +660,34 @@ export const typeDefs = gql`
     sqlPair: SqlPair
   }
 
+  type SemanticScope {
+    model: String!
+    column: String!
+  }
+
+  type CandidateModelSummary {
+    model: String!
+    description: String
+    keyFields: [String!]
+    normalizableFields: [String!]
+    availableCanonicalMappings: [String!]
+    fieldDescriptions: [String!]
+  }
+
+  type SelectedModels {
+    primaryModel: String!
+    secondaryModels: [String!]!
+    needsJoin: Boolean!
+    reasoning: [String!]
+  }
+
+  type MatchedRewrite {
+    scope: SemanticScope!
+    userPhrase: String!
+    canonicalValue: String!
+    reason: String
+  }
+
   type AskingTask {
     status: AskingTaskStatus!
     type: AskingTaskType
@@ -669,6 +697,10 @@ export const typeDefs = gql`
     intentReasoning: String
     sqlGenerationReasoning: String
     retrievedTables: [String!]
+    candidateModels: [CandidateModelSummary!]
+    selectedModels: SelectedModels
+    normalizedQuery: String
+    matchedRewrites: [MatchedRewrite!]
     toolCalls: [String!]
     semanticFiles: [String!]
     invalidSql: String

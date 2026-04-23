@@ -7,6 +7,7 @@ import {
   ApiError,
   MAX_WAIT_TIME,
   isAskResultFinished,
+  validateAskResult,
   validateSummaryResult,
   transformHistoryInput,
 } from '@/apollo/server/utils/apiUtils';
@@ -20,6 +21,7 @@ import {
   WrenAIError,
   AskResultType,
 } from '@/apollo/server/models/adaptor';
+import { DataSourceName } from '@server/types';
 import { getLogger } from '@server/utils';
 import {
   EventType,
@@ -36,6 +38,7 @@ import {
   getSqlGenerationState,
   endStream,
 } from '@/apollo/server/utils';
+import { buildDenodoAskAugmentation } from '@server/utils/denodoMcp';
 
 const logger = getLogger('API_STREAM_ASK');
 logger.level = 'debug';
@@ -46,6 +49,7 @@ const {
   deployService,
   wrenAIAdaptor,
   queryService,
+  denodoSqlGuardService,
 } = components;
 
 /**
@@ -148,6 +152,13 @@ export default async function handler(
       language:
         language || WrenAILanguage[project.language] || WrenAILanguage.EN,
     });
+    const denodoAskAugmentation =
+      project.type === DataSourceName.DENODO_MCP
+        ? await buildDenodoAskAugmentation(project.id)
+        : {
+            semanticContext: undefined,
+            semanticDictionary: undefined,
+          };
     const askTask = await wrenAIAdaptor.ask({
       query: question,
       deployId: lastDeploy.hash,
@@ -157,6 +168,8 @@ export default async function handler(
         language:
           language || WrenAILanguage[project.language] || WrenAILanguage.EN,
       },
+      semanticContext: denodoAskAugmentation.semanticContext,
+      semanticDictionary: denodoAskAugmentation.semanticDictionary,
     });
 
     // Poll for the SQL generation result
@@ -177,6 +190,10 @@ export default async function handler(
           intentReasoning: askResult.intentReasoning,
           sqlGenerationReasoning: askResult.sqlGenerationReasoning,
           retrievedTables: askResult.retrievedTables,
+          candidateModels: askResult.candidateModels,
+          selectedModels: askResult.selectedModels,
+          normalizedQuery: askResult.normalizedQuery,
+          matchedRewrites: askResult.matchedRewrites,
           invalidSql: askResult.invalidSql,
           traceId: askResult.traceId,
         });
@@ -221,6 +238,15 @@ export default async function handler(
         askResult.error.code,
         additionalData,
       );
+    }
+
+    if (project.type === DataSourceName.DENODO_MCP) {
+      askResult = await denodoSqlGuardService.guardAskResult({
+        askResult,
+        manifest: lastDeploy.manifest,
+        project,
+      });
+      validateAskResult(askResult, askTask.queryId);
     }
 
     // Check for general type response
@@ -292,6 +318,7 @@ export default async function handler(
 
     // Get the generated SQL
     const sql = askResult.response?.[0]?.sql;
+    const sqlDialect = askResult.response?.[0]?.sqlDialect;
     if (!sql) {
       throw new ApiError(
         'No SQL generated',
@@ -312,6 +339,7 @@ export default async function handler(
         limit: sampleSize || 500,
         manifest: lastDeploy.manifest,
         modelingOnly: false,
+        sqlDialect,
       });
       sqlData = queryResult;
       sendStateUpdate(res, StateType.SQL_EXECUTION_END);

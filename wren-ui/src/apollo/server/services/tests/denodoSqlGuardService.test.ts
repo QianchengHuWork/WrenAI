@@ -201,10 +201,8 @@ describe('DenodoSqlGuardService', () => {
               model: 'dv_order_base',
               column: 'city',
             },
-            concept: '城市同义词',
             aliases: ['魔都'],
             canonicalValue: '上海',
-            rewriteMode: 'VALUE_ALIAS',
           },
         ]),
       );
@@ -268,10 +266,8 @@ describe('DenodoSqlGuardService', () => {
               model: 'dv_order_base',
               column: 'city',
             },
-            concept: '城市同义词',
             aliases: ['魔都'],
             canonicalValue: '上海',
-            rewriteMode: 'VALUE_ALIAS',
           },
         ]),
       );

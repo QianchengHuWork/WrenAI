@@ -5,6 +5,7 @@ import {
   AskResult,
   AskResultStatus,
   SQLDialect,
+  SqlCorrectionResult,
   SqlCorrectionStatus,
 } from '@server/models/adaptor';
 import {
@@ -32,6 +33,106 @@ logger.level = 'debug';
 const MAX_VALIDATE_ATTEMPTS = 3;
 const MAX_CORRECTION_POLLS = 60;
 const CORRECTION_POLL_INTERVAL = 1000;
+const LOG_EMPTY_VALUE = '-';
+
+const safeLogValue = (value: unknown, limit = 240): string => {
+  if (value === undefined || value === null) return LOG_EMPTY_VALUE;
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+
+  const rawValue =
+    typeof value === 'string'
+      ? value
+      : (() => {
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        })();
+  const normalized = rawValue.replace(/\s+/g, ' ').trim();
+  if (!normalized) return LOG_EMPTY_VALUE;
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, limit)}...(+${normalized.length - limit} chars)`;
+};
+
+const formatList = (
+  values: Array<string | null | undefined>,
+  limit = 6,
+): string => {
+  const normalized = values
+    .filter((value): value is string => typeof value === 'string' && !!value.trim())
+    .map((value) => safeLogValue(value, 80));
+
+  if (!normalized.length) return LOG_EMPTY_VALUE;
+  if (normalized.length <= limit) return normalized.join(',');
+  return `${normalized.slice(0, limit).join(',')},...(+${
+    normalized.length - limit
+  } more)`;
+};
+
+const formatSelectedModels = (
+  selectedModels?: AskResult['selectedModels'],
+): string => {
+  if (!selectedModels) return LOG_EMPTY_VALUE;
+
+  return [
+    `primary=${safeLogValue(selectedModels.primaryModel, 80)}`,
+    `secondary=${formatList(selectedModels.secondaryModels || [], 4)}`,
+    `needs_join=${safeLogValue(selectedModels.needsJoin)}`,
+  ].join(';');
+};
+
+const formatRewrites = (
+  rewrites?: AskResult['matchedRewrites'],
+  limit = 6,
+): string => {
+  if (!rewrites?.length) return LOG_EMPTY_VALUE;
+
+  const normalized = rewrites.map((rewrite) => {
+    const detail = `${safeLogValue(rewrite.scope.model, 80)}.${safeLogValue(
+      rewrite.scope.column,
+      80,
+    )}:${safeLogValue(rewrite.userPhrase, 48)}->${safeLogValue(
+      rewrite.canonicalValue,
+      48,
+    )}`;
+    return rewrite.reason
+      ? `${detail} (${safeLogValue(rewrite.reason, 80)})`
+      : detail;
+  });
+
+  if (normalized.length <= limit) return normalized.join('; ');
+  return `${normalized.slice(0, limit).join('; ')}; ...(+${
+    normalized.length - limit
+  } more)`;
+};
+
+const logDenodoGuard = (
+  level: 'debug' | 'info' | 'warn' | 'error',
+  event: string,
+  fields: Record<string, unknown>,
+) => {
+  const message = [
+    event,
+    ...Object.entries(fields).map(
+      ([key, value]) => `${key}=${safeLogValue(value)}`,
+    ),
+  ].join(' ');
+
+  switch (level) {
+    case 'debug':
+      logger.debug(message);
+      break;
+    case 'warn':
+      logger.warn(message);
+      break;
+    case 'error':
+      logger.error(message);
+      break;
+    default:
+      logger.info(message);
+  }
+};
 
 export interface GuardedDenodoSql {
   sql: string;
@@ -51,6 +152,11 @@ export interface IDenodoSqlGuardService {
     manifest: Manifest;
     project: Project;
     retrievedTables?: string[];
+    selectedModels?: AskResult['selectedModels'];
+    normalizedQuery?: string;
+    matchedRewrites?: AskResult['matchedRewrites'];
+    traceId?: string;
+    candidateIndex?: number;
   }): Promise<GuardedDenodoSql>;
 }
 
@@ -91,6 +197,15 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
     const validCandidates = [];
     let lastErrorMessage = '';
     let lastInvalidSql = '';
+    logDenodoGuard('info', 'denodo_guard.start', {
+      project_id: project.id,
+      trace_id: askResult.traceId,
+      candidate_sql_count: askResult.response.length,
+      selected_models: formatSelectedModels(askResult.selectedModels),
+      normalized_query: askResult.normalizedQuery,
+      matched_rewrite_count: askResult.matchedRewrites?.length || 0,
+      matched_rewrites: formatRewrites(askResult.matchedRewrites, 6),
+    });
 
     for (let index = 0; index < askResult.response.length; index += 1) {
       const candidate = askResult.response[index];
@@ -102,6 +217,11 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
           manifest,
           project,
           retrievedTables: askResult.retrievedTables,
+          selectedModels: askResult.selectedModels,
+          normalizedQuery: askResult.normalizedQuery,
+          matchedRewrites: askResult.matchedRewrites,
+          traceId: askResult.traceId,
+          candidateIndex: index + 1,
         });
         toolCalls.push(
           ...this.prefixCandidateToolCalls(guarded.toolCalls, index, askResult),
@@ -124,10 +244,24 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
           error?.extensions?.other?.invalidSql ||
           error?.extensions?.other?.sql ||
           candidate.sql;
+        logDenodoGuard('warn', 'denodo_guard.candidate_failed', {
+          project_id: project.id,
+          trace_id: askResult.traceId,
+          candidate_index: index + 1,
+          error: lastErrorMessage,
+        });
       }
     }
 
     if (!validCandidates.length) {
+      logDenodoGuard('error', 'denodo_guard.final_result', {
+        project_id: project.id,
+        trace_id: askResult.traceId,
+        valid_candidate_count: 0,
+        failed_candidate_count: askResult.response.length,
+        invalid_sql_present: !!lastInvalidSql,
+        error: lastErrorMessage || 'Failed to validate Denodo SQL',
+      });
       return {
         ...askResult,
         status: AskResultStatus.FAILED,
@@ -142,6 +276,13 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
       };
     }
 
+    logDenodoGuard('info', 'denodo_guard.final_result', {
+      project_id: project.id,
+      trace_id: askResult.traceId,
+      valid_candidate_count: validCandidates.length,
+      failed_candidate_count: askResult.response.length - validCandidates.length,
+      invalid_sql_present: !!lastInvalidSql,
+    });
     return {
       ...askResult,
       response: validCandidates,
@@ -155,11 +296,21 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
     manifest,
     project,
     retrievedTables,
+    selectedModels,
+    normalizedQuery,
+    matchedRewrites,
+    traceId,
+    candidateIndex,
   }: {
     sql: string;
     manifest: Manifest;
     project: Project;
     retrievedTables?: string[];
+    selectedModels?: AskResult['selectedModels'];
+    normalizedQuery?: string;
+    matchedRewrites?: AskResult['matchedRewrites'];
+    traceId?: string;
+    candidateIndex?: number;
   }): Promise<GuardedDenodoSql> {
     const semanticFiles = this.getSemanticFiles(project.id);
     const toolCalls: string[] = [];
@@ -174,17 +325,32 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
     let attempt = 1;
     let currentSql = toDenodoNativeSql(sql, manifest);
     let lastErrorMessage = '';
+    const selectedModelNames = selectedModels
+      ? [
+          selectedModels.primaryModel,
+          ...(selectedModels.secondaryModels || []),
+        ]
+      : [];
+    const correctionContextModels = selectedModelNames.length
+      ? selectedModelNames
+      : retrievedTables || [];
+    const correctionContextSource = selectedModelNames.length
+      ? 'selected_models'
+      : 'retrieved_tables';
     const semanticDictionary = isDenodoSemanticDictionaryEnabled()
       ? await readDenodoSemanticDictionary(project.id)
       : null;
     const semanticContext =
       semanticDictionary && isDenodoSemanticDictionaryEnabled()
         ? toDenodoSemanticContext(semanticDictionary, {
-            models: retrievedTables,
+            models: selectedModelNames.length
+              ? selectedModelNames
+              : retrievedTables,
           })
         : undefined;
 
     while (attempt <= MAX_VALIDATE_ATTEMPTS) {
+      let semanticSqlRewriteCount = 0;
       if (semanticDictionary) {
         const semanticRewrite = applySemanticDictionaryToSql(
           currentSql,
@@ -193,10 +359,19 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
         );
         currentSql = semanticRewrite.sql;
         toolCalls.push(...semanticRewrite.appliedRewrites);
+        semanticSqlRewriteCount = semanticRewrite.appliedRewrites.length;
       }
-      logger.debug(
-        `Validating Denodo SQL. projectId=${project.id}, attempt=${attempt}`,
-      );
+      logDenodoGuard('info', 'denodo_guard.validate_attempt', {
+        project_id: project.id,
+        trace_id: traceId,
+        candidate_index: candidateIndex,
+        attempt,
+        selected_models: formatSelectedModels(selectedModels),
+        normalized_query: normalizedQuery,
+        matched_rewrite_count: matchedRewrites?.length || 0,
+        semantic_sql_rewrite_applied: semanticSqlRewriteCount > 0,
+        semantic_sql_rewrite_count: semanticSqlRewriteCount,
+      });
       toolCalls.push(`call MCP tool: ${validateToolName} (attempt ${attempt})`);
       const validation = await this.denodoMcpAdaptor.validateSqlQuery(
         currentSql,
@@ -205,6 +380,14 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
 
       if (validation.isValid) {
         toolCalls.push('validate succeeded');
+        logDenodoGuard('info', 'denodo_guard.validate_result', {
+          project_id: project.id,
+          trace_id: traceId,
+          candidate_index: candidateIndex,
+          attempt,
+          is_valid: true,
+          error: LOG_EMPTY_VALUE,
+        });
         return {
           sql: currentSql,
           sqlDialect: SQLDialect.DIALECT,
@@ -215,21 +398,76 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
 
       lastErrorMessage = validation.errorMessage || 'Unknown validation error';
       toolCalls.push(`validate failed: ${lastErrorMessage}`);
+      logDenodoGuard('warn', 'denodo_guard.validate_result', {
+        project_id: project.id,
+        trace_id: traceId,
+        candidate_index: candidateIndex,
+        attempt,
+        is_valid: false,
+        error: lastErrorMessage,
+      });
 
       if (attempt >= MAX_VALIDATE_ATTEMPTS) {
         break;
       }
 
+      logDenodoGuard('info', 'denodo_guard.correction_start', {
+        project_id: project.id,
+        trace_id: traceId,
+        candidate_index: candidateIndex,
+        attempt,
+        error: lastErrorMessage,
+        context_source: correctionContextSource,
+        context_models: formatList(correctionContextModels, 8),
+        normalized_query: normalizedQuery,
+        matched_rewrite_count: matchedRewrites?.length || 0,
+      });
       toolCalls.push(`call AI service: sql_correction (attempt ${attempt})`);
       const correctionTask = await this.wrenAIAdaptor.createSqlCorrection({
         sql: currentSql,
         error: lastErrorMessage,
         projectId: project.id.toString(),
-        retrievedTables,
+        retrievedTables: correctionContextModels,
         validationMode: 'none',
         semanticContext,
+        normalizedQuery,
+        selectedModels,
+        matchedRewrites,
       });
-      const correctionResult = await this.waitSqlCorrection(correctionTask.queryId);
+      let correctionResult: SqlCorrectionResult;
+      try {
+        correctionResult = await this.waitSqlCorrection(correctionTask.queryId);
+      } catch (error: any) {
+        logDenodoGuard('warn', 'denodo_guard.correction_result', {
+          project_id: project.id,
+          trace_id: traceId,
+          candidate_index: candidateIndex,
+          attempt,
+          correction_query_id: correctionTask.queryId,
+          correction_status: 'TIMEOUT',
+          sql_changed: false,
+          error: error?.message || 'Timed out waiting for SQL correction result',
+        });
+        throw error;
+      }
+      logDenodoGuard(
+        correctionResult.status === SqlCorrectionStatus.FINISHED
+          ? 'info'
+          : 'warn',
+        'denodo_guard.correction_result',
+        {
+          project_id: project.id,
+          trace_id: correctionResult.traceId || traceId,
+          candidate_index: candidateIndex,
+          attempt,
+          correction_query_id: correctionTask.queryId,
+          correction_status: correctionResult.status,
+          sql_changed: correctionResult.response
+            ? correctionResult.response !== currentSql
+            : false,
+          error: correctionResult.error?.message,
+        },
+      );
 
       if (
         correctionResult.status !== SqlCorrectionStatus.FINISHED ||

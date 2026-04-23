@@ -18,6 +18,11 @@ from src.pipelines.generation.utils.sql import (
 from src.utils import trace_cost
 from src.web.v1.services import Configuration
 from src.web.v1.services.ask import AskHistory
+from src.web.v1.services.denodo_scope_normalization import (
+    format_rewrite_summaries,
+    format_selected_models,
+    safe_log_value,
+)
 
 logger = logging.getLogger("wren-ai-service")
 
@@ -50,6 +55,20 @@ SQL:
 {% endfor %}
 {% endif %}
 
+{% if selected_models %}
+### SELECTED MODELS ###
+Primary Model: {{ selected_models.primary_model }}
+Secondary Models: {{ selected_models.secondary_models | join(", ") if selected_models.secondary_models else "" }}
+Needs Join: {{ selected_models.needs_join }}
+{% endif %}
+
+{% if matched_rewrites %}
+### MATCHED REWRITES ###
+{% for rewrite in matched_rewrites %}
+- scope: {{ rewrite.scope.model }}.{{ rewrite.scope.column }} | user_phrase: {{ rewrite.user_phrase }} | canonical_value: {{ rewrite.canonical_value }}{% if rewrite.reason %} | reason: {{ rewrite.reason }}{% endif %}
+{% endfor %}
+{% endif %}
+
 ### User's QUERY HISTORY ###
 {% for history in histories %}
 Question:
@@ -59,7 +78,10 @@ SQL:
 {% endfor %}
 
 ### QUESTION ###
-User's Question: {{ query }}
+Original User Question: {{ original_query }}
+{% if normalized_query and normalized_query != original_query %}
+Normalized User Question: {{ normalized_query }}
+{% endif %}
 Language: {{ language }}
 Current Time: {{ current_time }}
 
@@ -78,6 +100,10 @@ def prompt(
     semantic_context: str | None,
     prompt_builder: PromptBuilder,
     configuration: Configuration | None = Configuration(),
+    original_query: str | None = None,
+    normalized_query: str | None = None,
+    matched_rewrites: list[dict] | None = None,
+    selected_models: dict | None = None,
 ) -> dict:
     _prompt = prompt_builder.run(
         query=query,
@@ -88,6 +114,10 @@ def prompt(
             instructions=instructions,
         ),
         semantic_context=semantic_context or "",
+        original_query=original_query or query,
+        normalized_query=normalized_query or query,
+        matched_rewrites=matched_rewrites or [],
+        selected_models=selected_models,
         language=configuration.language,
         current_time=configuration.show_current_time(),
     )
@@ -184,8 +214,28 @@ class FollowUpSQLGenerationReasoning(BasicPipeline):
         semantic_context: str | None = None,
         configuration: Configuration = Configuration(),
         query_id: Optional[str] = None,
+        original_query: str | None = None,
+        normalized_query: str | None = None,
+        matched_rewrites: list[dict] | None = None,
+        selected_models: dict | None = None,
     ):
         logger.info("Followup SQL Generation Reasoning pipeline is running...")
+        has_normalization_context = bool(
+            semantic_context
+            or selected_models
+            or (matched_rewrites or [])
+            or (normalized_query or query) != (original_query or query)
+        )
+        if has_normalization_context:
+            logger.info(
+                "denodo_followup_sql_generation_reasoning.context query_id=%s selected_models=%s normalized_query_changed=%s normalized_query=%s rewrite_count=%s rewrites=%s",
+                safe_log_value(query_id, limit=80),
+                format_selected_models(selected_models),
+                (normalized_query or query) != (original_query or query),
+                safe_log_value(normalized_query or query),
+                len(matched_rewrites or []),
+                format_rewrite_summaries(matched_rewrites or [], limit=6),
+            )
         return await self._pipe.execute(
             ["post_process"],
             inputs={
@@ -197,6 +247,10 @@ class FollowUpSQLGenerationReasoning(BasicPipeline):
                 "semantic_context": semantic_context,
                 "configuration": configuration,
                 "query_id": query_id,
+                "original_query": original_query or query,
+                "normalized_query": normalized_query or query,
+                "matched_rewrites": matched_rewrites or [],
+                "selected_models": selected_models,
                 **self._components,
             },
         )

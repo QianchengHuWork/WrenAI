@@ -97,13 +97,17 @@ export enum ApiType {
 
 export type AskingTask = {
   __typename?: 'AskingTask';
+  candidateModels?: Maybe<Array<CandidateModelSummary>>;
   candidates: Array<ResultCandidate>;
   error?: Maybe<Error>;
   intentReasoning?: Maybe<Scalars['String']>;
   invalidSql?: Maybe<Scalars['String']>;
+  matchedRewrites?: Maybe<Array<MatchedRewrite>>;
+  normalizedQuery?: Maybe<Scalars['String']>;
   queryId?: Maybe<Scalars['String']>;
   rephrasedQuestion?: Maybe<Scalars['String']>;
   retrievedTables?: Maybe<Array<Scalars['String']>>;
+  selectedModels?: Maybe<SelectedModels>;
   semanticFiles?: Maybe<Array<Scalars['String']>>;
   sqlGenerationReasoning?: Maybe<Scalars['String']>;
   status: AskingTaskStatus;
@@ -155,6 +159,16 @@ export type CalculatedFieldValidationResponse = {
   __typename?: 'CalculatedFieldValidationResponse';
   message?: Maybe<Scalars['String']>;
   valid: Scalars['Boolean'];
+};
+
+export type CandidateModelSummary = {
+  __typename?: 'CandidateModelSummary';
+  availableCanonicalMappings?: Maybe<Array<Scalars['String']>>;
+  description?: Maybe<Scalars['String']>;
+  fieldDescriptions?: Maybe<Array<Scalars['String']>>;
+  keyFields?: Maybe<Array<Scalars['String']>>;
+  model: Scalars['String'];
+  normalizableFields?: Maybe<Array<Scalars['String']>>;
 };
 
 export enum ChartTaskStatus {
@@ -682,6 +696,14 @@ export type LearningRecord = {
 export type MdlModelSubmitInput = {
   columns: Array<Scalars['String']>;
   name: Scalars['String'];
+};
+
+export type MatchedRewrite = {
+  __typename?: 'MatchedRewrite';
+  canonicalValue: Scalars['String'];
+  reason?: Maybe<Scalars['String']>;
+  scope: SemanticScope;
+  userPhrase: Scalars['String'];
 };
 
 export type ModelInfo = {
@@ -1390,6 +1412,20 @@ export enum SchemaChangeType {
   DELETED_TABLES = 'DELETED_TABLES',
   MODIFIED_COLUMNS = 'MODIFIED_COLUMNS'
 }
+
+export type SelectedModels = {
+  __typename?: 'SelectedModels';
+  needsJoin: Scalars['Boolean'];
+  primaryModel: Scalars['String'];
+  reasoning?: Maybe<Array<Scalars['String']>>;
+  secondaryModels: Array<Scalars['String']>;
+};
+
+export type SemanticScope = {
+  __typename?: 'SemanticScope';
+  column: Scalars['String'];
+  model: Scalars['String'];
+};
 
 export type SetDashboardScheduleData = {
   cron?: InputMaybe<Scalars['String']>;

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # indexing and retrieval config
     column_indexing_batch_size: int = Field(default=50)
-    table_retrieval_size: int = Field(default=10)
+    table_retrieval_size: int = Field(default=5)
     table_column_retrieval_size: int = Field(default=100)
     enable_column_pruning: bool = Field(default=False)
     historical_question_retrieval_similarity_threshold: float = Field(default=0.9)
@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     allow_sql_functions_retrieval: bool = Field(default=True)
     allow_sql_diagnosis: bool = Field(default=True)
     allow_sql_knowledge_retrieval: bool = Field(default=False)
+    enable_denodo_scope_normalization: bool = Field(default=False)
     max_histories: int = Field(default=5)
     max_sql_correction_retries: int = Field(default=3)
 

@@ -82,6 +82,30 @@ const COMMON_ASKING_TASK = gql`
     intentReasoning
     sqlGenerationReasoning
     retrievedTables
+    candidateModels {
+      model
+      description
+      keyFields
+      normalizableFields
+      availableCanonicalMappings
+      fieldDescriptions
+    }
+    selectedModels {
+      primaryModel
+      secondaryModels
+      needsJoin
+      reasoning
+    }
+    normalizedQuery
+    matchedRewrites {
+      scope {
+        model
+        column
+      }
+      userPhrase
+      canonicalValue
+      reason
+    }
     toolCalls
     semanticFiles
     invalidSql

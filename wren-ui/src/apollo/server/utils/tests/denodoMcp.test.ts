@@ -243,7 +243,10 @@ describe('denodoMcp utils', () => {
             {
               name: 'order_status',
               type: 'string',
-              properties: { description: 'B端订单状态' },
+              properties: {
+                description:
+                  'B端订单状态。枚举值：待支付、已支付、交付中、已完成、已退款。',
+              },
               isCalculated: false,
               expression: '"order_status"',
             },
@@ -276,7 +279,8 @@ describe('denodoMcp utils', () => {
               {
                 name: 'order_status',
                 data_type: 'VARCHAR',
-                description: 'B端订单状态',
+                description:
+                  'B端订单状态。枚举值：待支付、已支付、交付中、已完成、已退款。',
               },
               {
                 name: 'order_amount',
@@ -298,27 +302,26 @@ describe('denodoMcp utils', () => {
     expect(tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          taskId: 'dv_ord_core.order_status.COLUMN_HINT',
-          rewriteMode: 'COLUMN_HINT',
+          taskId: 'dv_ord_core.order_status.已完成',
+          canonicalValue: '已完成',
         }),
         expect.objectContaining({
-          taskId: 'dv_ord_core.order_status.VALUE_ALIAS',
-          rewriteMode: 'VALUE_ALIAS',
-        }),
-        expect.objectContaining({
-          taskId: 'dv_ord_core.order_amount.COLUMN_HINT',
-          rewriteMode: 'COLUMN_HINT',
+          taskId: 'dv_ord_core.order_status.待支付',
+          canonicalValue: '待支付',
         }),
       ]),
     );
+    expect(tasks.some((task) => task.scope.column === 'order_amount')).toBe(
+      false,
+    );
 
     const batches = buildDenodoSemanticDictionaryBatches(tasks, 1);
-    expect(batches).toHaveLength(3);
+    expect(batches).toHaveLength(1);
     expect(
       batches.find((batch) =>
         batch.some((task) => task.scope.column === 'order_status'),
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(tasks.length);
 
     const context = buildDenodoSemanticDictionaryBatchContext({
       tasks: batches[0],
@@ -332,15 +335,15 @@ describe('denodoMcp utils', () => {
   it('normalizes batch semantic dictionary results into stable entries', () => {
     const tasks = [
       {
-        taskId: 'dv_ord_core.order_status.COLUMN_HINT',
+        taskId: 'dv_ord_core.order_status.已完成',
         scope: { model: 'dv_ord_core', column: 'order_status' },
-        rewriteMode: 'COLUMN_HINT' as const,
+        canonicalValue: '已完成',
         description: 'B端订单状态',
       },
       {
-        taskId: 'dv_ord_core.order_status.VALUE_ALIAS',
+        taskId: 'dv_ord_core.order_status.已支付',
         scope: { model: 'dv_ord_core', column: 'order_status' },
-        rewriteMode: 'VALUE_ALIAS' as const,
+        canonicalValue: '已支付',
         description: 'B端订单状态',
       },
     ];
@@ -350,19 +353,13 @@ describe('denodoMcp utils', () => {
       result: {
         items: [
           {
-            taskId: 'dv_ord_core.order_status.COLUMN_HINT',
-            concept: '订单履约状态',
-            aliases: ['订单状态', '履约状态'],
+            taskId: 'dv_ord_core.order_status.已完成',
+            description: '订单履约状态',
+            aliases: ['已交付', '交付完成'],
           },
           {
-            taskId: 'dv_ord_core.order_status.VALUE_ALIAS',
-            concept: '订单履约状态',
-            valueMappings: [
-              {
-                canonicalValue: '已完成',
-                aliases: ['已交付', '交付完成'],
-              },
-            ],
+            taskId: 'dv_ord_core.order_status.已支付',
+            aliases: ['付款成功'],
           },
         ],
       },
@@ -371,18 +368,15 @@ describe('denodoMcp utils', () => {
     expect(entries).toEqual([
       {
         scope: { model: 'dv_ord_core', column: 'order_status' },
-        concept: '订单履约状态',
-        description: 'B端订单状态',
-        aliases: ['订单状态', '履约状态', '订单履约状态'],
-        rewriteMode: 'COLUMN_HINT',
+        description: '订单履约状态',
+        aliases: ['已交付', '交付完成'],
+        canonicalValue: '已完成',
       },
       {
         scope: { model: 'dv_ord_core', column: 'order_status' },
-        concept: '订单履约状态',
         description: 'B端订单状态',
-        aliases: ['已交付', '交付完成'],
-        canonicalValue: '已完成',
-        rewriteMode: 'VALUE_ALIAS',
+        aliases: ['付款成功'],
+        canonicalValue: '已支付',
       },
     ]);
   });
@@ -390,23 +384,16 @@ describe('denodoMcp utils', () => {
   it('builds deterministic fallback entries from enum descriptions', () => {
     const tasks = [
       {
-        taskId: 'dv_ord_core.order_status.COLUMN_HINT',
+        taskId: 'dv_ord_core.order_status.已完成',
         scope: { model: 'dv_ord_core', column: 'order_status' },
-        rewriteMode: 'COLUMN_HINT' as const,
+        canonicalValue: '已完成',
         description:
           '订单状态中文值。由基础订单表 order_status_value 重命名而来。枚举值：待支付、已支付、已锁单、交付中、已完成、已退款。',
       },
       {
-        taskId: 'dv_ord_core.order_status.VALUE_ALIAS',
-        scope: { model: 'dv_ord_core', column: 'order_status' },
-        rewriteMode: 'VALUE_ALIAS' as const,
-        description:
-          '订单状态中文值。由基础订单表 order_status_value 重命名而来。枚举值：待支付、已支付、已锁单、交付中、已完成、已退款。',
-      },
-      {
-        taskId: 'dv_ord_core.order_status_code.VALUE_ALIAS',
+        taskId: 'dv_ord_core.order_status_code.COMPLETED',
         scope: { model: 'dv_ord_core', column: 'order_status_code' },
-        rewriteMode: 'VALUE_ALIAS' as const,
+        canonicalValue: 'COMPLETED',
         description:
           '订单状态编码。枚举值：CREATED=待支付，PAID=已支付，LOCKED=已锁单，DELIVERING=交付中，COMPLETED=已完成，REFUNDED=已退款。',
       },
@@ -418,18 +405,11 @@ describe('denodoMcp utils', () => {
       expect.arrayContaining([
         expect.objectContaining({
           scope: { model: 'dv_ord_core', column: 'order_status' },
-          rewriteMode: 'COLUMN_HINT',
-          concept: '订单状态中文值。由基础订单表 order_status_value 重命名而来',
-        }),
-        expect.objectContaining({
-          scope: { model: 'dv_ord_core', column: 'order_status' },
-          rewriteMode: 'VALUE_ALIAS',
           canonicalValue: '已完成',
           aliases: expect.arrayContaining(['已完成', '已交付', '交付完成']),
         }),
         expect.objectContaining({
           scope: { model: 'dv_ord_core', column: 'order_status_code' },
-          rewriteMode: 'VALUE_ALIAS',
           canonicalValue: 'COMPLETED',
           aliases: expect.arrayContaining(['已完成', '已交付', '交付完成']),
         }),
@@ -596,10 +576,8 @@ describe('denodoMcp utils', () => {
       buildDenodoSemanticDictionary([
         {
           scope: { model: 'dv_ord_core', column: 'order_status' },
-          concept: '订单履约状态',
           aliases: ['已交付', '交付完成'],
           canonicalValue: '已完成',
-          rewriteMode: 'VALUE_ALIAS',
         },
       ]),
     );
@@ -821,20 +799,9 @@ describe('denodoMcp utils', () => {
             model: 'dv_ord_core',
             column: 'order_status',
           },
-          concept: '订单履约状态',
           description: '订单状态字段，包含已完成等交付语义',
           aliases: ['已交付', '交付完成'],
           canonicalValue: '已完成',
-          rewriteMode: 'VALUE_ALIAS',
-        },
-        {
-          scope: {
-            model: 'dim_city',
-            column: 'city_name',
-          },
-          concept: '城市名称',
-          aliases: ['城市'],
-          rewriteMode: 'COLUMN_HINT',
         },
       ]),
       {
@@ -883,10 +850,8 @@ describe('denodoMcp utils', () => {
             model: 'dv_ord_core',
             column: 'order_status',
           },
-          concept: '订单履约状态',
           aliases: ['已交付', '交付完成'],
           canonicalValue: '已完成',
-          rewriteMode: 'VALUE_ALIAS',
         },
       ]),
     );

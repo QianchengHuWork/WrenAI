@@ -197,6 +197,7 @@ _DEFAULT_TEXT_TO_SQL_RULES = """
 - If the user asks for a specific date, please give the date range in SQL query
     - example: "What is the total revenue for the month of 2024-11-01?"
     - answer: "SELECT SUM(r.PriceSum) FROM Revenue r WHERE CAST(r.PurchaseTimestamp AS TIMESTAMP WITH TIME ZONE) >= CAST('2024-11-01 00:00:00' AS TIMESTAMP WITH TIME ZONE) AND CAST(r.PurchaseTimestamp AS TIMESTAMP WITH TIME ZONE) < CAST('2024-11-02 00:00:00' AS TIMESTAMP WITH TIME ZONE)"
+- MANDATORY PARTITION FILTERING: If any of the queried tables contain columns named `ptstart` and `ptend`, you MUST include them in the `WHERE` clause to restrict the underlying data scan. These are partition boundaries. You must set `ptstart` to the start date of the user's query range (format: `YYYYMMDD`) and `ptend` to the end date of the user's query range (format: `YYYYMMDD`). For example, if the query is for May 2024, use `... WHERE ptstart = '20240501' AND ptend = '20240531'`. If the query is for a single day like 2024-05-15, use `... WHERE ptstart = '20240515' AND ptend = '20240515'`. Do NOT omit these fields if they exist in the schema.
 - USE THE VIEW TO SIMPLIFY THE QUERY.
 - DON'T MISUSE THE VIEW NAME. THE ACTUAL NAME IS FOLLOWING THE CREATE VIEW STATEMENT.
 - ONLY USE table/column alias in the final SELECT clause; don't use table/columnalias in the other clauses.

@@ -6,7 +6,9 @@ from .followup_sql_generation_reasoning import FollowUpSQLGenerationReasoning
 from .intent_classification import IntentClassification
 from .misleading_assistance import MisleadingAssistance
 from .question_recommendation import QuestionRecommendation
+from .query_normalization import QueryNormalization
 from .relationship_recommendation import RelationshipRecommendation
+from .scope_resolution import ScopeResolution
 from .semantic_dictionary import SemanticDictionary
 from .semantics_description import SemanticsDescription
 from .sql_answer import SQLAnswer
@@ -26,7 +28,9 @@ __all__ = [
     "FollowUpSQLGeneration",
     "IntentClassification",
     "QuestionRecommendation",
+    "QueryNormalization",
     "RelationshipRecommendation",
+    "ScopeResolution",
     "SemanticDictionary",
     "SemanticsDescription",
     "SQLAnswer",

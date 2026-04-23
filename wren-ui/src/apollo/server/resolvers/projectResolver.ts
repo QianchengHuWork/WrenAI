@@ -1091,8 +1091,20 @@ export class ProjectResolver {
     await this.deploy(ctx);
     updateDataSourceSetupProgress('FINALIZING', '正在完成默认规则和项目初始化');
     await this.ensureDefaultDenodoInstruction(project.id, ctx);
+    await this.enqueueDenodoSemanticDictionaryBuild(project.id, ctx);
 
     return { rawSchema, manifest, models, columns, selectedViews };
+  }
+
+  private async enqueueDenodoSemanticDictionaryBuild(
+    projectId: number,
+    ctx: IContext,
+  ) {
+    if (!isDenodoSemanticDictionaryEnabled()) {
+      return;
+    }
+
+    await ctx.semanticDictionaryBuildBackgroundTracker.enqueue(projectId);
   }
 
   private buildRelationInput(
