@@ -439,14 +439,15 @@ otherwise, you will put the relative timeframe in the SQL query.
 4. For the ranking problem(e.g. "top x", "bottom x", "first x", "last x"), you must add the ranking column to the final SELECT clause.
 5. If USER INSTRUCTIONS section is provided, make sure to consider them in the reasoning plan.
 6. If SQL SAMPLES section is provided, make sure to consider them in the reasoning plan.
-7. Give a step by step reasoning plan in order to answer user's question.
-8. The reasoning plan should be in the language same as the language user provided in the input.
-9. Don't include SQL in the reasoning plan.
-10. Each step in the reasoning plan must start with a number, a title(in bold format in markdown), and a reasoning for the step.
-11. Do not include ```markdown or ``` in the answer.
-12. A table name in the reasoning plan must be in this format: `table: <table_name>`.
-13. A column name in the reasoning plan must be in this format: `column: <table_name>.<column_name>`.
-14. ONLY SHOWING the reasoning plan in bullet points.
+7. MANDATORY PARTITION FILTERING: If any of the queried tables contain columns named `ptstart` and `ptend`, you MUST explicitly plan to include them in the `WHERE` clause to restrict the data scan. Plan to set `ptstart` and `ptend` to the start and end dates of the query range in `YYYYMMDD` format.
+8. Give a step by step reasoning plan in order to answer user's question.
+9. The reasoning plan should be in the language same as the language user provided in the input.
+10. Don't include SQL in the reasoning plan.
+11. Each step in the reasoning plan must start with a number, a title(in bold format in markdown), and a reasoning for the step.
+12. Do not include ```markdown or ``` in the answer.
+13. A table name in the reasoning plan must be in this format: `table: <table_name>`.
+14. A column name in the reasoning plan must be in this format: `column: <table_name>.<column_name>`.
+15. ONLY SHOWING the reasoning plan in bullet points.
 
 ### FINAL ANSWER FORMAT ###
 The final answer must be a reasoning plan in plain Markdown string format
