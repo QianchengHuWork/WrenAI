@@ -197,7 +197,7 @@ _DEFAULT_TEXT_TO_SQL_RULES = """
 - If the user asks for a specific date, please give the date range in SQL query
     - example: "What is the total revenue for the month of 2024-11-01?"
     - answer: "SELECT SUM(r.PriceSum) FROM Revenue r WHERE CAST(r.PurchaseTimestamp AS TIMESTAMP WITH TIME ZONE) >= CAST('2024-11-01 00:00:00' AS TIMESTAMP WITH TIME ZONE) AND CAST(r.PurchaseTimestamp AS TIMESTAMP WITH TIME ZONE) < CAST('2024-11-02 00:00:00' AS TIMESTAMP WITH TIME ZONE)"
-- MANDATORY PARTITION FILTERING: If any of the queried tables contain columns named `ptstart` and `ptend`, you MUST include them in the `WHERE` clause to restrict the underlying data scan. These are partition boundaries. You must set `ptstart` to the start date of the user's query range (format: `YYYYMMDD`) and `ptend` to the end date of the user's query range (format: `YYYYMMDD`). For example, if the query is for May 2024, use `... WHERE ptstart = '20240501' AND ptend = '20240531'`. If the query is for a single day like 2024-05-15, use `... WHERE ptstart = '20240515' AND ptend = '20240515'`. Do NOT omit these fields if they exist in the schema.
+- MANDATORY PARTITION FILTERING: If any of the queried tables contain columns named `ptstart` and `ptend`, you MUST include them in the `WHERE` clause to restrict the underlying data scan. These are partition boundaries. You must set `ptstart` to the start date of the user's query range (format: `YYYYMMDD`) and `ptend` to the end date of the user's query range (format: `YYYYMMDD`). For example, if the query is for May 2024, use `... WHERE ptstart = '20240501' AND ptend = '20240531'`. If the query is for a single day like 2024-05-15, use `... WHERE ptstart = '20240515' AND ptend = '20240515'`. Do NOT omit these fields if they exist in the schema. Furthermore, if you use `ptstart` and `ptend` for date filtering, you MUST NOT use the `pt` column in the `WHERE` clause for date filtering, as it will conflict and cause empty results.
 - USE THE VIEW TO SIMPLIFY THE QUERY.
 - DON'T MISUSE THE VIEW NAME. THE ACTUAL NAME IS FOLLOWING THE CREATE VIEW STATEMENT.
 - ONLY USE table/column alias in the final SELECT clause; don't use table/columnalias in the other clauses.
@@ -439,7 +439,7 @@ otherwise, you will put the relative timeframe in the SQL query.
 4. For the ranking problem(e.g. "top x", "bottom x", "first x", "last x"), you must add the ranking column to the final SELECT clause.
 5. If USER INSTRUCTIONS section is provided, make sure to consider them in the reasoning plan.
 6. If SQL SAMPLES section is provided, make sure to consider them in the reasoning plan.
-7. MANDATORY PARTITION FILTERING: If any of the queried tables contain columns named `ptstart` and `ptend`, you MUST explicitly plan to include them in the `WHERE` clause to restrict the data scan. Plan to set `ptstart` and `ptend` to the start and end dates of the query range in `YYYYMMDD` format.
+7. MANDATORY PARTITION FILTERING: If any of the queried tables contain columns named `ptstart` and `ptend`, you MUST explicitly plan to include them in the `WHERE` clause to restrict the data scan. Plan to set `ptstart` and `ptend` to the start and end dates of the query range in `YYYYMMDD` format. If you use `ptstart` and `ptend`, you MUST NOT plan to use or filter by the `pt` column.
 8. Give a step by step reasoning plan in order to answer user's question.
 9. The reasoning plan should be in the language same as the language user provided in the input.
 10. Don't include SQL in the reasoning plan.

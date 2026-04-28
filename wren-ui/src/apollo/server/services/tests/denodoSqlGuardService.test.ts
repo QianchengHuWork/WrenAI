@@ -129,6 +129,78 @@ describe('DenodoSqlGuardService', () => {
     );
   });
 
+  it('rewrites dense_rank top-n SQL before validation for denodo', async () => {
+    const rankingManifest = {
+      models: [
+        {
+          name: 'dm_ord_month_city',
+          cached: false,
+          tableReference: {
+            table: 'dm_ord_month_city',
+          },
+          columns: [
+            {
+              name: 'city_name',
+              isCalculated: false,
+              expression: '"city_name"',
+            },
+            {
+              name: 'total_order_amount',
+              isCalculated: false,
+              expression: '"total_order_amount"',
+            },
+            {
+              name: 'order_year',
+              isCalculated: false,
+              expression: '"order_year"',
+            },
+          ],
+        },
+      ],
+    } as any;
+    const denodoMcpAdaptor = {
+      validateSqlQuery: jest.fn().mockResolvedValue({ isValid: true }),
+    };
+    const wrenAIAdaptor = {
+      createSqlCorrection: jest.fn(),
+      getSqlCorrectionResult: jest.fn(),
+    };
+    const service = new DenodoSqlGuardService({
+      denodoMcpAdaptor: denodoMcpAdaptor as any,
+      wrenAIAdaptor: wrenAIAdaptor as any,
+    });
+
+    const result = await service.guardAskResult({
+      askResult: {
+        status: AskResultStatus.FINISHED,
+        type: 'TEXT_TO_SQL',
+        error: null,
+        response: [
+          {
+            type: AskCandidateType.LLM,
+            sql: `WITH city_totals AS (SELECT dm_ord_month_city.city_name, SUM(dm_ord_month_city.total_order_amount) AS total_amount FROM dm_ord_month_city WHERE dm_ord_month_city.order_year = '2026' GROUP BY dm_ord_month_city.city_name), ranked_cities AS (SELECT city_totals.city_name, city_totals.total_amount, DENSE_RANK() OVER (ORDER BY city_totals.total_amount DESC) AS rank FROM city_totals) SELECT ranked_cities.city_name, ranked_cities.total_amount, ranked_cities.rank FROM ranked_cities WHERE ranked_cities.rank <= 5`,
+          },
+        ],
+      } as any,
+      manifest: rankingManifest,
+      project: encryptedProject,
+    });
+
+    const validatedSql = denodoMcpAdaptor.validateSqlQuery.mock.calls[0][0];
+    expect(validatedSql).not.toContain('DENSE_RANK');
+    expect(validatedSql).toContain(
+      'COUNT(DISTINCT "denodo_rank_source_1"."total_amount")',
+    );
+    expect(validatedSql).toContain(
+      'WHERE "ranked_cities"."rank" <= 5',
+    );
+    expect(result.toolCalls).toEqual(
+      expect.arrayContaining([
+        'rewrite dense_rank for denodo: city_totals.total_amount -> correlated subquery',
+      ]),
+    );
+  });
+
   it('retries with sql correction when validation fails once', async () => {
     const denodoMcpAdaptor = {
       validateSqlQuery: jest

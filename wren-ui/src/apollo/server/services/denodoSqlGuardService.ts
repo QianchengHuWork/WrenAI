@@ -1,6 +1,7 @@
 import { IDenodoMcpAdaptor, IWrenAIAdaptor } from '@server/adaptors';
 import { Manifest } from '@server/mdl/type';
 import { DataSourceName } from '@server/types';
+import { Parser } from 'node-sql-parser';
 import {
   AskResult,
   AskResultStatus,
@@ -34,6 +35,8 @@ const MAX_VALIDATE_ATTEMPTS = 3;
 const MAX_CORRECTION_POLLS = 60;
 const CORRECTION_POLL_INTERVAL = 1000;
 const LOG_EMPTY_VALUE = '-';
+const DENSE_RANK_SOURCE_ALIAS_PREFIX = 'denodo_rank_source';
+const sqlParser = new Parser();
 
 const safeLogValue = (value: unknown, limit = 240): string => {
   if (value === undefined || value === null) return LOG_EMPTY_VALUE;
@@ -131,6 +134,177 @@ const logDenodoGuard = (
       break;
     default:
       logger.info(message);
+  }
+};
+
+const getColumnIdentifier = (column: any): string | null => {
+  if (typeof column === 'string' && column.trim()) {
+    return column;
+  }
+
+  const quotedValue = column?.expr?.value;
+  if (typeof quotedValue === 'string' && quotedValue.trim()) {
+    return quotedValue;
+  }
+
+  if (typeof column?.value === 'string' && column.value.trim()) {
+    return column.value;
+  }
+
+  return null;
+};
+
+const buildDenseRankReplacementExpr = ({
+  sourceTableName,
+  outerTableAlias,
+  orderColumnName,
+  operator,
+  sourceAlias,
+}: {
+  sourceTableName: string;
+  outerTableAlias: string;
+  orderColumnName: string;
+  operator: '>' | '<';
+  sourceAlias: string;
+}) => {
+  const exprSql = `SELECT (SELECT COUNT(DISTINCT "${sourceAlias}"."${orderColumnName}") FROM "${sourceTableName}" AS "${sourceAlias}" WHERE "${sourceAlias}"."${orderColumnName}" ${operator} "${outerTableAlias}"."${orderColumnName}") + 1 AS "__denodo_rank" FROM "${sourceTableName}" AS "${outerTableAlias}"`;
+  const exprAst = sqlParser.astify(exprSql, {
+    database: 'postgresql',
+  }) as any;
+
+  return exprAst?.columns?.[0]?.expr || null;
+};
+
+const rewriteDenseRankForDenodo = (sql: string) => {
+  if (!/DENSE_RANK\s*\(/i.test(sql)) {
+    return {
+      sql,
+      appliedRewrites: [] as string[],
+    };
+  }
+
+  try {
+    const ast = sqlParser.astify(sql, {
+      database: 'postgresql',
+    }) as any;
+    const appliedRewrites: string[] = [];
+    let rewriteIndex = 0;
+
+    const rewriteSelectStatement = (statement: any) => {
+      if (!statement || statement.type !== 'select') return;
+
+      (statement.with || []).forEach((cte: any) => {
+        rewriteSelectStatement(cte?.stmt);
+      });
+
+      (statement.from || []).forEach((item: any) => {
+        rewriteSelectStatement(item?.expr?.ast || item?.expr);
+      });
+
+      const fromItems = Array.isArray(statement.from) ? statement.from : [];
+      if (fromItems.length !== 1) {
+        return;
+      }
+
+      const fromItem = fromItems[0];
+      if (fromItem?.join || fromItem?.expr?.ast || fromItem?.expr?.type === 'select') {
+        return;
+      }
+
+      const sourceTableName =
+        typeof fromItem?.table === 'string' ? fromItem.table : null;
+      const outerTableAlias =
+        typeof fromItem?.as === 'string' && fromItem.as.trim()
+          ? fromItem.as
+          : sourceTableName;
+
+      if (!sourceTableName || !outerTableAlias) {
+        return;
+      }
+
+      (statement.columns || []).forEach((column: any) => {
+        const expr = column?.expr;
+        if (
+          !expr ||
+          expr.type !== 'window_func' ||
+          `${expr.name || ''}`.toUpperCase() !== 'DENSE_RANK'
+        ) {
+          return;
+        }
+
+        const specification =
+          expr.over?.as_window_specification?.window_specification;
+        const orderBy = specification?.orderby;
+        if (
+          !specification ||
+          specification.partitionby ||
+          !Array.isArray(orderBy) ||
+          orderBy.length !== 1 ||
+          specification.window_frame_clause
+        ) {
+          return;
+        }
+
+        const orderItem = orderBy[0];
+        if (orderItem?.expr?.type !== 'column_ref') {
+          return;
+        }
+
+        const orderColumnName = getColumnIdentifier(orderItem.expr.column);
+        const orderTableName =
+          typeof orderItem.expr.table === 'string' && orderItem.expr.table.trim()
+            ? orderItem.expr.table
+            : outerTableAlias;
+
+        if (
+          !orderColumnName ||
+          ![outerTableAlias, sourceTableName].includes(orderTableName)
+        ) {
+          return;
+        }
+
+        const comparisonOperator =
+          `${orderItem.type || 'ASC'}`.toUpperCase() === 'DESC' ? '>' : '<';
+        rewriteIndex += 1;
+        const rankSourceAlias = `${DENSE_RANK_SOURCE_ALIAS_PREFIX}_${rewriteIndex}`;
+        const replacementExpr = buildDenseRankReplacementExpr({
+          sourceTableName,
+          outerTableAlias,
+          orderColumnName,
+          operator: comparisonOperator,
+          sourceAlias: rankSourceAlias,
+        });
+
+        if (!replacementExpr) {
+          return;
+        }
+
+        column.expr = replacementExpr;
+        appliedRewrites.push(
+          `rewrite dense_rank for denodo: ${outerTableAlias}.${orderColumnName} -> correlated subquery`,
+        );
+      });
+    };
+
+    if (Array.isArray(ast)) {
+      ast.forEach((statement) => rewriteSelectStatement(statement));
+    } else {
+      rewriteSelectStatement(ast);
+    }
+
+    if (!appliedRewrites.length) {
+      return { sql, appliedRewrites };
+    }
+
+    return {
+      sql: sqlParser.sqlify(ast, { database: 'postgresql' }),
+      appliedRewrites,
+    };
+  } catch {
+    return {
+      sql,
+      appliedRewrites: [] as string[],
+    };
   }
 };
 
@@ -361,6 +535,9 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
         toolCalls.push(...semanticRewrite.appliedRewrites);
         semanticSqlRewriteCount = semanticRewrite.appliedRewrites.length;
       }
+      const denseRankRewrite = rewriteDenseRankForDenodo(currentSql);
+      currentSql = denseRankRewrite.sql;
+      toolCalls.push(...denseRankRewrite.appliedRewrites);
       logDenodoGuard('info', 'denodo_guard.validate_attempt', {
         project_id: project.id,
         trace_id: traceId,
