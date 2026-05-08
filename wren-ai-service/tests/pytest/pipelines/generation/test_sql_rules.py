@@ -20,6 +20,8 @@ def test_text_to_sql_rules_prefer_float_for_rates():
     assert "Use NULLIF on the denominator" in rules
     assert "Do NOT use bare CAST(... AS DECIMAL)" in rules
     assert "Keep DECIMAL for monetary amount calculations" in rules
+    assert "converted_order_count" not in rules
+    assert "assigned_clew_count" not in rules
 
 
 def test_reasoning_prompt_does_not_require_dense_rank():

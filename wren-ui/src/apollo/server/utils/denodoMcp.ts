@@ -66,6 +66,7 @@ export interface DenodoAssociationMappingClause {
 }
 
 export const DENODO_ASSOCIATION_SOURCE = 'DENODO_ASSOCIATION';
+export const DENODO_AI_CONTEXT_MARKER = '[[WREN_DENODO_CONTEXT]]';
 
 export interface DenodoSemanticDictionaryEntry {
   scope: {
@@ -224,6 +225,21 @@ export const readDenodoSemanticDictionary = async (
   }
 };
 
+export const buildDenodoAiSemanticContext = (
+  semanticContext?: string,
+): string => {
+  const parts = [
+    `Denodo context marker: ${DENODO_AI_CONTEXT_MARKER}`,
+    'This project executes against Denodo VQL through Denodo MCP. Apply Denodo technical rules and the scoped business formula instructions supplied by WrenAI.',
+  ];
+
+  if (semanticContext?.trim()) {
+    parts.push(`Semantic dictionary entries:\n${semanticContext.trim()}`);
+  }
+
+  return parts.join('\n');
+};
+
 export const buildDenodoAskAugmentation = async (
   projectId: number,
   options?: {
@@ -233,14 +249,15 @@ export const buildDenodoAskAugmentation = async (
 ) => {
   if (!isDenodoSemanticDictionaryEnabled()) {
     return {
-      semanticContext: undefined,
+      semanticContext: buildDenodoAiSemanticContext(),
       semanticDictionary: undefined,
     };
   }
 
   const semanticDictionary = await readDenodoSemanticDictionary(projectId);
+  const semanticContext = toDenodoSemanticContext(semanticDictionary, options);
   return {
-    semanticContext: toDenodoSemanticContext(semanticDictionary, options),
+    semanticContext: buildDenodoAiSemanticContext(semanticContext),
     semanticDictionary: isDenodoScopeNormalizationEnabled()
       ? semanticDictionary || undefined
       : undefined,

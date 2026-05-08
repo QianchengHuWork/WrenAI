@@ -6,6 +6,9 @@ from langfuse.decorators import observe
 from pydantic import BaseModel
 
 from src.core.pipeline import BasicPipeline
+from src.pipelines.generation.denodo_prompt_context import (
+    build_denodo_runtime_instructions,
+)
 from src.utils import trace_metadata
 from src.web.v1.services import BaseRequest, MetadataTraceable
 from src.web.v1.services.denodo_scope_normalization import MatchedRewrite, SelectedModels
@@ -156,6 +159,15 @@ class SqlCorrectionService:
                 .get("retrieval_results", [])
             )
             table_ddls = [document.get("table_ddl") for document in documents]
+            retrieved_table_names = retrieved_tables or [
+                document.get("table_name") for document in documents
+            ]
+            instructions = build_denodo_runtime_instructions(
+                normalized_query or original_query or retrieval_query,
+                retrieved_table_names,
+                semantic_context,
+                instructions,
+            )
 
             res = await self._pipelines["sql_correction"].run(
                 contexts=table_ddls,

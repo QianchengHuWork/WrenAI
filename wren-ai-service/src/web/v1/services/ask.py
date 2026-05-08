@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 from typing import Any, Dict, List, Literal, Optional
 
 from cachetools import TTLCache
@@ -9,6 +8,10 @@ from pydantic import AliasChoices, BaseModel, Field
 
 from src.config import settings
 from src.core.pipeline import BasicPipeline
+from src.pipelines.generation.denodo_prompt_context import (
+    build_denodo_runtime_instructions,
+    prioritize_conversion_core_documents,
+)
 from src.utils import trace_metadata
 from src.web.v1.services import BaseRequest, SSEEvent
 from src.web.v1.services.denodo_scope_normalization import (
@@ -32,89 +35,19 @@ from src.web.v1.services.denodo_scope_normalization import (
 
 logger = logging.getLogger("wren-ai-service")
 
-CONVERSION_RATE_PRIORITY_TABLE = "dv_clew_ord_conversion_core"
-CONVERSION_RATE_PRIORITY_INSTRUCTION = (
-    "For conversion-rate, conversion-trend, and month-over-month conversion "
-    "questions, calculate rate, ratio, and percentage values from count-based "
-    "numerators and denominators with FLOAT casts. Use NULLIF on the denominator "
-    "to avoid division by zero. Do NOT use bare CAST(... AS DECIMAL) for "
-    "conversion-rate expressions in SELECT, HAVING, WHERE, CTE filters, or "
-    "comparisons with decimal thresholds. When the retrieved schema contains "
-    "`column: dv_clew_ord_conversion_core.converted_order_count` and "
-    "`column: dv_clew_ord_conversion_core.assigned_clew_count`, calculate lead "
-    "conversion rate as `CAST(SUM(\"converted_order_count\") AS FLOAT) / "
-    "NULLIF(CAST(SUM(\"assigned_clew_count\") AS FLOAT), 0)`. Do NOT calculate "
-    "conversion rate by directly joining `table: dv_clew_total_core` with "
-    "`table: dv_ord_core` on month or year."
-)
-_CONVERSION_RATE_QUERY_PATTERNS = [
-    re.compile(r"转化率"),
-    re.compile(r"转化趋势"),
-    re.compile(r"环比.{0,6}转化"),
-    re.compile(r"转化.{0,6}环比"),
-    re.compile(r"conversion rate", re.IGNORECASE),
-    re.compile(r"conversion trend", re.IGNORECASE),
-    re.compile(r"month[- ]over[- ]month.{0,10}conversion", re.IGNORECASE),
-]
-
-
-def is_conversion_rate_query(query: str) -> bool:
-    normalized = query.strip()
-    if not normalized:
-        return False
-
-    if any(pattern.search(normalized) for pattern in _CONVERSION_RATE_QUERY_PATTERNS):
-        return True
-
-    lowered = normalized.lower()
-    return "conversion" in lowered and (
-        "mom" in lowered
-        or "month over month" in lowered
-        or "month-over-month" in lowered
-        or "trend" in lowered
-    )
-
-
-def prioritize_conversion_core_documents(
-    query: str, documents: list[dict]
-) -> list[dict]:
-    if not is_conversion_rate_query(query):
-        return documents
-
-    return sorted(
-        documents,
-        key=lambda document: (
-            0
-            if document.get("table_name") == CONVERSION_RATE_PRIORITY_TABLE
-            else 1
-        ),
-    )
-
 
 def build_runtime_sql_instructions(
-    query: str, table_names: list[str], instructions: list[dict] | None = None
+    query: str,
+    table_names: list[str],
+    instructions: list[dict] | None = None,
+    semantic_context: str | None = None,
 ) -> list[dict]:
-    runtime_instructions = list(instructions or [])
-    if (
-        not is_conversion_rate_query(query)
-        or CONVERSION_RATE_PRIORITY_TABLE not in table_names
-    ):
-        return runtime_instructions
-
-    if any(
-        item.get("instruction") == CONVERSION_RATE_PRIORITY_INSTRUCTION
-        for item in runtime_instructions
-    ):
-        return runtime_instructions
-
-    runtime_instructions.append(
-        {
-            "instruction": CONVERSION_RATE_PRIORITY_INSTRUCTION,
-            "question": query,
-            "instruction_id": "runtime_conversion_rate_priority",
-        }
+    return build_denodo_runtime_instructions(
+        query,
+        table_names,
+        semantic_context,
+        instructions,
     )
-    return runtime_instructions
 
 
 def _selected_model_names(selected_models: SelectedModels | None) -> list[str]:
@@ -577,6 +510,7 @@ class AskService:
                     user_query,
                     table_names,
                     instructions,
+                    scoped_semantic_context,
                 )
                 if denodo_logging_enabled:
                     _log_denodo_event(

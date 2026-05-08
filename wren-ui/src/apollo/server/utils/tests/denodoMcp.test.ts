@@ -1,8 +1,11 @@
 import { Manifest } from '@server/mdl/type';
 import {
+  DENODO_AI_CONTEXT_MARKER,
   applySemanticDictionaryToSql,
   buildDenodoDataCatalogBaseUrl,
   buildDenodoDataCatalogUri,
+  buildDenodoAiSemanticContext,
+  buildDenodoAskAugmentation,
   buildDenodoSemanticDictionaryBatchContext,
   buildDenodoSemanticDictionaryBatches,
   buildDenodoSemanticDictionary,
@@ -899,6 +902,36 @@ describe('denodoMcp utils', () => {
     expect(context).toContain('scope: dv_ord_core.order_status');
     expect(context).toContain('canonical: 已完成');
     expect(context).not.toContain('dim_city.city_name');
+  });
+
+  it('wraps denodo AI semantic context with a stable marker', () => {
+    const context = buildDenodoAiSemanticContext(
+      '- scope: dv_ord_core.order_status | canonical: 已完成',
+    );
+
+    expect(context).toContain(DENODO_AI_CONTEXT_MARKER);
+    expect(context).toContain('Denodo VQL');
+    expect(context).toContain('scope: dv_ord_core.order_status');
+  });
+
+  it('builds denodo ask augmentation marker without semantic dictionary', async () => {
+    const originalEnableSemanticDictionary =
+      process.env.ENABLE_DENODO_SEMANTIC_DICTIONARY;
+    process.env.ENABLE_DENODO_SEMANTIC_DICTIONARY = 'false';
+
+    try {
+      const augmentation = await buildDenodoAskAugmentation(7);
+
+      expect(augmentation.semanticContext).toContain(DENODO_AI_CONTEXT_MARKER);
+      expect(augmentation.semanticDictionary).toBeUndefined();
+    } finally {
+      if (originalEnableSemanticDictionary === undefined) {
+        delete process.env.ENABLE_DENODO_SEMANTIC_DICTIONARY;
+      } else {
+        process.env.ENABLE_DENODO_SEMANTIC_DICTIONARY =
+          originalEnableSemanticDictionary;
+      }
+    }
   });
 
   it('rewrites scoped semantic aliases into canonical values', () => {

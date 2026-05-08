@@ -76,7 +76,7 @@ For Denodo SQL generation:
 3. Do not cast fields already modeled as date/timestamp to TIMESTAMP again.
 4. Prefer = or IN for status/enum filters; avoid lower(...) like ... unless pattern matching is required.
 5. For numeric text conversions, especially monetary amount fields, prefer CAST(... AS DECIMAL).
-6. For rate, ratio, percentage, conversion rate, success rate, coverage rate, refund rate, share, or any metric calculated as numerator / denominator from counts or summed counts, cast both numerator and denominator to FLOAT before division. Use NULLIF on the denominator to avoid division by zero. Example: CAST(SUM("converted_order_count") AS FLOAT) / NULLIF(CAST(SUM("assigned_clew_count") AS FLOAT), 0).
+6. For rate, ratio, percentage, conversion rate, success rate, coverage rate, refund rate, share, or any metric calculated as numerator / denominator from counts or summed counts, cast both numerator and denominator to FLOAT before division. Use NULLIF on the denominator to avoid division by zero. Choose numerator and denominator from the semantic model, metric definition, or business formula instruction; do not infer a denominator from similarly named count fields when ambiguous.
 7. Do not use bare CAST(... AS DECIMAL) for rate, ratio, or percentage calculations, especially in HAVING, WHERE, CTE filters, or comparisons with decimal thresholds.
 8. Do not generate LIMIT, FETCH, or TOP.
 9. Only use views and columns that exist in the manifest.

@@ -17,6 +17,7 @@ import { toIbisConnectionInfo } from '@server/dataSource';
 import { getLogger } from '@server/utils';
 import * as Errors from '@server/utils/error';
 import {
+  buildDenodoAiSemanticContext,
   isDenodoSemanticDictionaryEnabled,
   buildDenodoMcpValidateToolName,
   getDenodoManifestPath,
@@ -514,7 +515,7 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
     const semanticDictionary = isDenodoSemanticDictionaryEnabled()
       ? await readDenodoSemanticDictionary(project.id)
       : null;
-    const semanticContext =
+    const dictionarySemanticContext =
       semanticDictionary && isDenodoSemanticDictionaryEnabled()
         ? toDenodoSemanticContext(semanticDictionary, {
             models: selectedModelNames.length
@@ -522,6 +523,9 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
               : retrievedTables,
           })
         : undefined;
+    const semanticContext = buildDenodoAiSemanticContext(
+      dictionarySemanticContext,
+    );
 
     while (attempt <= MAX_VALIDATE_ATTEMPTS) {
       let semanticSqlRewriteCount = 0;

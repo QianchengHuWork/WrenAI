@@ -51,8 +51,12 @@ describe('DenodoSqlGuardService', () => {
   } as any;
 
   afterEach(() => {
-    process.env.ENABLE_DENODO_SEMANTIC_DICTIONARY =
-      originalEnableSemanticDictionary;
+    if (originalEnableSemanticDictionary === undefined) {
+      delete process.env.ENABLE_DENODO_SEMANTIC_DICTIONARY;
+    } else {
+      process.env.ENABLE_DENODO_SEMANTIC_DICTIONARY =
+        originalEnableSemanticDictionary;
+    }
     jest.restoreAllMocks();
   });
 
@@ -247,6 +251,9 @@ describe('DenodoSqlGuardService', () => {
         validationMode: 'none',
         projectId: '7',
         retrievedTables: ['dv_order_base'],
+        semanticContext: expect.stringContaining(
+          denodoMcpUtils.DENODO_AI_CONTEXT_MARKER,
+        ),
       }),
     );
     expect(denodoMcpAdaptor.validateSqlQuery).toHaveBeenCalledTimes(2);
@@ -382,6 +389,13 @@ describe('DenodoSqlGuardService', () => {
       project: encryptedProject,
     });
 
+    expect(wrenAIAdaptor.createSqlCorrection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        semanticContext: expect.stringContaining(
+          denodoMcpUtils.DENODO_AI_CONTEXT_MARKER,
+        ),
+      }),
+    );
     expect(wrenAIAdaptor.createSqlCorrection).toHaveBeenCalledWith(
       expect.objectContaining({
         semanticContext: expect.stringContaining('scope: dv_order_base.city'),
