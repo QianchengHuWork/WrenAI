@@ -198,6 +198,7 @@ _DEFAULT_TEXT_TO_SQL_RULES = """
     - example: "What is the total revenue for the month of 2024-11-01?"
     - answer: "SELECT SUM(r.PriceSum) FROM Revenue r WHERE CAST(r.PurchaseTimestamp AS TIMESTAMP WITH TIME ZONE) >= CAST('2024-11-01 00:00:00' AS TIMESTAMP WITH TIME ZONE) AND CAST(r.PurchaseTimestamp AS TIMESTAMP WITH TIME ZONE) < CAST('2024-11-02 00:00:00' AS TIMESTAMP WITH TIME ZONE)"
 - MANDATORY PARTITION FILTERING: If any of the queried tables contain columns named `ptstart` and `ptend`, you MUST include them in the `WHERE` clause to restrict the underlying data scan. These are partition boundaries. You must set `ptstart` to the start date of the user's query range (format: `YYYYMMDD`) and `ptend` to the end date of the user's query range (format: `YYYYMMDD`). For example, if the query is for May 2024, use `... WHERE ptstart = '20240501' AND ptend = '20240531'`. If the query is for a single day like 2024-05-15, use `... WHERE ptstart = '20240515' AND ptend = '20240515'`. Do NOT omit these fields if they exist in the schema. Furthermore, if you use `ptstart` and `ptend` for date filtering, you MUST NOT use the `pt` column in the `WHERE` clause for date filtering, as it will conflict and cause empty results.
+- For rate, ratio, percentage, conversion rate, success rate, coverage rate, refund rate, share, or any metric calculated as numerator / denominator from counts or summed counts, cast both numerator and denominator to FLOAT before division. Use NULLIF on the denominator to avoid division by zero. Do NOT use bare CAST(... AS DECIMAL) for these rate, ratio, or percentage expressions, especially in HAVING, WHERE, CTE filters, or comparisons with decimal thresholds. Keep DECIMAL for monetary amount calculations and numeric text conversions.
 - USE THE VIEW TO SIMPLIFY THE QUERY.
 - DON'T MISUSE THE VIEW NAME. THE ACTUAL NAME IS FOLLOWING THE CREATE VIEW STATEMENT.
 - ONLY USE table/column alias in the final SELECT clause; don't use table/columnalias in the other clauses.
@@ -220,8 +221,10 @@ _DEFAULT_TEXT_TO_SQL_RULES = """
 - DON'T USE "TO_CHAR" function in the generated SQL query.
 - Aggregate functions are not allowed in the WHERE clause. Instead, they belong in the HAVING clause, which is used to filter after aggregation.
 - You can only add "ORDER BY" and "LIMIT" to the final "UNION" result.
-- For the ranking problem, you must use the ranking function, `DENSE_RANK()` to rank the results and then use `WHERE` clause to filter the results.
-- For the ranking problem, you must add the ranking column to the final SELECT clause.
+- For ranking problems (e.g. "top x", "bottom x", "first x", "last x"), DO NOT assume `DENSE_RANK()` or other window ranking functions are available in the target engine.
+- For simple top/bottom queries where the user only needs the top N rows, prefer `ORDER BY ... LIMIT`.
+- Only use ranking/window functions when they are clearly supported by the target engine or explicitly demonstrated in SQL FUNCTIONS or SQL SAMPLES.
+- Only add a ranking column to the final SELECT clause when the user explicitly asks for rank information or when the query logic requires exposing it.
 """
 
 
@@ -435,8 +438,8 @@ You are a helpful data analyst who is great at thinking deeply and reasoning abo
 2. Explicitly state the following information in the reasoning plan: 
 if the user puts any specific timeframe(e.g. YYYY-MM-DD) in the user's question(excluding the value of the current time), you will put the absolute time frame in the SQL query; 
 otherwise, you will put the relative timeframe in the SQL query.
-3. For the ranking problem(e.g. "top x", "bottom x", "first x", "last x"), you must use the ranking function, `DENSE_RANK()` to rank the results and then use `WHERE` clause to filter the results.
-4. For the ranking problem(e.g. "top x", "bottom x", "first x", "last x"), you must add the ranking column to the final SELECT clause.
+3. For ranking problems (e.g. "top x", "bottom x", "first x", "last x"), do not assume `DENSE_RANK()` or other window ranking functions are available. Prefer `ORDER BY ... LIMIT` for simple top/bottom queries, and only use ranking/window functions when they are clearly supported by the target engine or explicitly shown in SQL FUNCTIONS or SQL SAMPLES.
+4. Only add a ranking column to the final SELECT clause when the user explicitly asks for rank information or when the query logic requires exposing it.
 5. If USER INSTRUCTIONS section is provided, make sure to consider them in the reasoning plan.
 6. If SQL SAMPLES section is provided, make sure to consider them in the reasoning plan.
 7. MANDATORY PARTITION FILTERING: If any of the queried tables contain columns named `ptstart` and `ptend`, you MUST explicitly plan to include them in the `WHERE` clause to restrict the data scan. Plan to set `ptstart` and `ptend` to the start and end dates of the query range in `YYYYMMDD` format. If you use `ptstart` and `ptend`, you MUST NOT plan to use or filter by the `pt` column.

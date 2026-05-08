@@ -35,13 +35,17 @@ logger = logging.getLogger("wren-ai-service")
 CONVERSION_RATE_PRIORITY_TABLE = "dv_clew_ord_conversion_core"
 CONVERSION_RATE_PRIORITY_INSTRUCTION = (
     "For conversion-rate, conversion-trend, and month-over-month conversion "
-    "questions, you MUST use `table: dv_clew_ord_conversion_core` as the "
-    "primary table when it is available in the retrieved schema. Use "
-    "`column: dv_clew_ord_conversion_core.assign_year_month`, "
-    "`column: dv_clew_ord_conversion_core.clew_count`, and "
-    "`column: dv_clew_ord_conversion_core.order_count` to calculate the monthly "
-    "conversion rate. Do NOT calculate conversion rate by directly joining "
-    "`table: dv_clew_total_core` with `table: dv_ord_core` on month or year."
+    "questions, calculate rate, ratio, and percentage values from count-based "
+    "numerators and denominators with FLOAT casts. Use NULLIF on the denominator "
+    "to avoid division by zero. Do NOT use bare CAST(... AS DECIMAL) for "
+    "conversion-rate expressions in SELECT, HAVING, WHERE, CTE filters, or "
+    "comparisons with decimal thresholds. When the retrieved schema contains "
+    "`column: dv_clew_ord_conversion_core.converted_order_count` and "
+    "`column: dv_clew_ord_conversion_core.assigned_clew_count`, calculate lead "
+    "conversion rate as `CAST(SUM(\"converted_order_count\") AS FLOAT) / "
+    "NULLIF(CAST(SUM(\"assigned_clew_count\") AS FLOAT), 0)`. Do NOT calculate "
+    "conversion rate by directly joining `table: dv_clew_total_core` with "
+    "`table: dv_ord_core` on month or year."
 )
 _CONVERSION_RATE_QUERY_PATTERNS = [
     re.compile(r"转化率"),

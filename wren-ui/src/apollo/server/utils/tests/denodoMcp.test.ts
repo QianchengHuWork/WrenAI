@@ -503,6 +503,49 @@ describe('denodoMcp utils', () => {
     expect(sql).toContain('"a"."request_id" = "b"."request_id"');
   });
 
+  it('preserves CROSS JOIN during Denodo SQL rewriting', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'city_conversion',
+          cached: false,
+          tableReference: {
+            table: 'city_conversion',
+          },
+          columns: [
+            {
+              name: 'assign_city_id',
+              isCalculated: false,
+              expression: '"assign_city_id"',
+            },
+          ],
+        },
+        {
+          name: 'national_avg',
+          cached: false,
+          tableReference: {
+            table: 'national_avg',
+          },
+          columns: [
+            {
+              name: 'avg_conversion_rate',
+              isCalculated: false,
+              expression: '"avg_conversion_rate"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const sql = toDenodoNativeSql(
+      'SELECT assign_city_id FROM city_conversion CROSS JOIN national_avg',
+      manifest,
+    );
+
+    expect(sql).toContain('FROM "city_conversion" CROSS JOIN "national_avg"');
+    expect(sql).not.toContain('AS "CROSS" INNER JOIN');
+  });
+
   it('normalizes TIMESTAMP WITH TIME ZONE casts for Denodo', () => {
     const manifest = {
       models: [
@@ -638,7 +681,7 @@ describe('denodoMcp utils', () => {
     expect(sql).not.toContain('TO_NUMBER');
   });
 
-  it('rewrites monthly conversion queries into Denodo-safe buckets and numeric casts', () => {
+  it('rewrites monthly conversion queries into Denodo-safe buckets and float rate casts', () => {
     const manifest = {
       models: [
         {
@@ -716,14 +759,58 @@ describe('denodoMcp utils', () => {
     expect(sql).not.toContain('DATE_TRUNC');
     expect(sql).not.toContain('DATETRUNC');
     expect(sql).toContain('FULL OUTER JOIN');
-    expect(sql).toContain('CAST("orders_count" AS DECIMAL(18, 6))');
-    expect(sql).toContain('CAST("leads_count" AS DECIMAL(18, 6))');
+    expect(sql).toContain('CAST("orders_count" AS FLOAT)');
+    expect(sql).toContain('CAST("leads_count" AS FLOAT)');
     expect(sql).toContain(
       'EXTRACT(YEAR FROM CAST("create_time" AS TIMESTAMP)) * 100 + EXTRACT(MONTH FROM CAST("create_time" AS TIMESTAMP)) AS "month"',
     );
     expect(sql).toContain(
       'EXTRACT(YEAR FROM CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)) * 100 + EXTRACT(MONTH FROM CAST("dwd_ord_wife_det_h"."ord_create_time" AS TIMESTAMP)) AS "month"',
     );
+  });
+
+  it('converts decimal casts back to float for count-based conversion rates', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'dv_clew_ord_conversion_core',
+          cached: false,
+          tableReference: {
+            table: 'dv_clew_ord_conversion_core',
+          },
+          columns: [
+            {
+              name: 'assign_city_id',
+              isCalculated: false,
+              expression: '"assign_city_id"',
+            },
+            {
+              name: 'converted_order_count',
+              isCalculated: false,
+              expression: '"converted_order_count"',
+            },
+            {
+              name: 'assigned_clew_count',
+              isCalculated: false,
+              expression: '"assigned_clew_count"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const sql = toDenodoNativeSql(
+      `SELECT assign_city_id,
+              CAST(COALESCE(SUM(converted_order_count), 0) AS DECIMAL(18, 6))
+                / NULLIF(CAST(COALESCE(SUM(assigned_clew_count), 0) AS DECIMAL(18, 6)), 0) AS conversion_rate
+       FROM dv_clew_ord_conversion_core
+       GROUP BY assign_city_id`,
+      manifest,
+    );
+
+    expect(sql).toContain('AS FLOAT)');
+    expect(sql).toContain('NULLIF');
+    expect(sql).not.toContain('AS DECIMAL(18, 6)');
   });
 
   it('rewrites day buckets for daily trend queries', () => {

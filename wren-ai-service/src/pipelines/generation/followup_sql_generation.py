@@ -108,6 +108,11 @@ Normalized User Question: {{ normalized_query }}
 ### REASONING PLAN ###
 {{ sql_generation_reasoning }}
 
+### CRITICAL SQL OUTPUT CONSTRAINTS ###
+- If the reasoning plan, SQL rules, or user instructions specify FLOAT casts for a rate, ratio, percentage, or conversion-rate expression, the final SQL MUST preserve FLOAT casts and MUST NOT replace them with DECIMAL casts.
+- When this FLOAT-rate rule applies, count-based rate comparisons in SELECT, HAVING, WHERE, or CTE filters must cast both numerator and denominator to FLOAT before division and use NULLIF on the denominator.
+- Do not treat count-based rate or ratio calculations as numeric text conversions. Keep DECIMAL for monetary amount calculations and numeric text conversions.
+
 Let's think step by step.
 """
 

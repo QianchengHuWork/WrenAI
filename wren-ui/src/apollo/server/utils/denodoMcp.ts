@@ -1394,6 +1394,13 @@ const buildDecimalTarget = (scale = 6) => [
   },
 ];
 
+const buildFloatTarget = () => [
+  {
+    dataType: 'FLOAT',
+    suffix: [],
+  },
+];
+
 const buildCastExpr = (expr: any, target: any[]) => ({
   type: 'cast',
   keyword: 'cast',
@@ -1481,7 +1488,38 @@ const getDateBucketUnit = (value?: string): DateBucketUnit | null => {
   }
 };
 
-const normalizeCastTarget = (target: any) => {
+type RewriteExpressionOptions = {
+  forceFloatForCountRate?: boolean;
+};
+
+const getColumnRefName = (expr: any) => {
+  if (expr?.type !== 'column_ref') {
+    return '';
+  }
+  return `${typeof expr.column === 'string' ? expr.column : expr.column?.expr?.value || expr.column?.value || ''}`;
+};
+
+const containsCountLikeColumn = (expr: any): boolean => {
+  if (!expr || typeof expr !== 'object') {
+    return false;
+  }
+
+  if (expr.type === 'column_ref') {
+    const columnName = getColumnRefName(expr).toLowerCase();
+    return /(^|_)(count|cnt)(_|$)/.test(columnName);
+  }
+
+  if (Array.isArray(expr)) {
+    return expr.some((item) => containsCountLikeColumn(item));
+  }
+
+  return Object.values(expr).some((value) => containsCountLikeColumn(value));
+};
+
+const normalizeCastTarget = (
+  target: any,
+  options: RewriteExpressionOptions = {},
+) => {
   const dataType = `${target?.dataType || ''}`.toUpperCase();
 
   if (
@@ -1495,11 +1533,39 @@ const normalizeCastTarget = (target: any) => {
     };
   }
 
+  if (
+    options.forceFloatForCountRate &&
+    ['DECIMAL', 'NUMERIC', 'DOUBLE', 'FLOAT', 'REAL', 'NUMBER'].includes(
+      dataType,
+    )
+  ) {
+    return buildFloatTarget()[0];
+  }
+
   if (['DOUBLE', 'FLOAT', 'REAL', 'NUMBER'].includes(dataType)) {
     return buildDecimalTarget()[0];
   }
 
   return target;
+};
+
+const normalizeParsedCrossJoin = (from?: any[]) => {
+  if (!Array.isArray(from)) {
+    return;
+  }
+
+  for (let index = 0; index < from.length - 1; index += 1) {
+    const current = from[index];
+    const next = from[index + 1];
+    if (
+      `${current?.as || ''}`.toUpperCase() === 'CROSS' &&
+      `${next?.join || ''}`.toUpperCase() === 'INNER JOIN' &&
+      !next?.on
+    ) {
+      current.as = null;
+      next.join = 'CROSS JOIN';
+    }
+  }
 };
 
 const buildManifestModelMap = (manifest: Manifest) => {
@@ -1629,6 +1695,8 @@ export const applySemanticDictionaryToSql = (
         selectAliases: new Set(),
       };
 
+      normalizeParsedCrossJoin(statement.from);
+
       (statement.with || []).forEach((cte) => {
         if (cte?.stmt) {
           rewriteSelectLiterals(cte.stmt);
@@ -1679,16 +1747,31 @@ const getPhysicalColumnName = (column: {
 const rewriteAst = (ast: any, manifest: Manifest): any => {
   const modelMap = buildManifestModelMap(manifest);
 
-  const rewriteExpression = (expr: any, scope: StatementScope) => {
+  const rewriteExpression = (
+    expr: any,
+    scope: StatementScope,
+    options: RewriteExpressionOptions = {},
+  ) => {
     if (!expr || typeof expr !== 'object') {
       return expr;
     }
 
     if (expr.type === 'cast' && Array.isArray(expr.target)) {
-      expr.expr = rewriteExpression(expr.expr, scope);
+      expr.expr = rewriteExpression(expr.expr, scope, options);
       expr.target = expr.target.map((target: any) =>
-        normalizeCastTarget(target),
+        normalizeCastTarget(target, options),
       );
+      return expr;
+    }
+
+    if (expr.type === 'binary_expr' && expr.operator === '/') {
+      const divisionOptions = {
+        ...options,
+        forceFloatForCountRate:
+          options.forceFloatForCountRate || containsCountLikeColumn(expr),
+      };
+      expr.left = rewriteExpression(expr.left, scope, divisionOptions);
+      expr.right = rewriteExpression(expr.right, scope, divisionOptions);
       return expr;
     }
 
@@ -1706,7 +1789,7 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
           args: {
             field: `${args[0].value || ''}`.toUpperCase(),
             cast_type: null,
-            source: rewriteExpression(args[1], scope),
+            source: rewriteExpression(args[1], scope, options),
           },
         });
       }
@@ -1722,14 +1805,17 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
       ) {
         return replaceNode(
           expr,
-          buildDateBucketExpr(bucketUnit, rewriteExpression(args[1], scope)),
+          buildDateBucketExpr(
+            bucketUnit,
+            rewriteExpression(args[1], scope, options),
+          ),
         );
       }
 
       if (functionName === 'TO_NUMBER' && args.length === 1) {
         return replaceNode(expr, {
           ...buildCastExpr(
-            rewriteExpression(args[0], scope),
+            rewriteExpression(args[0], scope, options),
             buildDecimalTarget(2),
           ),
         });
@@ -1742,9 +1828,9 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
       !expr.over
     ) {
       if (expr.args?.expr) {
-        expr.args.expr = rewriteExpression(expr.args.expr, scope);
+        expr.args.expr = rewriteExpression(expr.args.expr, scope, options);
       } else if (expr.args?.value) {
-        expr.args.value = rewriteExpression(expr.args.value, scope);
+        expr.args.value = rewriteExpression(expr.args.value, scope, options);
       }
 
       return replaceNode(
@@ -1792,9 +1878,9 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
 
     Object.values(expr).forEach((value) => {
       if (Array.isArray(value)) {
-        value.forEach((item) => rewriteExpression(item, scope));
+        value.forEach((item) => rewriteExpression(item, scope, options));
       } else if (value && typeof value === 'object') {
-        rewriteExpression(value, scope);
+        rewriteExpression(value, scope, options);
       }
     });
     return expr;
@@ -1852,6 +1938,8 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
       tables: new Map(),
       selectAliases: new Set(),
     };
+
+    normalizeParsedCrossJoin(statement.from);
 
     (statement.with || []).forEach((cte) => {
       if (cte?.stmt) {

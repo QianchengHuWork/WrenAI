@@ -38,6 +38,14 @@ def test_build_runtime_sql_instructions():
 
     assert instructions[0]["instruction"] == "existing"
     assert instructions[1]["instruction"] == CONVERSION_RATE_PRIORITY_INSTRUCTION
+    assert (
+        "MUST use `table: dv_clew_ord_conversion_core`"
+        not in instructions[1]["instruction"]
+    )
+    assert "FLOAT" in instructions[1]["instruction"]
+    assert "NULLIF" in instructions[1]["instruction"]
+    assert "converted_order_count" in instructions[1]["instruction"]
+    assert "assigned_clew_count" in instructions[1]["instruction"]
 
 
 def test_skip_runtime_instruction_when_conversion_core_missing():
