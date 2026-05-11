@@ -1,4 +1,10 @@
-import { getLogger } from '@server/utils';
+import {
+  appendTimingTrace,
+  countToolCalls,
+  createTimingStep,
+  getLogger,
+  nowMs,
+} from '@server/utils';
 import {
   AskResult,
   AskResultType,
@@ -32,6 +38,11 @@ interface TrackedTask {
   isFinalized: boolean;
   threadResponseId?: number;
   rerunFromCancelled?: boolean;
+  timingSteps?: AskResult['timingEvents'];
+  askPostedAt?: number;
+  aiPollStartedAt?: number;
+  aiPollRecorded?: boolean;
+  timingTraceWritten?: boolean;
 }
 
 export type TrackedAskingResult = AskResult & {
@@ -112,8 +123,10 @@ export class AskingTaskTracker implements IAskingTaskTracker {
   ): Promise<{ queryId: string }> {
     try {
       // Call the AI service to create a task
+      const askPostStartedAt = nowMs();
       const response = await this.wrenAIAdaptor.ask(input);
       const queryId = response.queryId;
+      const askPostedAt = nowMs();
 
       // validate the input
       if (
@@ -132,6 +145,11 @@ export class AskingTaskTracker implements IAskingTaskTracker {
         question: input.query,
         isFinalized: false,
         rerunFromCancelled: input.rerunFromCancelled,
+        timingSteps: [
+          createTimingStep('ui.ask_post', askPostStartedAt, { queryId }),
+        ],
+        askPostedAt,
+        aiPollStartedAt: askPostedAt,
       } as TrackedTask;
       this.trackedTasks.set(queryId, task);
 
@@ -328,6 +346,18 @@ export class AskingTaskTracker implements IAskingTaskTracker {
 
             const project = await this.projectService.getCurrentProject();
 
+            if (this.isTaskFinalized(result.status) && !task.aiPollRecorded) {
+              task.timingSteps = [
+                ...(task.timingSteps || []),
+                createTimingStep(
+                  'ui.poll_until_ai_finished',
+                  task.aiPollStartedAt || task.askPostedAt || now,
+                  { aiStatus: result.status },
+                ),
+              ];
+              task.aiPollRecorded = true;
+            }
+
             if (this.shouldGuardDenodoSql(project, result)) {
               const correctingResult = {
                 ...result,
@@ -359,6 +389,7 @@ export class AskingTaskTracker implements IAskingTaskTracker {
             // Check if task is now finalized
             if (this.isTaskFinalized(result.status)) {
               task.isFinalized = true;
+              this.writeAskTimingTrace(task, result);
               // update thread response if threadResponseId is provided
               if (task.threadResponseId) {
                 await this.updateThreadResponseWhenTaskFinalized(task);
@@ -425,6 +456,35 @@ export class AskingTaskTracker implements IAskingTaskTracker {
         sql: response?.sql,
         sqlDialect: response?.sqlDialect || SQLDialect.WREN,
       });
+    }
+  }
+
+  private writeAskTimingTrace(task: TrackedTask, result: AskResult) {
+    if (task.timingTraceWritten) return;
+
+    const toolCalls = result.toolCalls || [];
+    const { validateCount, correctionCount } = countToolCalls(toolCalls);
+    const steps = [
+      ...(task.timingSteps || []),
+      ...(result.timingEvents || []),
+    ];
+
+    try {
+      appendTimingTrace({
+        event: 'ask_finished',
+        askQueryId: task.queryId,
+        traceId: result.traceId,
+        question: task.question,
+        status: result.status,
+        selectedModels: result.selectedModels,
+        validateCount,
+        correctionCount,
+        toolCalls,
+        steps,
+      });
+      task.timingTraceWritten = true;
+    } catch (error: any) {
+      logger.warn(`Failed to write ask timing trace: ${error.message}`);
     }
   }
 

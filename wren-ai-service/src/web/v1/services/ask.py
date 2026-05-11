@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any, Dict, List, Literal, Optional
 
 from cachetools import TTLCache
@@ -34,6 +35,44 @@ from src.web.v1.services.denodo_scope_normalization import (
 )
 
 logger = logging.getLogger("wren-ai-service")
+
+
+class TimingEvent(BaseModel):
+    name: str
+    duration_ms: int
+    metadata: Optional[Dict[str, Any]] = None
+
+
+def _duration_ms_since(started_at: float) -> int:
+    return max(0, int((time.perf_counter() - started_at) * 1000))
+
+
+def _append_timing_event(
+    timing_events: list[TimingEvent],
+    name: str,
+    started_at: float,
+    metadata: Optional[Dict[str, Any]] = None,
+):
+    timing_events.append(
+        TimingEvent(
+            name=name,
+            duration_ms=_duration_ms_since(started_at),
+            metadata=metadata or None,
+        )
+    )
+
+
+async def _timed_await(
+    timing_events: list[TimingEvent],
+    name: str,
+    awaitable,
+    metadata_builder=None,
+):
+    started_at = time.perf_counter()
+    result = await awaitable
+    metadata = metadata_builder(result) if metadata_builder else None
+    _append_timing_event(timing_events, name, started_at, metadata)
+    return result
 
 
 def build_runtime_sql_instructions(
@@ -199,6 +238,7 @@ class _AskResultResponse(BaseModel):
     selected_models: Optional[SelectedModels] = None
     normalized_query: Optional[str] = None
     matched_rewrites: Optional[List[MatchedRewrite]] = None
+    timing_events: Optional[List[TimingEvent]] = None
     response: Optional[List[AskResult]] = None
     invalid_sql: Optional[str] = None
     error: Optional[AskError] = None
@@ -316,6 +356,15 @@ class AskService:
         normalized_query: str | None = None
         matched_rewrites: list[MatchedRewrite] = []
         scoped_semantic_context = semantic_context
+        ask_started_at = time.perf_counter()
+        timing_events: list[TimingEvent] = []
+
+        def timing_snapshot() -> list[TimingEvent]:
+            return list(timing_events)
+
+        def append_ask_total_once():
+            if not any(event.name == "ai.ask_total" for event in timing_events):
+                _append_timing_event(timing_events, "ai.ask_total", ask_started_at)
 
         try:
             user_query = ask_request.query
@@ -326,12 +375,22 @@ class AskService:
                 self._ask_results[query_id] = AskResultResponse(
                     status="understanding",
                     trace_id=trace_id,
+                    timing_events=timing_snapshot(),
                     is_followup=True if histories else False,
                 )
 
-                historical_question = await self._pipelines["historical_question"].run(
-                    query=user_query,
-                    project_id=ask_request.project_id,
+                historical_question = await _timed_await(
+                    timing_events,
+                    "ai.historical_question",
+                    self._pipelines["historical_question"].run(
+                        query=user_query,
+                        project_id=ask_request.project_id,
+                    ),
+                    lambda result: {
+                        "matchedCount": len(
+                            result.get("formatted_output", {}).get("documents", [])
+                        )
+                    },
                 )
 
                 # we only return top 1 result
@@ -354,14 +413,36 @@ class AskService:
                 else:
                     # Run both pipeline operations concurrently
                     sql_samples_task, instructions_task = await asyncio.gather(
-                        self._pipelines["sql_pairs_retrieval"].run(
-                            query=user_query,
-                            project_id=ask_request.project_id,
+                        _timed_await(
+                            timing_events,
+                            "ai.sql_pairs_retrieval",
+                            self._pipelines["sql_pairs_retrieval"].run(
+                                query=user_query,
+                                project_id=ask_request.project_id,
+                            ),
+                            lambda result: {
+                                "documentCount": len(
+                                    result.get("formatted_output", {}).get(
+                                        "documents", []
+                                    )
+                                )
+                            },
                         ),
-                        self._pipelines["instructions_retrieval"].run(
-                            query=user_query,
-                            project_id=ask_request.project_id,
-                            scope="sql",
+                        _timed_await(
+                            timing_events,
+                            "ai.instructions_retrieval",
+                            self._pipelines["instructions_retrieval"].run(
+                                query=user_query,
+                                project_id=ask_request.project_id,
+                                scope="sql",
+                            ),
+                            lambda result: {
+                                "documentCount": len(
+                                    result.get("formatted_output", {}).get(
+                                        "documents", []
+                                    )
+                                )
+                            },
                         ),
                     )
 
@@ -375,13 +456,22 @@ class AskService:
 
                     if self._allow_intent_classification:
                         intent_classification_result = (
-                            await self._pipelines["intent_classification"].run(
-                                query=user_query,
-                                histories=histories,
-                                sql_samples=sql_samples,
-                                instructions=instructions,
-                                project_id=ask_request.project_id,
-                                configuration=ask_request.configurations,
+                            await _timed_await(
+                                timing_events,
+                                "ai.intent_classification",
+                                self._pipelines["intent_classification"].run(
+                                    query=user_query,
+                                    histories=histories,
+                                    sql_samples=sql_samples,
+                                    instructions=instructions,
+                                    project_id=ask_request.project_id,
+                                    configuration=ask_request.configurations,
+                                ),
+                                lambda result: {
+                                    "intent": result.get("post_process", {}).get(
+                                        "intent"
+                                    )
+                                },
                             )
                         ).get("post_process", {})
                         intent = intent_classification_result.get("intent")
@@ -407,12 +497,14 @@ class AskService:
                                 )
                             )
 
+                            append_ask_total_once()
                             self._ask_results[query_id] = AskResultResponse(
                                 status="finished",
                                 type="GENERAL",
                                 rephrased_question=rephrased_question,
                                 intent_reasoning=intent_reasoning,
                                 trace_id=trace_id,
+                                timing_events=timing_snapshot(),
                                 is_followup=True if histories else False,
                                 general_type="MISLEADING_QUERY",
                             )
@@ -432,12 +524,14 @@ class AskService:
                                 )
                             )
 
+                            append_ask_total_once()
                             self._ask_results[query_id] = AskResultResponse(
                                 status="finished",
                                 type="GENERAL",
                                 rephrased_question=rephrased_question,
                                 intent_reasoning=intent_reasoning,
                                 trace_id=trace_id,
+                                timing_events=timing_snapshot(),
                                 is_followup=True if histories else False,
                                 general_type="DATA_ASSISTANCE",
                             )
@@ -453,12 +547,14 @@ class AskService:
                                 )
                             )
 
+                            append_ask_total_once()
                             self._ask_results[query_id] = AskResultResponse(
                                 status="finished",
                                 type="GENERAL",
                                 rephrased_question=rephrased_question,
                                 intent_reasoning=intent_reasoning,
                                 trace_id=trace_id,
+                                timing_events=timing_snapshot(),
                                 is_followup=True if histories else False,
                                 general_type="USER_GUIDE",
                             )
@@ -471,6 +567,7 @@ class AskService:
                                 rephrased_question=rephrased_question,
                                 intent_reasoning=intent_reasoning,
                                 trace_id=trace_id,
+                                timing_events=timing_snapshot(),
                                 is_followup=True if histories else False,
                             )
             if not self._is_stopped(query_id, self._ask_results) and not api_results:
@@ -480,14 +577,31 @@ class AskService:
                     rephrased_question=rephrased_question,
                     intent_reasoning=intent_reasoning,
                     trace_id=trace_id,
+                    timing_events=timing_snapshot(),
                     is_followup=True if histories else False,
                 )
 
-                retrieval_result = await self._pipelines["db_schema_retrieval"].run(
-                    query=user_query,
-                    histories=histories,
-                    project_id=ask_request.project_id,
-                    enable_column_pruning=enable_column_pruning,
+                retrieval_result = await _timed_await(
+                    timing_events,
+                    "ai.db_schema_retrieval",
+                    self._pipelines["db_schema_retrieval"].run(
+                        query=user_query,
+                        histories=histories,
+                        project_id=ask_request.project_id,
+                        enable_column_pruning=enable_column_pruning,
+                    ),
+                    lambda result: {
+                        "retrievedTableCount": len(
+                            result.get("construct_retrieval_results", {}).get(
+                                "retrieval_results", []
+                            )
+                        ),
+                        "candidateModelCount": len(
+                            result.get("construct_retrieval_results", {}).get(
+                                "db_schemas", []
+                            )
+                        ),
+                    },
                 )
                 _retrieval_result = retrieval_result.get(
                     "construct_retrieval_results", {}
@@ -549,12 +663,23 @@ class AskService:
 
                 if normalization_reason == "ready" and semantic_dictionary:
                     try:
-                        scope_resolution_result = await self._pipelines[
-                            "scope_resolution"
-                        ].run(
-                            query=user_query,
-                            candidate_models=candidate_models,
-                            configuration=ask_request.configurations,
+                        scope_resolution_result = await _timed_await(
+                            timing_events,
+                            "ai.scope_resolution",
+                            self._pipelines["scope_resolution"].run(
+                                query=user_query,
+                                candidate_models=candidate_models,
+                                configuration=ask_request.configurations,
+                            ),
+                            lambda result: {
+                                "candidateModelCount": len(candidate_models),
+                                "primaryModel": result.get("post_process", {}).get(
+                                    "primary_model"
+                                ),
+                                "secondaryModels": result.get(
+                                    "post_process", {}
+                                ).get("secondary_models"),
+                            },
                         )
                         scope_resolution_payload = scope_resolution_result.get(
                             "post_process", {}
@@ -596,14 +721,26 @@ class AskService:
                                 summarize_dictionary_entries(selected_dictionary_entries)
                                 or semantic_context
                             )
-                            normalization_result = await self._pipelines[
-                                "query_normalization"
-                            ].run(
-                                query=user_query,
-                                selected_models=selected_models,
-                                selected_candidate_models=selected_candidate_models,
-                                dictionary_entries=selected_dictionary_entries,
-                                configuration=ask_request.configurations,
+                            normalization_result = await _timed_await(
+                                timing_events,
+                                "ai.query_normalization",
+                                self._pipelines["query_normalization"].run(
+                                    query=user_query,
+                                    selected_models=selected_models,
+                                    selected_candidate_models=selected_candidate_models,
+                                    dictionary_entries=selected_dictionary_entries,
+                                    configuration=ask_request.configurations,
+                                ),
+                                lambda result: {
+                                    "rewriteCount": len(
+                                        result.get("post_process", {}).get(
+                                            "matched_rewrites", []
+                                        )
+                                    ),
+                                    "selectedModelCount": len(
+                                        selected_candidate_models
+                                    ),
+                                },
                             )
                             normalization_payload = normalization_result.get(
                                 "post_process", {}
@@ -623,6 +760,19 @@ class AskService:
                                 raw_rewrite_count = len(
                                     normalization_payload.get("matched_rewrites", [])
                                 )
+                            if (
+                                timing_events
+                                and timing_events[-1].name == "ai.query_normalization"
+                            ):
+                                timing_events[-1].metadata = {
+                                    **(timing_events[-1].metadata or {}),
+                                    "rewriteCount": len(matched_rewrites),
+                                    "rawRewriteCount": raw_rewrite_count,
+                                    "matchedRewrites": [
+                                        rewrite.model_dump()
+                                        for rewrite in matched_rewrites
+                                    ],
+                                }
                             if denodo_logging_enabled:
                                 _log_denodo_event(
                                     "info",
@@ -725,6 +875,7 @@ class AskService:
                         scoped_semantic_context = semantic_context
 
                 if not documents:
+                    append_ask_total_once()
                     if denodo_logging_enabled:
                         _log_denodo_event(
                             "error",
@@ -751,6 +902,7 @@ class AskService:
                             normalized_query=normalized_query,
                             matched_rewrites=matched_rewrites,
                             trace_id=trace_id,
+                            timing_events=timing_snapshot(),
                             is_followup=True if histories else False,
                         )
                     results["metadata"]["error_type"] = "NO_RELEVANT_DATA"
@@ -793,52 +945,63 @@ class AskService:
                     normalized_query=normalized_query,
                     matched_rewrites=matched_rewrites,
                     trace_id=trace_id,
+                    timing_events=timing_snapshot(),
                     is_followup=True if histories else False,
                 )
 
                 if histories:
                     sql_generation_reasoning = (
-                        await self._pipelines["followup_sql_generation_reasoning"].run(
-                            query=query_for_generation,
-                            contexts=table_ddls,
-                            histories=histories,
-                            sql_samples=sql_samples,
-                            instructions=instructions,
-                            semantic_context=scoped_semantic_context,
-                            configuration=ask_request.configurations,
-                            query_id=query_id,
-                            original_query=user_query,
-                            normalized_query=normalized_query,
-                            matched_rewrites=[
-                                rewrite.model_dump() for rewrite in matched_rewrites
-                            ],
-                            selected_models=(
-                                selected_models.model_dump()
-                                if selected_models
-                                else None
+                        await _timed_await(
+                            timing_events,
+                            "ai.sql_generation_reasoning",
+                            self._pipelines["followup_sql_generation_reasoning"].run(
+                                query=query_for_generation,
+                                contexts=table_ddls,
+                                histories=histories,
+                                sql_samples=sql_samples,
+                                instructions=instructions,
+                                semantic_context=scoped_semantic_context,
+                                configuration=ask_request.configurations,
+                                query_id=query_id,
+                                original_query=user_query,
+                                normalized_query=normalized_query,
+                                matched_rewrites=[
+                                    rewrite.model_dump() for rewrite in matched_rewrites
+                                ],
+                                selected_models=(
+                                    selected_models.model_dump()
+                                    if selected_models
+                                    else None
+                                ),
                             ),
+                            lambda _result: {"followup": True},
                         )
                     ).get("post_process", {})
                 else:
                     sql_generation_reasoning = (
-                        await self._pipelines["sql_generation_reasoning"].run(
-                            query=query_for_generation,
-                            contexts=table_ddls,
-                            sql_samples=sql_samples,
-                            instructions=instructions,
-                            semantic_context=scoped_semantic_context,
-                            configuration=ask_request.configurations,
-                            query_id=query_id,
-                            original_query=user_query,
-                            normalized_query=normalized_query,
-                            matched_rewrites=[
-                                rewrite.model_dump() for rewrite in matched_rewrites
-                            ],
-                            selected_models=(
-                                selected_models.model_dump()
-                                if selected_models
-                                else None
+                        await _timed_await(
+                            timing_events,
+                            "ai.sql_generation_reasoning",
+                            self._pipelines["sql_generation_reasoning"].run(
+                                query=query_for_generation,
+                                contexts=table_ddls,
+                                sql_samples=sql_samples,
+                                instructions=instructions,
+                                semantic_context=scoped_semantic_context,
+                                configuration=ask_request.configurations,
+                                query_id=query_id,
+                                original_query=user_query,
+                                normalized_query=normalized_query,
+                                matched_rewrites=[
+                                    rewrite.model_dump() for rewrite in matched_rewrites
+                                ],
+                                selected_models=(
+                                    selected_models.model_dump()
+                                    if selected_models
+                                    else None
+                                ),
                             ),
+                            lambda _result: {"followup": False},
                         )
                     ).get("post_process", {})
 
@@ -854,6 +1017,7 @@ class AskService:
                     normalized_query=normalized_query,
                     matched_rewrites=matched_rewrites,
                     trace_id=trace_id,
+                    timing_events=timing_snapshot(),
                     is_followup=True if histories else False,
                 )
 
@@ -890,23 +1054,28 @@ class AskService:
                     normalized_query=normalized_query,
                     matched_rewrites=matched_rewrites,
                     trace_id=trace_id,
+                    timing_events=timing_snapshot(),
                     is_followup=True if histories else False,
                 )
 
                 if allow_sql_functions_retrieval:
-                    sql_functions = await self._pipelines[
-                        "sql_functions_retrieval"
-                    ].run(
-                        project_id=ask_request.project_id,
+                    sql_functions = await _timed_await(
+                        timing_events,
+                        "ai.sql_functions_retrieval",
+                        self._pipelines["sql_functions_retrieval"].run(
+                            project_id=ask_request.project_id,
+                        ),
                     )
                 else:
                     sql_functions = []
 
                 if allow_sql_knowledge_retrieval:
-                    sql_knowledge = await self._pipelines[
-                        "sql_knowledge_retrieval"
-                    ].run(
-                        project_id=ask_request.project_id,
+                    sql_knowledge = await _timed_await(
+                        timing_events,
+                        "ai.sql_knowledge_retrieval",
+                        self._pipelines["sql_knowledge_retrieval"].run(
+                            project_id=ask_request.project_id,
+                        ),
                     )
 
                 has_calculated_field = _retrieval_result.get(
@@ -916,59 +1085,65 @@ class AskService:
                 has_json_field = _retrieval_result.get("has_json_field", False)
 
                 if histories:
-                    text_to_sql_generation_results = await self._pipelines[
-                        "followup_sql_generation"
-                    ].run(
-                        query=query_for_generation,
-                        contexts=table_ddls,
-                        sql_generation_reasoning=sql_generation_reasoning,
-                        histories=histories,
-                        project_id=ask_request.project_id,
-                        sql_samples=sql_samples,
-                        instructions=instructions,
-                        semantic_context=scoped_semantic_context,
-                        has_calculated_field=has_calculated_field,
-                        has_metric=has_metric,
-                        has_json_field=has_json_field,
-                        sql_functions=sql_functions,
-                        use_dry_plan=use_dry_plan,
-                        allow_dry_plan_fallback=allow_dry_plan_fallback,
-                        sql_knowledge=sql_knowledge,
-                        original_query=user_query,
-                        normalized_query=normalized_query,
-                        matched_rewrites=[
-                            rewrite.model_dump() for rewrite in matched_rewrites
-                        ],
-                        selected_models=(
-                            selected_models.model_dump() if selected_models else None
+                    text_to_sql_generation_results = await _timed_await(
+                        timing_events,
+                        "ai.sql_generation",
+                        self._pipelines["followup_sql_generation"].run(
+                            query=query_for_generation,
+                            contexts=table_ddls,
+                            sql_generation_reasoning=sql_generation_reasoning,
+                            histories=histories,
+                            project_id=ask_request.project_id,
+                            sql_samples=sql_samples,
+                            instructions=instructions,
+                            semantic_context=scoped_semantic_context,
+                            has_calculated_field=has_calculated_field,
+                            has_metric=has_metric,
+                            has_json_field=has_json_field,
+                            sql_functions=sql_functions,
+                            use_dry_plan=use_dry_plan,
+                            allow_dry_plan_fallback=allow_dry_plan_fallback,
+                            sql_knowledge=sql_knowledge,
+                            original_query=user_query,
+                            normalized_query=normalized_query,
+                            matched_rewrites=[
+                                rewrite.model_dump() for rewrite in matched_rewrites
+                            ],
+                            selected_models=(
+                                selected_models.model_dump() if selected_models else None
+                            ),
                         ),
+                        lambda _result: {"followup": True},
                     )
                 else:
-                    text_to_sql_generation_results = await self._pipelines[
-                        "sql_generation"
-                    ].run(
-                        query=query_for_generation,
-                        contexts=table_ddls,
-                        sql_generation_reasoning=sql_generation_reasoning,
-                        project_id=ask_request.project_id,
-                        sql_samples=sql_samples,
-                        instructions=instructions,
-                        semantic_context=scoped_semantic_context,
-                        has_calculated_field=has_calculated_field,
-                        has_metric=has_metric,
-                        has_json_field=has_json_field,
-                        sql_functions=sql_functions,
-                        use_dry_plan=use_dry_plan,
-                        allow_dry_plan_fallback=allow_dry_plan_fallback,
-                        sql_knowledge=sql_knowledge,
-                        original_query=user_query,
-                        normalized_query=normalized_query,
-                        matched_rewrites=[
-                            rewrite.model_dump() for rewrite in matched_rewrites
-                        ],
-                        selected_models=(
-                            selected_models.model_dump() if selected_models else None
+                    text_to_sql_generation_results = await _timed_await(
+                        timing_events,
+                        "ai.sql_generation",
+                        self._pipelines["sql_generation"].run(
+                            query=query_for_generation,
+                            contexts=table_ddls,
+                            sql_generation_reasoning=sql_generation_reasoning,
+                            project_id=ask_request.project_id,
+                            sql_samples=sql_samples,
+                            instructions=instructions,
+                            semantic_context=scoped_semantic_context,
+                            has_calculated_field=has_calculated_field,
+                            has_metric=has_metric,
+                            has_json_field=has_json_field,
+                            sql_functions=sql_functions,
+                            use_dry_plan=use_dry_plan,
+                            allow_dry_plan_fallback=allow_dry_plan_fallback,
+                            sql_knowledge=sql_knowledge,
+                            original_query=user_query,
+                            normalized_query=normalized_query,
+                            matched_rewrites=[
+                                rewrite.model_dump() for rewrite in matched_rewrites
+                            ],
+                            selected_models=(
+                                selected_models.model_dump() if selected_models else None
+                            ),
                         ),
+                        lambda _result: {"followup": False},
                     )
 
                 if sql_valid_result := text_to_sql_generation_results["post_process"][
@@ -1048,50 +1223,61 @@ class AskService:
                             normalized_query=normalized_query,
                             matched_rewrites=matched_rewrites,
                             trace_id=trace_id,
+                            timing_events=timing_snapshot(),
                             is_followup=True if histories else False,
                         )
 
                         if allow_sql_diagnosis:
-                            sql_diagnosis_results = await self._pipelines[
-                                "sql_diagnosis"
-                            ].run(
-                                contexts=table_ddls,
-                                original_sql=original_sql,
-                                invalid_sql=invalid_sql,
-                                error_message=error_message,
-                                language=ask_request.configurations.language,
+                            sql_diagnosis_results = await _timed_await(
+                                timing_events,
+                                "ai.sql_diagnosis",
+                                self._pipelines["sql_diagnosis"].run(
+                                    contexts=table_ddls,
+                                    original_sql=original_sql,
+                                    invalid_sql=invalid_sql,
+                                    error_message=error_message,
+                                    language=ask_request.configurations.language,
+                                ),
+                                lambda _result: {
+                                    "attempt": current_sql_correction_retries
+                                },
                             )
                             sql_diagnosis_reasoning = sql_diagnosis_results[
                                 "post_process"
                             ].get("reasoning")
 
-                        sql_correction_results = await self._pipelines[
-                            "sql_correction"
-                        ].run(
-                            contexts=table_ddls,
-                            instructions=instructions,
-                            invalid_generation_result={
-                                "sql": original_sql,
-                                "error": sql_diagnosis_reasoning
-                                if allow_sql_diagnosis
-                                else error_message,
-                            },
-                            project_id=ask_request.project_id,
-                            use_dry_plan=use_dry_plan,
-                            allow_dry_plan_fallback=allow_dry_plan_fallback,
-                            sql_functions=sql_functions,
-                            sql_knowledge=sql_knowledge,
-                            semantic_context=scoped_semantic_context,
-                            original_query=user_query,
-                            normalized_query=normalized_query,
-                            matched_rewrites=[
-                                rewrite.model_dump() for rewrite in matched_rewrites
-                            ],
-                            selected_models=(
-                                selected_models.model_dump()
-                                if selected_models
-                                else None
+                        sql_correction_results = await _timed_await(
+                            timing_events,
+                            f"ai.sql_correction_attempt_{current_sql_correction_retries}",
+                            self._pipelines["sql_correction"].run(
+                                contexts=table_ddls,
+                                instructions=instructions,
+                                invalid_generation_result={
+                                    "sql": original_sql,
+                                    "error": sql_diagnosis_reasoning
+                                    if allow_sql_diagnosis
+                                    else error_message,
+                                },
+                                project_id=ask_request.project_id,
+                                use_dry_plan=use_dry_plan,
+                                allow_dry_plan_fallback=allow_dry_plan_fallback,
+                                sql_functions=sql_functions,
+                                sql_knowledge=sql_knowledge,
+                                semantic_context=scoped_semantic_context,
+                                original_query=user_query,
+                                normalized_query=normalized_query,
+                                matched_rewrites=[
+                                    rewrite.model_dump() for rewrite in matched_rewrites
+                                ],
+                                selected_models=(
+                                    selected_models.model_dump()
+                                    if selected_models
+                                    else None
+                                ),
                             ),
+                            lambda _result: {
+                                "attempt": current_sql_correction_retries
+                            },
                         )
 
                         if valid_generation_result := sql_correction_results[
@@ -1133,6 +1319,7 @@ class AskService:
                             )
 
             if api_results:
+                append_ask_total_once()
                 if denodo_logging_enabled:
                     _log_denodo_event(
                         "info",
@@ -1157,11 +1344,13 @@ class AskService:
                         normalized_query=normalized_query,
                         matched_rewrites=matched_rewrites,
                         trace_id=trace_id,
+                        timing_events=timing_snapshot(),
                         is_followup=True if histories else False,
                     )
                 results["ask_result"] = api_results
                 results["metadata"]["type"] = "TEXT_TO_SQL"
             else:
+                append_ask_total_once()
                 if denodo_logging_enabled:
                     _log_denodo_event(
                         "error",
@@ -1192,6 +1381,7 @@ class AskService:
                         normalized_query=normalized_query,
                         matched_rewrites=matched_rewrites,
                         trace_id=trace_id,
+                        timing_events=timing_snapshot(),
                         is_followup=True if histories else False,
                     )
                 results["metadata"]["error_type"] = "NO_RELEVANT_SQL"
@@ -1200,6 +1390,7 @@ class AskService:
 
             return results
         except Exception as e:
+            append_ask_total_once()
             if denodo_logging_enabled:
                 _log_denodo_event(
                     "error",
@@ -1225,6 +1416,7 @@ class AskService:
                 normalized_query=normalized_query,
                 matched_rewrites=matched_rewrites,
                 trace_id=trace_id,
+                timing_events=timing_snapshot(),
                 is_followup=True if histories else False,
             )
 

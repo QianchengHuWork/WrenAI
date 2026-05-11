@@ -14,7 +14,7 @@ import {
 
 const { apiHistoryRepository } = components;
 
-export const MAX_WAIT_TIME = 1000 * 60 * 3; // 3 minutes
+export const MAX_WAIT_TIME = 1000 * 60 * 5; // 5 minutes
 
 export const isAskResultFinished = (result: AskResult) => {
   return (

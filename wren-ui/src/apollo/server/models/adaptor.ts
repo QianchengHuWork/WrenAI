@@ -106,6 +106,12 @@ export interface MatchedRewrite {
   reason?: string;
 }
 
+export interface TimingEvent {
+  name: string;
+  durationMs: number;
+  metadata?: Record<string, any>;
+}
+
 export interface SemanticDictionaryEntry {
   scope: SemanticScope;
   description?: string;
@@ -202,6 +208,7 @@ export type AskResult = AskResponse<
   semanticFiles?: string[];
   invalidSql?: string;
   traceId?: string;
+  timingEvents?: TimingEvent[];
 };
 
 export interface SqlCorrectionInput {
@@ -259,6 +266,7 @@ export interface SqlCorrectionResult {
   error?: WrenAIError;
   invalidSql?: string;
   traceId?: string;
+  timingEvents?: TimingEvent[];
 }
 
 export enum RecommendationQuestionStatus {
@@ -316,6 +324,8 @@ export interface TextBasedAnswerResult {
   status: TextBasedAnswerStatus;
   numRowsUsedInLLM?: number;
   error?: WrenAIError;
+  traceId?: string;
+  timingEvents?: TimingEvent[];
 }
 
 export enum ChartStatus {

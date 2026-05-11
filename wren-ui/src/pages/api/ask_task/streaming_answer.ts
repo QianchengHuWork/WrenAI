@@ -2,6 +2,12 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { components } from '@/common';
 import { ThreadResponseAnswerStatus } from '@/apollo/server/services/askingService';
 import { TelemetryEvent } from '@/apollo/server/telemetry/telemetry';
+import {
+  appendTimingTrace,
+  createTimingStep,
+  nowMs,
+  TimingStep,
+} from '@/apollo/server/utils';
 
 const { wrenAIAdaptor, askingService, telemetry } = components;
 
@@ -68,10 +74,30 @@ export default async function handler(
       throw new Error(`Thread response ${responseId} does not have queryId`);
     }
 
+    const timingSteps: TimingStep[] = [
+      ...(response.answerDetail?.timingSteps || []),
+    ];
+    const streamOpenStartedAt = nowMs();
     const stream = await wrenAIAdaptor.streamTextBasedAnswer(queryId);
+    const streamStartedAt = nowMs();
+    let firstChunkReceived = false;
+    let completed = false;
+    timingSteps.push(
+      createTimingStep('answer.ai_summary_stream_open', streamOpenStartedAt, {
+        answerQueryId: queryId,
+      }),
+    );
 
     stream.on('data', (chunk) => {
       // pass the chunk directly to the client
+      if (!firstChunkReceived) {
+        timingSteps.push(
+          createTimingStep('answer.ai_summary_first_chunk', streamStartedAt, {
+            answerQueryId: queryId,
+          }),
+        );
+        firstChunkReceived = true;
+      }
       const chunkString = chunk.toString('utf-8');
       let message = '';
       const match = chunkString.match(/data: {"message":"([\s\S]*?)"}/);
@@ -85,6 +111,24 @@ export default async function handler(
     });
 
     stream.on('end', () => {
+      completed = true;
+      timingSteps.push(
+        createTimingStep('answer.ai_summary_stream_total', streamStartedAt, {
+          answerQueryId: queryId,
+        }),
+      );
+      try {
+        appendTimingTrace({
+          event: 'answer_finished',
+          threadResponseId: Number(responseId),
+          answerQueryId: queryId,
+          question: response.question,
+          status: ThreadResponseAnswerStatus.FINISHED,
+          steps: timingSteps,
+        });
+      } catch (error) {
+        console.error('Failed to write answer timing trace', error);
+      }
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
       askingService
@@ -122,6 +166,25 @@ export default async function handler(
 
     // destroy the stream if the client closes the connection
     req.on('close', () => {
+      if (completed) return;
+      timingSteps.push(
+        createTimingStep('answer.ai_summary_stream_total', streamStartedAt, {
+          answerQueryId: queryId,
+          interrupted: true,
+        }),
+      );
+      try {
+        appendTimingTrace({
+          event: 'answer_interrupted',
+          threadResponseId: Number(responseId),
+          answerQueryId: queryId,
+          question: response.question,
+          status: ThreadResponseAnswerStatus.INTERRUPTED,
+          steps: timingSteps,
+        });
+      } catch (error) {
+        console.error('Failed to write answer timing trace', error);
+      }
       stream.destroy();
       askingService
         .changeThreadResponseAnswerDetailStatus(

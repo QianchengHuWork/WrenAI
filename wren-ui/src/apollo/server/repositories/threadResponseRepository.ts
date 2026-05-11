@@ -5,7 +5,7 @@ import {
   IQueryOptions,
 } from './baseRepository';
 import { camelCase, isPlainObject, mapKeys, mapValues } from 'lodash';
-import { AskResultStatus, SQLDialect } from '@server/models/adaptor';
+import { AskResultStatus, SQLDialect, TimingEvent } from '@server/models/adaptor';
 
 export interface DetailStep {
   summary: string;
@@ -27,6 +27,7 @@ export interface ThreadResponseAnswerDetail {
   error?: object;
   numRowsUsedInLLM?: number;
   content?: string;
+  timingSteps?: TimingEvent[];
 }
 
 export interface ThreadResponseChartDetail {

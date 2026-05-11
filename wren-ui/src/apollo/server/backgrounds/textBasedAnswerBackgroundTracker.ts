@@ -13,6 +13,12 @@ import {
   PreviewDataResponse,
 } from '../services';
 import { getLogger } from '@server/utils';
+import {
+  appendTimingTrace,
+  createTimingStep,
+  nowMs,
+  TimingStep,
+} from '@server/utils';
 
 const logger = getLogger('TextBasedAnswerBackgroundTracker');
 logger.level = 'debug';
@@ -50,6 +56,25 @@ export class TextBasedAnswerBackgroundTracker {
     this.start();
   }
 
+  private writeAnswerTimingTrace(
+    event: string,
+    threadResponse: ThreadResponse,
+    steps: TimingStep[],
+  ) {
+    try {
+      appendTimingTrace({
+        event,
+        threadResponseId: threadResponse.id,
+        answerQueryId: threadResponse.answerDetail?.queryId,
+        question: threadResponse.question,
+        status: threadResponse.answerDetail?.status,
+        steps,
+      });
+    } catch (error: any) {
+      logger.warn(`Failed to write answer timing trace: ${error.message}`);
+    }
+  }
+
   private start() {
     setInterval(async () => {
       const jobs = Object.values(this.tasks).map(
@@ -61,6 +86,9 @@ export class TextBasedAnswerBackgroundTracker {
             return;
           }
           this.runningJobs.add(threadResponse.id);
+          const timingSteps: TimingStep[] = [
+            ...(threadResponse.answerDetail?.timingSteps || []),
+          ];
 
           // update the status to fetching data
           await this.threadResponseRepository.updateOne(threadResponse.id, {
@@ -77,6 +105,7 @@ export class TextBasedAnswerBackgroundTracker {
           );
           const mdl = deployment.manifest;
           let data: PreviewDataResponse;
+          const fetchDataStartedAt = nowMs();
           try {
             data = (await this.queryService.preview(threadResponse.sql, {
               project,
@@ -84,20 +113,35 @@ export class TextBasedAnswerBackgroundTracker {
               modelingOnly: false,
               limit: 500,
               sqlDialect: threadResponse.sqlDialect,
+              timingSteps,
             })) as PreviewDataResponse;
+            timingSteps.push(
+              createTimingStep('answer.fetch_data_total', fetchDataStartedAt, {
+                rowCount: data.data?.length || 0,
+                columnCount: data.columns?.length || 0,
+              }),
+            );
           } catch (error) {
             logger.error(`Error when query sql data: ${error}`);
+            timingSteps.push(
+              createTimingStep('answer.fetch_data_total', fetchDataStartedAt, {
+                status: 'failed',
+              }),
+            );
+            this.writeAnswerTimingTrace('answer_failed', threadResponse, timingSteps);
             await this.threadResponseRepository.updateOne(threadResponse.id, {
               answerDetail: {
                 ...threadResponse.answerDetail,
                 status: ThreadResponseAnswerStatus.FAILED,
                 error: error?.extensions || error,
+                timingSteps,
               },
             });
             throw error;
           }
 
           // request AI service
+          const createAnswerStartedAt = nowMs();
           const response = await this.wrenAIAdaptor.createTextBasedAnswer({
             query: threadResponse.question,
             sql: threadResponse.sql,
@@ -107,17 +151,24 @@ export class TextBasedAnswerBackgroundTracker {
               language: WrenAILanguage[project.language] || WrenAILanguage.EN,
             },
           });
+          timingSteps.push(
+            createTimingStep('answer.create_sql_answer', createAnswerStartedAt, {
+              answerQueryId: response.queryId,
+            }),
+          );
 
           // update the status to preprocessing
           await this.threadResponseRepository.updateOne(threadResponse.id, {
             answerDetail: {
               ...threadResponse.answerDetail,
               status: ThreadResponseAnswerStatus.PREPROCESSING,
+              timingSteps,
             },
           });
 
           // polling query id to check the status
           let result: TextBasedAnswerResult;
+          const pollStartedAt = nowMs();
           do {
             result = await this.wrenAIAdaptor.getTextBasedAnswerResult(
               response.queryId,
@@ -126,6 +177,13 @@ export class TextBasedAnswerBackgroundTracker {
               await new Promise((resolve) => setTimeout(resolve, 500));
             }
           } while (result.status === TextBasedAnswerStatus.PREPROCESSING);
+          timingSteps.push(
+            createTimingStep('answer.poll_sql_answer_preprocessing', pollStartedAt, {
+              status: result.status,
+              numRowsUsedInLLM: result.numRowsUsedInLLM,
+            }),
+            ...(result.timingEvents || []),
+          );
 
           // update the status to final
           const updatedAnswerDetail = {
@@ -136,10 +194,17 @@ export class TextBasedAnswerBackgroundTracker {
                 : ThreadResponseAnswerStatus.FAILED,
             numRowsUsedInLLM: result.numRowsUsedInLLM,
             error: result.error,
+            timingSteps,
           };
           await this.threadResponseRepository.updateOne(threadResponse.id, {
             answerDetail: updatedAnswerDetail,
           });
+          if (updatedAnswerDetail.status === ThreadResponseAnswerStatus.FAILED) {
+            this.writeAnswerTimingTrace('answer_failed', {
+              ...threadResponse,
+              answerDetail: updatedAnswerDetail,
+            }, timingSteps);
+          }
 
           delete this.tasks[threadResponse.id];
 

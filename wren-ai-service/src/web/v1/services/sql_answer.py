@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from typing import Dict, Literal, Optional
+import time
+from typing import Any, Dict, List, Literal, Optional
 
 from cachetools import TTLCache
 from langfuse.decorators import observe
@@ -11,6 +12,16 @@ from src.utils import trace_metadata
 from src.web.v1.services import BaseRequest, SSEEvent
 
 logger = logging.getLogger("wren-ai-service")
+
+
+class TimingEvent(BaseModel):
+    name: str
+    duration_ms: int
+    metadata: Optional[Dict[str, Any]] = None
+
+
+def _duration_ms_since(started_at: float) -> int:
+    return max(0, int((time.perf_counter() - started_at) * 1000))
 
 
 # POST /v1/sql-answers
@@ -39,6 +50,7 @@ class SqlAnswerResultResponse(BaseModel):
     num_rows_used_in_llm: Optional[int] = None
     error: Optional[SqlAnswerError] = None
     trace_id: Optional[str] = None
+    timing_events: Optional[List[TimingEvent]] = None
 
 
 class SqlAnswerService:
@@ -61,6 +73,7 @@ class SqlAnswerService:
         **kwargs,
     ):
         trace_id = kwargs.get("trace_id")
+        timing_events: list[TimingEvent] = []
         results = {
             "metadata": {
                 "error": {
@@ -77,11 +90,24 @@ class SqlAnswerService:
             self._sql_answer_results[query_id] = SqlAnswerResultResponse(
                 status="preprocessing",
                 trace_id=trace_id,
+                timing_events=timing_events,
             )
 
+            preprocess_started_at = time.perf_counter()
             preprocessed_sql_data = self._pipelines["preprocess_sql_data"].run(
                 sql_data=sql_answer_request.sql_data,
             )["preprocess"]
+            timing_events.append(
+                TimingEvent(
+                    name="answer.preprocess_sql_data",
+                    duration_ms=_duration_ms_since(preprocess_started_at),
+                    metadata={
+                        "numRowsUsedInLLM": preprocessed_sql_data.get(
+                            "num_rows_used_in_llm"
+                        )
+                    },
+                )
+            )
 
             if preprocessed_sql_data.get("num_rows_used_in_llm") == 0:
                 results["metadata"]["error_type"] = "NO_DATA"
@@ -91,6 +117,7 @@ class SqlAnswerService:
                 status="succeeded",
                 num_rows_used_in_llm=preprocessed_sql_data.get("num_rows_used_in_llm"),
                 trace_id=trace_id,
+                timing_events=timing_events,
             )
 
             asyncio.create_task(
@@ -118,6 +145,7 @@ class SqlAnswerService:
                     message=str(e),
                 ),
                 trace_id=trace_id,
+                timing_events=timing_events,
             )
 
             results["metadata"]["error_type"] = "OTHERS"

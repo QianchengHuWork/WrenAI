@@ -93,6 +93,13 @@ describe('DenodoSqlGuardService', () => {
     expect(result.response?.[0]?.sql).toContain('FROM "dv_order_base"');
     expect(result.response?.[0]?.sqlDialect).toBe('DIALECT');
     expect(denodoMcpAdaptor.validateSqlQuery).toHaveBeenCalledTimes(1);
+    expect(result.timingEvents?.map((event) => event.name)).toEqual(
+      expect.arrayContaining([
+        'denodo.to_native_sql',
+        'denodo.validate_attempt_1',
+        'denodo.guard_total',
+      ]),
+    );
   });
 
   it('decrypts denodo mcp password before validate call', async () => {

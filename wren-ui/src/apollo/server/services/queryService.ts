@@ -12,12 +12,13 @@ import {
 } from '../adaptors/ibisAdaptor';
 import { getLogger } from '@server/utils';
 import { DENODO_MCP_CONNECTION_INFO, Project } from '../repositories';
-import { SQLDialect } from '../models/adaptor';
+import { SQLDialect, TimingEvent } from '../models/adaptor';
 import { PostHogTelemetry, TelemetryEvent } from '../telemetry/telemetry';
 import {
   toDenodoNativeSql,
   toDenodoPreviewData,
 } from '@server/utils/denodoMcp';
+import { createTimingStep, nowMs } from '@server/utils';
 
 const logger = getLogger('QueryService');
 logger.level = 'debug';
@@ -52,6 +53,7 @@ export interface PreviewOptions {
   dryRun?: boolean;
   refresh?: boolean;
   cacheEnabled?: boolean;
+  timingSteps?: TimingEvent[];
 }
 
 export interface SqlValidateOptions {
@@ -126,22 +128,46 @@ export class QueryService implements IQueryService {
         dataSource,
         connectionInfo,
       ) as DENODO_MCP_CONNECTION_INFO;
+      const nativeSqlStartedAt = nowMs();
       const nativeSql =
         sqlDialect === SQLDialect.DIALECT ? sql : toDenodoNativeSql(sql, mdl);
+      options.timingSteps?.push(
+        createTimingStep('answer.to_denodo_native_sql', nativeSqlStartedAt, {
+          alreadyDialectSql: sqlDialect === SQLDialect.DIALECT,
+        }),
+      );
       if (dryRun) {
+        const dryRunStartedAt = nowMs();
         await this.denodoMcpAdaptor.runSqlQuery(
           nativeSql,
           denodoConnectionInfo,
         );
+        options.timingSteps?.push(
+          createTimingStep('answer.denodo_run_query', dryRunStartedAt, {
+            dryRun: true,
+          }),
+        );
         return true;
       }
 
+      const runQueryStartedAt = nowMs();
       const toolResult = await this.denodoMcpAdaptor.runSqlQuery(
         nativeSql,
         denodoConnectionInfo,
       );
+      options.timingSteps?.push(
+        createTimingStep('answer.denodo_run_query', runQueryStartedAt),
+      );
+      const transformStartedAt = nowMs();
       const result = toDenodoPreviewData(toolResult);
       const previewLimit = limit ?? DEFAULT_PREVIEW_LIMIT;
+      options.timingSteps?.push(
+        createTimingStep('answer.preview_transform', transformStartedAt, {
+          rowCount: result.data.length,
+          returnedRowCount: Math.min(result.data.length, previewLimit),
+          columnCount: result.columns.length,
+        }),
+      );
 
       return {
         correlationId: 'denodo-mcp',

@@ -39,6 +39,7 @@ import {
   AskFeedbackResult,
   AskFeedbackStatus,
   SQLDialect,
+  TimingEvent,
 } from '@server/models/adaptor';
 import { getLogger } from '@server/utils';
 import * as Errors from '@server/utils/error';
@@ -58,6 +59,17 @@ const getAIServiceError = (error: any) => {
         : undefined;
   return detail ? `${error.message}, detail: ${detail}` : error.message;
 };
+
+const transformTimingEvents = (events: any[] = []): TimingEvent[] =>
+  Array.isArray(events)
+    ? events
+        .filter((event) => event?.name)
+        .map((event) => ({
+          name: event.name,
+          durationMs: Number(event.durationMs ?? event.duration_ms ?? 0),
+          ...(event.metadata ? { metadata: event.metadata } : {}),
+        }))
+    : [];
 
 export interface IWrenAIAdaptor {
   deploy(deployData: DeployData): Promise<WrenAIDeployResponse>;
@@ -865,6 +877,8 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
       status: status as TextBasedAnswerStatus,
       numRowsUsedInLLM: body.num_rows_used_in_llm,
       error,
+      traceId: body.trace_id,
+      timingEvents: transformTimingEvents(body?.timing_events),
     };
   }
 
@@ -974,6 +988,7 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
       })),
       invalidSql: body?.invalid_sql,
       traceId: body?.trace_id,
+      timingEvents: transformTimingEvents(body?.timing_events),
     };
   }
 

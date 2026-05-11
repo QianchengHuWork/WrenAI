@@ -178,6 +178,7 @@ describe('QueryService', () => {
     });
 
     const sql = 'SELECT "city" FROM "dv_order_base"';
+    const timingSteps: any[] = [];
     const res = await queryService.preview(sql, {
       project: {
         type: DataSourceName.DENODO_MCP,
@@ -185,6 +186,7 @@ describe('QueryService', () => {
       },
       manifest: {},
       sqlDialect: SQLDialect.DIALECT,
+      timingSteps,
     });
 
     expect(mockDenodoMcpAdaptor.runSqlQuery).toHaveBeenCalledWith(sql, {});
@@ -192,6 +194,13 @@ describe('QueryService', () => {
       columns: [{ name: 'city', type: 'string' }],
       data: [['上海']],
     });
+    expect(timingSteps.map((step) => step.name)).toEqual(
+      expect.arrayContaining([
+        'answer.to_denodo_native_sql',
+        'answer.denodo_run_query',
+        'answer.preview_transform',
+      ]),
+    );
   });
 });
 
