@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import type { SqlTraceEvent } from '@server/models/adaptor';
 
 export interface TimingStep {
   name: string;
@@ -24,6 +25,7 @@ export interface TimingTraceEntry {
 }
 
 const TIMING_TRACE_PATH = path.join(process.cwd(), '.tmp', 'ask-timing.jsonl');
+const SQL_TRACE_PATH = path.join(process.cwd(), '.tmp', 'ask-sql-trace.jsonl');
 
 export const nowMs = () => Date.now();
 
@@ -59,4 +61,26 @@ export const appendTimingTrace = (entry: TimingTraceEntry) => {
     })}\n`,
     'utf8',
   );
+};
+
+export type SqlTraceEntry = SqlTraceEvent & {
+  event?: 'ask_sql_trace';
+  askQueryId?: string;
+  question?: string;
+};
+
+export const appendSqlTraceEntries = (entries: SqlTraceEntry[]) => {
+  if (!entries.length) return;
+
+  fs.mkdirSync(path.dirname(SQL_TRACE_PATH), { recursive: true });
+  const lines = entries
+    .map((entry) =>
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        ...entry,
+        event: 'ask_sql_trace',
+      }),
+    )
+    .join('\n');
+  fs.appendFileSync(SQL_TRACE_PATH, `${lines}\n`, 'utf8');
 };

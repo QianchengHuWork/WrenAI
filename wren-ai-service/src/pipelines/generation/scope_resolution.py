@@ -49,7 +49,10 @@ Rules:
 2. Only return `secondary_models` when the question clearly needs a join.
 3. Prefer the smallest valid scope.
 4. Use canonical mappings only as evidence for scope selection, not as SQL.
-5. Return JSON only.
+5. For Denodo city-level conversion-rate questions with monthly trend, month-over-month, or consecutive decline language, prefer the candidate that directly exposes city/month conversion fields such as `dv_clew_ord_conversion_core`. Do not use a strategy/month aggregate model unless the user asks about strategy or assignment strategy.
+6. For questions that first select Top-N cities by order amount and then analyze conversion behavior, include the city order monthly aggregate such as `dm_ord_month_city` as a secondary model and set `needs_join` to true.
+7. The final selected scope is a hard SQL boundary: downstream SQL must not reference models outside `primary_model` and `secondary_models`.
+8. Return JSON only.
 
 ### USER QUESTION ###
 {{ query }}

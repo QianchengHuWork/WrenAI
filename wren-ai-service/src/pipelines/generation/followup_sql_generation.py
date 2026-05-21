@@ -21,6 +21,11 @@ from src.pipelines.generation.utils.sql import (
     get_metric_instructions,
     get_sql_generation_system_prompt,
 )
+from src.pipelines.generation.denodo_prompt_context import (
+    build_denodo_vql_post_process_result,
+    get_denodo_vql_generation_system_prompt,
+    is_denodo_context,
+)
 from src.pipelines.retrieval.sql_functions import SqlFunction
 from src.pipelines.retrieval.sql_knowledge import SqlKnowledge
 from src.utils import trace_cost
@@ -99,6 +104,14 @@ Needs Join: {{ selected_models.needs_join }}
 {% endfor %}
 {% endif %}
 
+{% if validated_subquery_drafts %}
+### INTERNAL DENODO VQL SUBQUERY DRAFTS ###
+{{ validated_subquery_drafts }}
+
+Use these VQL drafts as internal guidance for CTEs or subqueries in the final query.
+The final answer must still be one complete Denodo VQL query and will be validated as a whole by Denodo MCP.
+{% endif %}
+
 ### QUESTION ###
 Original User Question: {{ original_query }}
 {% if normalized_query and normalized_query != original_query %}
@@ -109,6 +122,12 @@ Normalized User Question: {{ normalized_query }}
 {{ sql_generation_reasoning }}
 
 ### CRITICAL SQL OUTPUT CONSTRAINTS ###
+- For Denodo VQL, treat selected models and retrieved schema as the hard allowed table set. Do not reference any view that is not present in `Primary Model` or `Secondary Models`, even if it appears in native semantic mapping text.
+- For Denodo VQL, `ptstart` and `ptend` are view-specific partition fields. Add them only to a view whose retrieved schema explicitly contains both columns; do not copy them to every selected view. For `dm_ord_month_city`, use `order_year_month` unless that exact view schema lists `ptstart` and `ptend`.
+- For Denodo VQL, never add/subtract integers directly from YYYYMM fields or from `MAX(yyyymm)` subqueries. For relative windows such as recent 12 months, use concrete YYYYMM lower/upper bounds from the normalized question/current time; if dynamic arithmetic is unavoidable, compare derived YYYYMM `month_index` integers instead.
+- For Denodo intermediate Top-N populations used by later joins or filters, ORDER BY alone is not a filter. Do not use LIMIT, FETCH, or TOP; use a correlated-count self filter with deterministic tie-break fields.
+- For Denodo consecutive month or month-over-month decline logic, do not use LAG or LEAD. Build a YYYYMM `month_index` with `CAST(SUBSTR(month_field, 1, 4) AS INTEGER) * 12 + CAST(SUBSTR(month_field, 5, 2) AS INTEGER)` and compare adjacent months with self joins.
+- Continuous two-month decline means three consecutive monthly rows with two decreases: `m2.month_index = m1.month_index + 1`, `m3.month_index = m2.month_index + 1`, `m2.metric < m1.metric`, and `m3.metric < m2.metric`.
 - If the reasoning plan, SQL rules, or user instructions specify FLOAT casts for a rate, ratio, percentage, or conversion-rate expression, the final SQL MUST preserve FLOAT casts and MUST NOT replace them with DECIMAL casts.
 - When this FLOAT-rate rule applies, count-based rate comparisons in SELECT, HAVING, WHERE, or CTE filters must cast both numerator and denominator to FLOAT before division and use NULLIF on the denominator.
 - Do not treat count-based rate or ratio calculations as numeric text conversions. Keep DECIMAL for monetary amount calculations and numeric text conversions.
@@ -136,6 +155,7 @@ def prompt(
     normalized_query: str | None = None,
     matched_rewrites: list[dict] | None = None,
     selected_models: dict | None = None,
+    validated_subquery_drafts: str | None = None,
 ) -> dict:
     _prompt = prompt_builder.run(
         query=query,
@@ -162,6 +182,7 @@ def prompt(
         normalized_query=normalized_query or query,
         matched_rewrites=matched_rewrites or [],
         selected_models=selected_models,
+        validated_subquery_drafts=validated_subquery_drafts or "",
     )
     return {"prompt": clean_up_new_lines(_prompt.get("prompt"))}
 
@@ -174,9 +195,14 @@ async def generate_sql_in_followup(
     histories: list[AskHistory],
     generator_name: str,
     sql_knowledge: SqlKnowledge | None = None,
+    semantic_context: str | None = None,
 ) -> dict:
     history_messages = construct_ask_history_messages(histories)
-    current_system_prompt = get_sql_generation_system_prompt(sql_knowledge)
+    current_system_prompt = (
+        get_denodo_vql_generation_system_prompt()
+        if is_denodo_context(semantic_context)
+        else get_sql_generation_system_prompt(sql_knowledge)
+    )
     return await generator(
         prompt=prompt.get("prompt"),
         history_messages=history_messages,
@@ -192,7 +218,13 @@ async def post_process(
     project_id: str | None = None,
     use_dry_plan: bool = False,
     allow_dry_plan_fallback: bool = True,
+    semantic_context: str | None = None,
 ) -> dict:
+    if is_denodo_context(semantic_context):
+        return build_denodo_vql_post_process_result(
+            generate_sql_in_followup.get("replies")
+        )
+
     return await post_processor.run(
         generate_sql_in_followup.get("replies"),
         project_id=project_id,
@@ -255,6 +287,7 @@ class FollowUpSQLGeneration(BasicPipeline):
         normalized_query: str | None = None,
         matched_rewrites: list[dict] | None = None,
         selected_models: dict | None = None,
+        validated_subquery_drafts: str | None = None,
     ):
         logger.info("Follow-Up SQL Generation pipeline is running...")
         has_normalization_context = bool(
@@ -302,6 +335,7 @@ class FollowUpSQLGeneration(BasicPipeline):
                 "normalized_query": normalized_query or query,
                 "matched_rewrites": matched_rewrites or [],
                 "selected_models": selected_models,
+                "validated_subquery_drafts": validated_subquery_drafts,
                 **self._components,
             },
         )

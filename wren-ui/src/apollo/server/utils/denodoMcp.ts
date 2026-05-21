@@ -225,13 +225,66 @@ export const readDenodoSemanticDictionary = async (
   }
 };
 
+const quoteDenodoIdentifierForContext = (value: string) =>
+  `"${value.replace(/"/g, '""')}"`;
+
+export const buildDenodoNativeVqlSchemaContext = (
+  manifest: Manifest,
+  options?: {
+    models?: string[];
+  },
+): string => {
+  const modelFilter = new Set(
+    (options?.models || [])
+      .map((model) => model?.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const models = (manifest.models || []).filter(
+    (model) => !modelFilter.size || modelFilter.has(model.name.toLowerCase()),
+  );
+
+  if (!models.length) {
+    return '';
+  }
+
+  const lines = [
+    'Native Denodo VQL schema mapping. Generate VQL against these native views and columns directly; do not generate logical Wren SQL that requires later conversion.',
+    'Use the quoted native view name in FROM/JOIN and quoted native column names in SELECT/WHERE/GROUP BY/HAVING/ORDER BY.',
+  ];
+
+  models.forEach((model) => {
+    const nativeView = model.tableReference?.table || model.name;
+    const nativeColumns = Array.from(
+      new Set(
+        (model.columns || [])
+          .map((column) => getPhysicalColumnName(column))
+          .filter(Boolean),
+      ),
+    );
+    lines.push(
+      `- model ${model.name} -> native view ${quoteDenodoIdentifierForContext(
+        nativeView,
+      )}; native columns: ${nativeColumns
+        .map(quoteDenodoIdentifierForContext)
+        .join(', ')}`,
+    );
+  });
+
+  return lines.join('\n');
+};
+
 export const buildDenodoAiSemanticContext = (
   semanticContext?: string,
+  nativeVqlSchemaContext?: string,
 ): string => {
   const parts = [
     `Denodo context marker: ${DENODO_AI_CONTEXT_MARKER}`,
     'This project executes against Denodo VQL through Denodo MCP. Apply Denodo technical rules and the scoped business formula instructions supplied by WrenAI.',
   ];
+
+  if (nativeVqlSchemaContext?.trim()) {
+    parts.push(nativeVqlSchemaContext.trim());
+  }
 
   if (semanticContext?.trim()) {
     parts.push(`Semantic dictionary entries:\n${semanticContext.trim()}`);
@@ -247,9 +300,20 @@ export const buildDenodoAskAugmentation = async (
     maxEntries?: number;
   },
 ) => {
+  const nativeVqlSchemaContext = await readDenodoManifest(projectId)
+    .then((manifest) =>
+      buildDenodoNativeVqlSchemaContext(manifest, {
+        models: options?.models,
+      }),
+    )
+    .catch(() => '');
+
   if (!isDenodoSemanticDictionaryEnabled()) {
     return {
-      semanticContext: buildDenodoAiSemanticContext(),
+      semanticContext: buildDenodoAiSemanticContext(
+        undefined,
+        nativeVqlSchemaContext,
+      ),
       semanticDictionary: undefined,
     };
   }
@@ -257,7 +321,10 @@ export const buildDenodoAskAugmentation = async (
   const semanticDictionary = await readDenodoSemanticDictionary(projectId);
   const semanticContext = toDenodoSemanticContext(semanticDictionary, options);
   return {
-    semanticContext: buildDenodoAiSemanticContext(semanticContext),
+    semanticContext: buildDenodoAiSemanticContext(
+      semanticContext,
+      nativeVqlSchemaContext,
+    ),
     semanticDictionary: isDenodoScopeNormalizationEnabled()
       ? semanticDictionary || undefined
       : undefined,
@@ -1606,6 +1673,200 @@ const buildManifestModelMap = (manifest: Manifest) => {
   );
 };
 
+const buildManifestModelLookupMap = (manifest: Manifest) => {
+  const lookup = new Map<string, ManifestModelInfo>();
+  buildManifestModelMap(manifest).forEach((modelInfo, modelName) => {
+    lookup.set(modelName, modelInfo);
+    lookup.set(modelInfo.table, modelInfo);
+  });
+  return lookup;
+};
+
+const DENODO_PARTITION_FILTER_COLUMNS = new Set(['ptstart', 'ptend']);
+
+const getColumnRefTableName = (expr: any): string | null => {
+  if (expr?.type !== 'column_ref') return null;
+  if (typeof expr.table === 'string' && expr.table.trim()) return expr.table;
+  if (typeof expr.table?.value === 'string' && expr.table.value.trim()) {
+    return expr.table.value;
+  }
+  return null;
+};
+
+const manifestModelHasColumn = (
+  modelInfo: ManifestModelInfo,
+  columnName: string,
+) => {
+  const normalizedColumnName = columnName.toLowerCase();
+  return Array.from(modelInfo.columns.entries()).some(
+    ([logicalColumn, physicalColumn]) =>
+      logicalColumn.toLowerCase() === normalizedColumnName ||
+      physicalColumn.toLowerCase() === normalizedColumnName,
+  );
+};
+
+const resolvePredicateModel = (
+  columnExpr: any,
+  scope: StatementScope,
+): ManifestModelInfo | null | undefined => {
+  const tableName = getColumnRefTableName(columnExpr);
+  if (tableName) {
+    return scope.tables.get(tableName);
+  }
+
+  const concreteTables = Array.from(scope.tables.values()).filter(
+    (table): table is ManifestModelInfo => !!table,
+  );
+  if (concreteTables.length === 1) {
+    return concreteTables[0];
+  }
+
+  return undefined;
+};
+
+export const removeUnavailableDenodoPartitionFilters = (
+  sql: string,
+  manifest: Manifest,
+): { sql: string; appliedRewrites: string[] } => {
+  const appliedRewrites: string[] = [];
+
+  const shouldRemovePredicate = (
+    expr: any,
+    scope: StatementScope,
+  ): string | null => {
+    if (!expr || expr.type !== 'binary_expr') return null;
+
+    const leftColumnName = getColumnRefName(expr.left).toLowerCase();
+    if (!DENODO_PARTITION_FILTER_COLUMNS.has(leftColumnName)) {
+      return null;
+    }
+
+    const modelInfo = resolvePredicateModel(expr.left, scope);
+    if (!modelInfo || manifestModelHasColumn(modelInfo, leftColumnName)) {
+      return null;
+    }
+
+    return `${modelInfo.table}.${leftColumnName}`;
+  };
+
+  const combineAnd = (left: any, right: any): any | null => {
+    if (!left) return right || null;
+    if (!right) return left;
+    return {
+      type: 'binary_expr',
+      operator: 'AND',
+      left,
+      right,
+    };
+  };
+
+  try {
+    const ast = parser.astify(sql, { database: 'postgresql' });
+    const modelLookup = buildManifestModelLookupMap(manifest);
+
+    const rewriteNestedSelects = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'select') {
+        rewriteSelect(node);
+        return;
+      }
+      Object.values(node).forEach((value) => {
+        if (Array.isArray(value)) {
+          value.forEach((item) => rewriteNestedSelects(item));
+        } else {
+          rewriteNestedSelects(value);
+        }
+      });
+    };
+
+    const rewriteCondition = (expr: any, scope: StatementScope): any | null => {
+      if (!expr || typeof expr !== 'object') return expr;
+
+      if (expr.type === 'binary_expr' && `${expr.operator}`.toUpperCase() === 'AND') {
+        return combineAnd(
+          rewriteCondition(expr.left, scope),
+          rewriteCondition(expr.right, scope),
+        );
+      }
+
+      const removedScope = shouldRemovePredicate(expr, scope);
+      if (removedScope) {
+        appliedRewrites.push(
+          `remove unavailable Denodo partition filter: ${removedScope}`,
+        );
+        return null;
+      }
+
+      rewriteNestedSelects(expr);
+      return expr;
+    };
+
+    const rewriteFromItem = (item: any, scope: StatementScope) => {
+      if (!item || typeof item !== 'object') return;
+
+      if (item.expr?.ast || item.expr?.type === 'select') {
+        rewriteSelect(item.expr?.ast || item.expr);
+        if (item.as) {
+          scope.tables.set(item.as, null);
+        }
+        return;
+      }
+
+      const tableName = item.table;
+      const modelInfo =
+        typeof tableName === 'string' ? modelLookup.get(tableName) : undefined;
+      const alias = item.as || tableName;
+      if (alias) {
+        scope.tables.set(alias, modelInfo || null);
+      }
+
+      if (item.on) {
+        item.on = rewriteCondition(item.on, scope);
+      }
+    };
+
+    const rewriteSelect = (statement: any) => {
+      if (!statement || typeof statement !== 'object') return statement;
+
+      const scope: StatementScope = {
+        tables: new Map(),
+        selectAliases: new Set(),
+      };
+
+      (statement.with || []).forEach((cte: any) => {
+        if (cte?.stmt) {
+          rewriteSelect(cte.stmt);
+        }
+      });
+
+      (statement.from || []).forEach((item: any) => rewriteFromItem(item, scope));
+      statement.where = rewriteCondition(statement.where, scope);
+      statement.having = rewriteCondition(statement.having, scope);
+
+      if (statement._next) {
+        rewriteSelect(statement._next);
+      }
+
+      return statement;
+    };
+
+    const rewrittenAst = Array.isArray(ast)
+      ? ast.map((statement) => rewriteSelect(statement))
+      : rewriteSelect(ast);
+
+    if (!appliedRewrites.length) {
+      return { sql, appliedRewrites };
+    }
+
+    return {
+      sql: parser.sqlify(rewrittenAst, { database: 'postgresql' }),
+      appliedRewrites,
+    };
+  } catch {
+    return { sql, appliedRewrites: [] };
+  }
+};
+
 type SemanticDictionaryRewriteResult = {
   sql: string;
   appliedRewrites: string[];
@@ -1994,6 +2255,158 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
     return ast.map((statement) => rewriteSelect(statement, modelMap));
   }
   return rewriteSelect(ast, modelMap);
+};
+
+const rewriteDenodoDialectExpressionAst = (ast: any): any => {
+  const rewriteExpression = (
+    expr: any,
+    options: RewriteExpressionOptions = {},
+  ) => {
+    if (!expr || typeof expr !== 'object') {
+      return expr;
+    }
+
+    if (expr.type === 'cast' && Array.isArray(expr.target)) {
+      expr.expr = rewriteExpression(expr.expr, options);
+      expr.target = expr.target.map((target: any) =>
+        normalizeCastTarget(target, options),
+      );
+      return expr;
+    }
+
+    if (expr.type === 'binary_expr' && expr.operator === '/') {
+      const divisionOptions = {
+        ...options,
+        forceFloatForCountRate:
+          options.forceFloatForCountRate || containsCountLikeColumn(expr),
+      };
+      expr.left = rewriteExpression(expr.left, divisionOptions);
+      expr.right = rewriteExpression(expr.right, divisionOptions);
+      return expr;
+    }
+
+    if (expr.type === 'function') {
+      const functionName = getFunctionName(expr);
+      const args = getFunctionArguments(expr);
+
+      if (
+        functionName === 'DATE_PART' &&
+        args.length === 2 &&
+        args[0]?.type === 'single_quote_string'
+      ) {
+        return replaceNode(expr, {
+          type: 'extract',
+          args: {
+            field: `${args[0].value || ''}`.toUpperCase(),
+            cast_type: null,
+            source: rewriteExpression(args[1], options),
+          },
+        });
+      }
+
+      const bucketUnit =
+        args[0]?.type === 'single_quote_string'
+          ? getDateBucketUnit(args[0].value)
+          : null;
+      if (
+        ['DATE_TRUNC', 'DATETRUNC'].includes(functionName) &&
+        args.length === 2 &&
+        bucketUnit
+      ) {
+        return replaceNode(
+          expr,
+          buildDateBucketExpr(bucketUnit, rewriteExpression(args[1], options)),
+        );
+      }
+
+      if (functionName === 'TO_NUMBER' && args.length === 1) {
+        return replaceNode(
+          expr,
+          buildCastExpr(rewriteExpression(args[0], options), buildDecimalTarget(2)),
+        );
+      }
+    }
+
+    if (expr.type === 'aggr_func') {
+      if (expr.args?.expr) {
+        expr.args.expr = rewriteExpression(expr.args.expr, options);
+      } else if (expr.args?.value) {
+        expr.args.value = rewriteExpression(expr.args.value, options);
+      }
+      return expr;
+    }
+
+    if (expr.type === 'select') {
+      return rewriteSelect(expr);
+    }
+
+    Object.values(expr).forEach((value) => {
+      if (Array.isArray(value)) {
+        value.forEach((item) => rewriteExpression(item, options));
+      } else if (value && typeof value === 'object') {
+        rewriteExpression(value, options);
+      }
+    });
+    return expr;
+  };
+
+  const rewriteFromItem = (item: any) => {
+    if (!item || typeof item !== 'object') return;
+
+    if (item.expr?.ast || item.expr?.type === 'select') {
+      rewriteSelect(item.expr?.ast || item.expr);
+      return;
+    }
+
+    if (item.on) {
+      rewriteExpression(item.on);
+    }
+  };
+
+  const rewriteSelect = (statement: any) => {
+    if (!statement || typeof statement !== 'object') return statement;
+
+    statement.limit = null;
+
+    normalizeParsedCrossJoin(statement.from);
+
+    (statement.with || []).forEach((cte) => {
+      if (cte?.stmt) {
+        rewriteSelect(cte.stmt);
+      }
+    });
+
+    (statement.from || []).forEach((item) => rewriteFromItem(item));
+    (statement.columns || []).forEach((column) => rewriteExpression(column?.expr));
+    rewriteExpression(statement.where);
+    rewriteExpression(statement.having);
+    (statement.groupby?.columns || []).forEach((column) =>
+      rewriteExpression(column),
+    );
+    (statement.orderby || []).forEach((item) => rewriteExpression(item?.expr));
+    (statement.window || []).forEach((item) => rewriteExpression(item));
+
+    if (statement._next) {
+      rewriteSelect(statement._next);
+    }
+
+    return statement;
+  };
+
+  if (Array.isArray(ast)) {
+    return ast.map((statement) => rewriteSelect(statement));
+  }
+  return rewriteSelect(ast);
+};
+
+export const sanitizeDenodoDialectSql = (sql: string): string => {
+  try {
+    const ast = parser.astify(sql, { database: 'postgresql' });
+    const rewrittenAst = rewriteDenodoDialectExpressionAst(ast);
+    return parser.sqlify(rewrittenAst, { database: 'postgresql' });
+  } catch {
+    return sql;
+  }
 };
 
 const toQuotedColumnNode = (columnName: string) => ({

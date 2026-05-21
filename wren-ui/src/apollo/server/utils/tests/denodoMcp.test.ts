@@ -6,6 +6,7 @@ import {
   buildDenodoDataCatalogUri,
   buildDenodoAiSemanticContext,
   buildDenodoAskAugmentation,
+  buildDenodoNativeVqlSchemaContext,
   buildDenodoSemanticDictionaryBatchContext,
   buildDenodoSemanticDictionaryBatches,
   buildDenodoSemanticDictionary,
@@ -17,6 +18,8 @@ import {
   toDenodoSemanticContext,
   toDenodoCompactTables,
   toDenodoNativeSql,
+  sanitizeDenodoDialectSql,
+  removeUnavailableDenodoPartitionFilters,
   toDenodoPreviewData,
 } from '../denodoMcp';
 
@@ -684,6 +687,118 @@ describe('denodoMcp utils', () => {
     expect(sql).not.toContain('TO_NUMBER');
   });
 
+  it('sanitizes direct Denodo dialect SQL expressions without remapping tables', () => {
+    const sql = sanitizeDenodoDialectSql(
+      `SELECT
+         "dv_package_order_core"."package_name" AS "package_name",
+         COUNT("dv_package_order_core"."biz_order_no") AS "order_count",
+         AVG(TO_NUMBER("dv_package_order_core"."package_price")) AS "avg_price_increase"
+       FROM "dv_package_order_core" AS "dv_package_order_core"
+       WHERE LOWER("dv_package_order_core"."order_year_month") = LOWER('202604')
+       GROUP BY "dv_package_order_core"."package_name"
+       ORDER BY "order_count" DESC`,
+    );
+
+    expect(sql).toContain('FROM "dv_package_order_core"');
+    expect(sql).toContain(
+      'AVG(CAST("dv_package_order_core"."package_price" AS DECIMAL(18, 2))) AS "avg_price_increase"',
+    );
+    expect(sql).not.toContain('TO_NUMBER');
+  });
+
+  it('removes unavailable Denodo partition filters per view', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'dm_ord_month_city',
+          cached: false,
+          tableReference: {
+            table: 'dm_ord_month_city',
+          },
+          columns: [
+            {
+              name: 'order_year_month',
+              isCalculated: false,
+              expression: '"order_year_month"',
+            },
+            {
+              name: 'city_code',
+              isCalculated: false,
+              expression: '"city_code"',
+            },
+            {
+              name: 'total_order_amount',
+              isCalculated: false,
+              expression: '"total_order_amount"',
+            },
+          ],
+        },
+        {
+          name: 'dv_clew_ord_conversion_core',
+          cached: false,
+          tableReference: {
+            table: 'dv_clew_ord_conversion_core',
+          },
+          columns: [
+            {
+              name: 'clew_year_month',
+              isCalculated: false,
+              expression: '"clew_year_month"',
+            },
+            {
+              name: 'ptstart',
+              isCalculated: false,
+              expression: '"ptstart"',
+            },
+            {
+              name: 'ptend',
+              isCalculated: false,
+              expression: '"ptend"',
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const result = removeUnavailableDenodoPartitionFilters(
+      `WITH "top_cities" AS (
+        SELECT "city_code", SUM("total_order_amount") AS "total_order_amount"
+        FROM "dm_ord_month_city"
+        WHERE "order_year_month" >= '202506'
+          AND "ptstart" >= '20250601'
+          AND "ptend" <= '20260531'
+        GROUP BY "city_code"
+      ),
+      "city_monthly_conversion" AS (
+        SELECT "clew_year_month"
+        FROM "dv_clew_ord_conversion_core"
+        WHERE "clew_year_month" >= '202506'
+          AND "ptstart" >= '20250601'
+          AND "ptend" <= '20260531'
+      )
+      SELECT * FROM "top_cities"`,
+      manifest,
+    );
+
+    expect(result.appliedRewrites).toEqual(
+      expect.arrayContaining([
+        'remove unavailable Denodo partition filter: dm_ord_month_city.ptstart',
+        'remove unavailable Denodo partition filter: dm_ord_month_city.ptend',
+      ]),
+    );
+    expect(result.sql).toContain('"dm_ord_month_city"');
+    expect(result.sql).toContain('"order_year_month" >= \'202506\'');
+    expect(result.sql).toContain(
+      'FROM "dm_ord_month_city" WHERE "order_year_month" >= \'202506\' GROUP BY "city_code"',
+    );
+    expect(result.sql).not.toContain(
+      'FROM "dm_ord_month_city" WHERE "order_year_month" >= \'202506\' AND "ptstart"',
+    );
+    expect(result.sql).toContain(
+      'FROM "dv_clew_ord_conversion_core" WHERE "clew_year_month" >= \'202506\' AND "ptstart" >= \'20250601\' AND "ptend" <= \'20260531\'',
+    );
+  });
+
   it('rewrites monthly conversion queries into Denodo-safe buckets and float rate casts', () => {
     const manifest = {
       models: [
@@ -912,6 +1027,38 @@ describe('denodoMcp utils', () => {
     expect(context).toContain(DENODO_AI_CONTEXT_MARKER);
     expect(context).toContain('Denodo VQL');
     expect(context).toContain('scope: dv_ord_core.order_status');
+  });
+
+  it('builds native denodo VQL schema mapping for prompt context', () => {
+    const manifest = {
+      models: [
+        {
+          name: 'order_model',
+          cached: false,
+          tableReference: {
+            table: 'dv_ord_core',
+          },
+          columns: [
+            {
+              name: 'order_amount',
+              isCalculated: false,
+              expression: '"paid_amt"',
+            },
+            {
+              name: 'city_name',
+              isCalculated: false,
+            },
+          ],
+        },
+      ],
+    } satisfies Manifest;
+
+    const context = buildDenodoNativeVqlSchemaContext(manifest);
+
+    expect(context).toContain('order_model -> native view "dv_ord_core"');
+    expect(context).toContain('"paid_amt"');
+    expect(context).toContain('"city_name"');
+    expect(context).toContain('do not generate logical Wren SQL');
   });
 
   it('builds denodo ask augmentation marker without semantic dictionary', async () => {

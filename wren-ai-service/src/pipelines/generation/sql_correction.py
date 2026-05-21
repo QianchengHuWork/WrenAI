@@ -18,9 +18,14 @@ from src.pipelines.generation.utils.sql import (
     construct_instructions,
     get_text_to_sql_rules,
 )
+from src.pipelines.generation.denodo_prompt_context import (
+    build_denodo_vql_post_process_result,
+    get_denodo_vql_correction_system_prompt,
+    is_denodo_context,
+)
 from src.pipelines.retrieval.sql_functions import SqlFunction
 from src.pipelines.retrieval.sql_knowledge import SqlKnowledge
-from src.utils import loads_llm_json, trace_cost
+from src.utils import trace_cost
 from src.web.v1.services.denodo_scope_normalization import (
     format_rewrite_summaries,
     format_selected_models,
@@ -105,6 +110,14 @@ SQL: {{ sample.sql }}
 {% endfor %}
 {% endif %}
 
+{% if validated_subquery_drafts %}
+### INTERNAL DENODO VQL SUBQUERY DRAFTS ###
+{{ validated_subquery_drafts }}
+
+Use these VQL drafts as internal guidance when correcting the final query.
+The corrected answer must still be one complete Denodo VQL query and will be validated as a whole by Denodo MCP.
+{% endif %}
+
 {% if original_query %}
 ### ORIGINAL QUESTION ###
 {{ original_query }}
@@ -118,6 +131,13 @@ SQL: {{ sample.sql }}
 ### QUESTION ###
 SQL: {{ invalid_generation_result.sql }}
 Error Message: {{ invalid_generation_result.error }}
+
+### DENODO-SPECIFIC FIX PRIORITIES ###
+- If the error mentions `Function lag is not executable`, remove LAG/LEAD/window previous-row logic and rewrite consecutive-month comparisons as self joins over a YYYYMM `month_index`.
+- If the error says a `ptstart` or `ptend` field is not found on a view, remove that partition predicate from that view. Only use `ptstart`/`ptend` on views whose retrieved schema explicitly includes both columns; for `dm_ord_month_city`, use `order_year_month` for month filtering unless its schema lists `ptstart` and `ptend`.
+- If the error mentions invalid `subtract` parameter types around `MAX(...year_month...)` or a YYYYMM field, remove raw YYYYMM arithmetic. Use concrete YYYYMM lower/upper bounds from the normalized question/current time, or derive month_index integers before arithmetic.
+- If the invalid SQL uses ORDER BY only for an intermediate Top-N CTE that is later joined or filtered, add a real correlated-count Top-N filter with deterministic tie-break fields instead of LIMIT/FETCH/TOP.
+- Keep corrected Denodo VQL within the selected models/retrieved schema above; do not introduce unselected views from broader semantic/native mapping text.
 
 Let's think step by step.
 """
@@ -137,6 +157,7 @@ def prompt(
     normalized_query: str | None = None,
     matched_rewrites: list[dict] | None = None,
     selected_models: dict | None = None,
+    validated_subquery_drafts: str | None = None,
 ) -> dict:
     _prompt = prompt_builder.run(
         documents=documents,
@@ -151,6 +172,7 @@ def prompt(
         normalized_query=normalized_query,
         matched_rewrites=matched_rewrites or [],
         selected_models=selected_models,
+        validated_subquery_drafts=validated_subquery_drafts or "",
     )
     return {"prompt": clean_up_new_lines(_prompt.get("prompt"))}
 
@@ -162,8 +184,13 @@ async def generate_sql_correction(
     generator: Any,
     generator_name: str,
     sql_knowledge: SqlKnowledge | None = None,
+    semantic_context: str | None = None,
 ) -> dict:
-    current_system_prompt = get_sql_correction_system_prompt(sql_knowledge)
+    current_system_prompt = (
+        get_denodo_vql_correction_system_prompt()
+        if is_denodo_context(semantic_context)
+        else get_sql_correction_system_prompt(sql_knowledge)
+    )
     return await generator(
         prompt=prompt.get("prompt"), current_system_prompt=current_system_prompt
     ), generator_name
@@ -178,20 +205,12 @@ async def post_process(
     use_dry_plan: bool = False,
     allow_dry_plan_fallback: bool = True,
     validation_mode: str = "engine",
+    semantic_context: str | None = None,
 ) -> dict:
-    if validation_mode == "none":
-        cleaned_generation_result = clean_up_new_lines(
-            generate_sql_correction.get("replies")[0]
+    if validation_mode == "none" or is_denodo_context(semantic_context):
+        return build_denodo_vql_post_process_result(
+            generate_sql_correction.get("replies")
         )
-        if cleaned_generation_result.startswith("{"):
-            cleaned_generation_result = loads_llm_json(cleaned_generation_result)["sql"]
-        return {
-            "valid_generation_result": {
-                "sql": cleaned_generation_result,
-                "correlation_id": "",
-            },
-            "invalid_generation_result": {},
-        }
 
     return await post_processor.run(
         generate_sql_correction.get("replies"),
@@ -251,6 +270,7 @@ class SQLCorrection(BasicPipeline):
         normalized_query: str | None = None,
         matched_rewrites: list[dict] | None = None,
         selected_models: dict | None = None,
+        validated_subquery_drafts: str | None = None,
     ):
         logger.info("SQLCorrection pipeline is running...")
         has_normalization_context = bool(
@@ -293,6 +313,7 @@ class SQLCorrection(BasicPipeline):
                 "normalized_query": normalized_query,
                 "matched_rewrites": matched_rewrites or [],
                 "selected_models": selected_models,
+                "validated_subquery_drafts": validated_subquery_drafts,
                 **self._components,
             },
         )

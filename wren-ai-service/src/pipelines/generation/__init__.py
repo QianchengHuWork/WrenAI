@@ -1,6 +1,8 @@
 from .chart_adjustment import ChartAdjustment
 from .chart_generation import ChartGeneration
 from .data_assistance import DataAssistance
+from .denodo_query_decomposition import DenodoQueryDecomposition
+from .denodo_subquery_generation import DenodoSubqueryGeneration
 from .followup_sql_generation import FollowUpSQLGeneration
 from .followup_sql_generation_reasoning import FollowUpSQLGenerationReasoning
 from .intent_classification import IntentClassification
@@ -25,6 +27,8 @@ __all__ = [
     "ChartGeneration",
     "ChartAdjustment",
     "DataAssistance",
+    "DenodoQueryDecomposition",
+    "DenodoSubqueryGeneration",
     "FollowUpSQLGeneration",
     "IntentClassification",
     "QuestionRecommendation",

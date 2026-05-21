@@ -1,0 +1,155 @@
+# Active State
+
+Last updated: 2026-05-20 17:32 CST
+
+Keep this file short. It should describe the current working state, not the full history.
+
+## Branch Status
+
+- Branch: `codex/denodo-selected-views-followup`
+- `/ai` memory system: initialized.
+- Root `AGENTS.md` and `.claude/CLAUDE.md` now point agents to `/ai` startup files.
+- Current dirty worktree / local session files to preserve:
+  - `AGENTS.md`
+  - `.claude/CLAUDE.md`
+  - `wren-ai-service/src/utils.py`
+  - `wren-ai-service/src/web/v1/services/ask.py`
+  - `wren-ui/src/apollo/server/adaptors/wrenAIAdaptor.ts`
+  - `wren-ui/src/apollo/server/models/adaptor.ts`
+  - `wren-ui/src/apollo/server/services/askingTaskTracker.ts`
+  - `wren-ui/src/apollo/server/services/denodoSqlGuardService.ts`
+  - `wren-ui/src/apollo/server/services/tests/denodoSqlGuardService.test.ts`
+  - `wren-ui/src/apollo/server/utils/timingTrace.ts`
+  - `scripts/ask-sql-trace-markdown.mjs`
+  - `scripts/ask-timing-readable-jsonl.mjs`
+  - `scripts/denodo-vql-benchmark-questions.customer.json`
+  - `ai/` (untracked shared memory directory)
+
+## Current Focus
+
+- Persistent multi-agent memory under `/ai` is initialized.
+- Preserve active Denodo/timing-trace work without modifying unrelated service files.
+- Keep future agents oriented around ChatBI, RAG, text-to-SQL, Denodo semantic layer, MCP, and semantic routing.
+- Current thread focus: memory backfill for the current chat plus source-dev / benchmark script verification. This memory-backfill turn does not change business code; the broader chat did include Denodo/timing/trace code work recorded below.
+- Branch-management backfill also records this chat's customer-stable branch handoff; no business code changes were made for that backfill.
+- Current Denodo focus from this chat: direct Denodo VQL generation is implemented in the current dirty worktree, but live Denodo benchmark/runtime behavior is not verified yet.
+- Latest Denodo benchmark observation from the chat: 22 questions, 3 rewrites, average latency around 4.5 minutes; main cost appeared to be planning/generation, not only validate/correction.
+- Current implementation update: Denodo complex-query decomposition now runs after Denodo scope resolution / query normalization and before `sql_generation_reasoning`; reasoning, final generation, and correction all receive hidden decomposition context. The UI now receives only lightweight `queryDecomposition` summaries and shows them in Organizing after selected scope / normalized query. Direct-VQL mode still makes Denodo generation/correction return native VQL with `sql_dialect: DIALECT`; UI guard skips `toDenodoNativeSql` for those candidates and keeps legacy conversion as fallback.
+- Latest Denodo direct-VQL bugfix: direct `DIALECT` candidates now run a narrow UI-side expression sanitizer before MCP validation. This keeps native Denodo identifiers untouched but rewrites risky expressions such as `TO_NUMBER(x)` to `CAST(x AS DECIMAL(18, 2))`; AI Denodo prompt rules also now explicitly ban `TO_NUMBER`.
+- Follow-up Denodo bugfix: Denodo MCP validate exceptions such as `Cannot read properties of null (reading 'id')` are now treated as invalid SQL and routed through the existing correction loop instead of failing the ask immediately. Denodo prompt rules also discourage unnecessary CTEs for simple single-view aggregations.
+- Latest root-cause fix for the same null-id symptom: AI service scope normalization was replacing the full Denodo semantic context with only a scoped dictionary summary, dropping the `[[WREN_DENODO_CONTEXT]]` marker and native VQL schema context. That made SQL generation/correction fall back to generic Wren-engine dry-run. The scoped context builder now preserves Denodo marker/native context and replaces only the dictionary section.
+- Latest Q20 fix: Denodo rules, scope resolution, decomposition, reasoning, generation, and correction now explicitly handle "Top-N cities by order amount, then find consecutive monthly conversion-rate decline" patterns. Q20-like scope is overridden to `primaryModel=dv_clew_ord_conversion_core`, `secondaryModels=[dm_ord_month_city]` when both candidate models are available; prompts forbid `LAG`/`LEAD`, require true intermediate Top-N filtering, and use YYYYMM `month_index` self joins for three-month/two-decline logic. Verified with focused AI service py_compile, pytest, timing event test, and `git diff --check`; live Denodo benchmark still not run.
+- Latest Q20 follow-up fix: the post-Q20 run no longer used `LAG` and selected the right models, but Denodo validate failed because generated SQL added `ptstart`/`ptend` to `dm_ord_month_city`, which lacks those columns. AI prompt rules now treat `ptstart`/`ptend` as per-view fields and tell Q20 to filter `dm_ord_month_city` by `order_year_month`. UI Denodo guard now strips unavailable `ptstart`/`ptend` predicates per view from direct VQL using the manifest before validation, preventing this fixed schema error from waiting 60s for correction.
+- Latest Q20 trace follow-up: correction timeout `b4bcf135-1117-4b43-b239-2e832ac44f1b` was a new Denodo type error, not the prior partition-field issue. Trace `be0bc5c6-8691-4536-bcb4-7e4c25da6a5d` selected the right models, avoided `LAG`, and had true Top 5 filtering, but generated `order_year_month >= (SELECT MAX(order_year_month) ...) - 12`. Denodo rejected subtracting an integer from a YYYYMM string. AI prompts/rules now forbid raw YYYYMM arithmetic and require concrete YYYYMM bounds or derived `month_index` integer comparisons.
+- `7. 外部调研` completed MetricFlow semantic-layer research. Durable doc: `docs/research/20260520-metricflow-semantic-layer.md`; source repo `dbt-labs/metricflow` at `4a36655ee67495b2b3fd71133b1d2119f58d5d22`, accessed 2026-05-20.
+
+## Codex Task Agents
+
+This table tracks Codex-side task agents/threads, not tool brands. Ages are imported from the Codex sidebar screenshot and should be replaced with concrete handoff notes when each agent is opened.
+
+| Codex agent/thread | Last seen | Status | Scope | Current memory |
+| --- | --- | --- | --- | --- |
+| Current memory backfill session | 2026-05-15 11:05 CST | Done | Shared `/ai` memory backfill for current chat history. | Read `/AGENTS.md`, `/ai/*`, checked `git branch`/`git status`, captured source-dev/runtime notes, customer branch handoff, Denodo AI SDK/skills findings, direct-VQL plan, timing/SQL trace state, and benchmark/model observations. No business code changes were part of this memory task. |
+| Add AI memory system | 25 min | Active | Shared `/ai` memory layer. | Created `/ai` files; added root and Claude pointers; correcting `ACTIVE_STATE.md` to track Codex task agents. |
+| 6. 测试 | 6 days | Needs handoff | Test strategy and verification. | Details not imported yet. Likely next target: validate Denodo SQL guard/trace changes with focused `wren-ui` tests and E2E ask run. |
+| 7. 外部调研 | 2026-05-20 17:32 CST | Done / handoff ready | MetricFlow semantic-layer construction research. | Created `docs/research/20260520-metricflow-semantic-layer.md` from `dbt-labs/metricflow` commit `4a36655ee67495b2b3fd71133b1d2119f58d5d22` plus official dbt docs. Key finding: MetricFlow builds a typed `SemanticManifest`, validates/transforms it, builds semantic/model/entity/metric lookups and a semantic graph, then compiles query specs into dataflow plans and SQL. WrenAI implication: use a typed Denodo/MDL manifest plus graph validation/routing before LLM SQL/VQL generation. Runtime behavior not executed. |
+| 2. 拉起项目 专用 | 1 month | Historical/needs refresh | Local source startup. | Related durable doc: `docs/source-startup.zh-CN.md`. Refresh if startup commands/env changed. |
+| 3. 项目总结和文案 | 2026-05-15 11:02 CST | Done / handoff ready | Resume wording and interview preparation for ChatBI PoC. | Created ignored working docs `.tmp/resume-chatbi-poc.md` and `.tmp/chatbi-poc-review-outline.md`; captured project positioning, Denodo semantic-view governance, semantic layer Manifest, semantic dictionary, Hamilton Pipeline vs AskService orchestration, Denodo SQL rule layer plus business-metric scope layer. No service tests run; docs are ignored by Git. |
+| 5. AI SDK 生成 VQL | 2026-05-15 15:00 CST | Implemented / benchmark pending | AI SDK/skills assessment, Denodo VQL generation strategy, guard behavior, timing traces, and benchmark tuning. | Completed: assessed local Denodo AI SDK under `/Users/qianchenghu/Documents/工作/极氪/denodo-ai-sdk-public-9-dev`; found useful prompt/rule/fixer references but no clean VQL-only API. Assessed `/Users/qianchenghu/Downloads/denodo-skills-public-main.zip`; found prompt/reference rules only, not executable generator/parser/fixer code. Implemented direct Denodo VQL mode in current dirty worktree: Denodo generation/follow-up/subquery/correction use VQL prompts, skip AI-service Wren-engine validation, return `sql_dialect: DIALECT`; UI prompt context includes native Denodo view/column mapping; UI guard skips `toDenodoNativeSql` for DIALECT while preserving semantic rewrite, DENSE_RANK rewrite, MCP validate/correction, and legacy fallback. Verified with py_compile, focused AI pytest, UI Jest, UI typecheck, and `git diff --check`; live Denodo benchmark not run. |
+| 4. 分支管理 | 2026-05-15 11:02 CST | Done / Historical | Customer stable branch handoff and branch hygiene. | This chat created and pushed `codex/customer-stable-20260507` at `f4519dec`, fast-forwarded `origin/main` to that commit, then created and pushed `codex/customer-stable-20260513` at `b1c966c4` and deleted old `0507` remote/local branches. Current branch remains `codex/denodo-selected-views-followup`. No CI/app tests were run for the branch operations. The untracked timing benchmark scripts were not included in the customer branch at that handoff. |
+| 分析提问失败原因 | 2026-05-15 11:05 CST | In progress | Diagnose ask failures, trace generation/correction/validation, and explain latency. | Current dirty files add SQL trace events in AI service/UI and scripts for readable trace output. Focused verification exists for py_compile, script syntax, UI types, targeted guard test, and targeted lint; full UI lint/customer runtime remain unverified. Chat analysis found that a validated MCP attempt can still appear slow if later guard/correction/polling or summary steps keep running; detailed traces should use `.tmp/ask-timing.jsonl` and `.tmp/ask-sql-trace.jsonl`. |
+| 当前聊天 - Denodo benchmark/customer trace | 2026-05-15 11:04 CST | Active/In progress | Denodo VQL enhancements, ask timing, SQL trace, benchmark automation, customer manual migration handoff. | See "Current Session Handoff" below. |
+
+## Current Session Handoff
+
+- Session/thread: current Codex chat for Denodo benchmark, customer SCP handoff, and SQL trace debugging.
+- Status: Active/In progress. Memory backfill requested; latest functional request before memory backfill was to simplify SQL trace Markdown by removing duplicates and keeping only each attempt.
+- Completed:
+  - Expanded local Denodo benchmark questions to 20 in `.tmp/denodo-benchmark-questions.json` during the session; first 10 are base cases and q11-q20 are harder multi-metric/share/top-N/cross-group/MoM/consecutive-decline cases.
+  - Updated benchmark direction to use GraphQL asking-task polling so `ask-timing.jsonl` can be aligned with `taskId`, `queryId`, `traceId`, status, models, and tool calls.
+  - Added/used customer-facing 10-question benchmark file `scripts/denodo-vql-benchmark-questions.customer.json`.
+  - Added readable timing output script `scripts/ask-timing-readable-jsonl.mjs`.
+  - Added SQL trace plumbing across AI service and UI: AI service returns `sql_trace_events`; UI maps `sqlTraceEvents`; UI writes `wren-ui/.tmp/ask-sql-trace.jsonl`.
+  - Added `scripts/ask-sql-trace-markdown.mjs` to generate folded Markdown SQL reports from trace JSONL.
+  - Prepared customer manual deployment guidance for `/data/wenai/poc`, including core source files, scripts, config candidate handling, backup/rollback concepts, and no blind config overwrite.
+  - Helped user manually copy core files into customer environment; user confirmed key markers existed after copy (`DENODO_CONTEXT_MARKER`, `TIMING_TRACE_PATH`) and no target files were missing.
+  - Ran a local 20-question benchmark on 2026-05-13 from `2026-05-13T12:55:02Z`; wall-clock about 82 minutes.
+- 20-question benchmark result:
+  - Output: `/tmp/denodo-vql-benchmark-20260513T125502Z.json`
+  - Readable timing JSONL: `/tmp/ask-timing-readable-2026-05-13T12-55-02Z.jsonl`
+  - SQL trace filtered JSONL: `/tmp/ask-sql-trace-filtered-2026-05-13T12-55-02Z.jsonl`
+  - SQL trace Markdown: `/tmp/ask-sql-trace-2026-05-13T12-55-02Z.md`
+  - Total 20, success 16, failed 4.
+  - Successful median about 161s, average about 164s, trimmed average about 163s.
+  - Failed q12/q17/q19 generated or corrected SQL against missing view `dv_clew_ord_conversion_core_new`.
+  - Failed q20 had `fetch failed`; no matching `ask_finished` record was found, and local `localhost:3000` was no longer listening afterward.
+- Verified in this session:
+  - `python -m py_compile wren-ai-service/src/web/v1/services/ask.py`
+  - `node --check scripts/ask-sql-trace-markdown.mjs`
+  - `cd wren-ui && yarn check-types`
+  - `cd wren-ui && yarn test src/apollo/server/services/tests/denodoSqlGuardService.test.ts --runInBand`
+  - Targeted `next lint --file ...` for modified UI files.
+- Not verified:
+  - Full `wren-ui` lint remains known to fail on unrelated pre-existing files.
+  - Customer runtime behavior after manual file replacement is not verified from this workspace.
+  - Latest requested Markdown de-duplication/attempt-only cleanup has not been implemented yet.
+  - Root cause for customer-side `clarification needed / no relevant SQL` after changing a 30000ms timeout is not confirmed.
+- Next handoff:
+  - Implement SQL trace Markdown de-duplication so the report groups by ask/question and shows only each distinct attempt.
+  - Investigate why hard questions choose `dv_clew_ord_conversion_core_new` when that view is unavailable.
+  - Re-run q20 or the 10-question customer set with a stable UI process before using q20 performance as signal.
+  - For customer deployment, assume manual file transfer and backup, not `rsync`.
+
+## External Assistant Tool Status
+
+- Claude/Gemini/Cursor/ChatGPT/Copilot are supported by protocol, but this file should primarily track Codex task agents unless a non-Codex tool directly changes the repo.
+
+## Active Experiments
+
+- Denodo selected-view follow-up work appears active based on branch name and modified files.
+- Ask timing/tracing appears active based on `askingTaskTracker`, `timingTrace`, and trace scripts.
+- Denodo SQL guard benchmarking appears active based on modified guard service/tests and benchmark questions.
+- Direct Denodo VQL generation is implemented in the dirty worktree and now needs runtime benchmarking; legacy SQL-to-VQL conversion remains as fallback for non-`DIALECT` candidates.
+- SQL trace Markdown readability is the next requested improvement: remove duplicate SQL entries and keep meaningful per-attempt blocks.
+- Denodo complex-query decomposition and direct-VQL mode both need runtime benchmarking on customer-style questions; code-level checks passed after the decomposition-order/UI-summary change, but no live Denodo benchmark has been run after these changes.
+- Direct-VQL expression sanitization, validate-exception correction, and scoped Denodo context preservation have focused test coverage, but no live customer Denodo execution has been run after these fixes.
+- Q20 consecutive-decline prompt/scope fix has focused AI service coverage, but still needs a live GraphQL asking-task rerun against Denodo to confirm `status=FINISHED`, no `Function lag is not executable`, and selectedModels/final SQL table consistency.
+- Q20 rerun after the first fix failed with `Field not found 'dm_ord_month_city.ptstart'` and correction timeout `37f4fb9e-5879-48fc-82fd-a8c85d897ca6`; focused AI/UI tests now cover the partition-field fix, but a live GraphQL Q20 rerun is still needed.
+- The latest Q20 rerun failed on invalid YYYYMM arithmetic with correction timeout `b4bcf135-1117-4b43-b239-2e832ac44f1b`; prompt-level fix is in place, but a live rerun is still needed to confirm the model emits concrete `202506`..`202605`-style month bounds or safe `month_index` filters.
+
+## Debugging Notes
+
+- No commands/tests have been run for service behavior during memory initialization.
+- Current observation only: worktree is dirty before memory files were added.
+- Memory verification: `/ai` file presence checked; tracked-file whitespace check passed.
+- Current progress review read key diffs only; no service behavior tests run.
+- Agent-level correction: previous `Agent Progress Snapshot` used tool brands; active state now tracks Codex task agents/threads.
+- This thread verified by inspection only:
+  - `git check-ignore -v .tmp/resume-chatbi-poc.md`
+  - `git check-ignore -v .tmp/chatbi-poc-review-outline.md`
+  - relevant source reads for intent classification and AskService routing.
+- Not verified in this thread: no `wren-ui` or `wren-ai-service` tests/builds were run for business behavior.
+- Source-dev runtime was rechecked during this session: `wren-ui` on `:3000` and `wren-ai-service` on `:5556` after restarting the local source processes.
+- Branch-management memory backfill verified git branch/ref state only; no application behavior was re-tested in this turn.
+- Denodo AI SDK finding: useful files include `api/prompts/vql_generation/query_to_vql.py`, `api/prompts/vql_rules/*`, `api/utils/sdk_utils.py` (`prepare_vql`), `api/utils/ai_tools/vql_fixer.py`, and `api/utils/answer_question/sql_flow.py`, but they are embedded in a full SDK flow rather than exposed as a small VQL-generation contract.
+- Denodo skills zip finding: useful VQL rules include double-quoted columns/aliases, protected aliases, `HAVING` restrictions, subquery `LIMIT/FETCH` caveats, `NULLS LAST` invalidity, aggregate `ORDER BY` aliasing, and Denodo date-function guidance. It does not provide executable integration code.
+- Current VQL-generation root cause: AI service still generates SQL with Denodo instructions via `build_denodo_runtime_instructions`; UI then runs `toDenodoNativeSql`, semantic rewrites, Denodo MCP validation, and optional AI correction. CTE/derived aliases can still be non-VQL because they are outside manifest mapping.
+- Current model config from chat: `default` and `fast` were switched to `openai/Qwen/Qwen3.5-397B-A17B`; `default` has `enable_thinking: true` with `thinking_budget: 4096`, `fast` has `enable_thinking: false`, and `fallback` remains `openai/deepseek-ai/DeepSeek-V3`.
+- Benchmark correction nuance: benchmark-level `correctionAttempts` counted UI/Denodo guard tool calls and was 0 for the 20-question run, but SQL trace showed AI-service internal `ai_sql_correction_generated` attempts for some failed cases.
+- Answer generation is not needed for the current performance comparison; user explicitly decided ask-stage timing is enough.
+
+## Immediate Next Actions
+
+- Run a focused Denodo benchmark for direct-VQL plus pre-reasoning complex-query decomposition, especially mixed-grain questions such as vehicle-series order ranking plus hottest exterior color and package top-N plus average price uplift.
+- Use `docs/research/20260520-metricflow-semantic-layer.md` when designing Denodo/MDL typed manifest, semantic-graph routing, metric definitions, and pre-generation validation.
+- Implement the SQL trace Markdown cleanup requested immediately before this memory backfill: de-duplicate repeated SQL and keep per-attempt blocks.
+- Inspect `.tmp/ask-timing.jsonl` and `.tmp/ask-sql-trace.jsonl` after the next benchmark to confirm `denodo.to_native_sql` metadata shows `alreadyDialectSql: true`, validate attempts decrease, and generated SQL is native VQL.
+- Use `ask-timing.jsonl` as the only source for ask-stage performance comparisons unless the user explicitly asks for answer timing.
+- Re-check customer/local UI process health before long benchmark runs; q20 previously failed with `fetch failed` after UI stopped listening.
+- Open remaining Codex task agents (`6. 测试`, `2. 拉起项目 专用`) and replace `needs import` rows with concrete file/progress/verification notes.
+- If the `20260513` customer stable branch should also become `main`, confirm and fast-forward `origin/main` explicitly; remembered work only pushed `20260507` to `main`.
+- After future implementation work, update this file with exact branch, task, verification, and blockers.
+- For resume/interview prep: continue expanding `.tmp/chatbi-poc-review-outline.md` from outline into answer scripts if needed; keep it ignored unless the user asks to publish it.
+- For the benchmark flow: use `scripts/denodo-vql-benchmark.mjs` for the 10-question set and `scripts/ask-timing-readable-jsonl.mjs` for trace post-processing.
+- Re-test the package top-N plus average price uplift question against live Denodo to confirm the final SQL avoids unnecessary CTEs, uses `AVG(CAST(package_price AS DECIMAL(18, 2)))`, and no longer fails ask-stage validation on MCP tool exceptions.
+- After the next run, inspect `wren-ui/.tmp/ask-sql-trace.jsonl`; for Denodo direct VQL the AI-service trace should show `ai_initial_generation_valid`, not `ai_initial_dry_run_failed`.

@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     allow_sql_diagnosis: bool = Field(default=True)
     allow_sql_knowledge_retrieval: bool = Field(default=False)
     enable_denodo_scope_normalization: bool = Field(default=False)
+    enable_denodo_query_decomposition: bool = Field(default=True)
+    enable_denodo_parallel_subquery_generation: bool = Field(default=True)
+    denodo_query_decomposition_max_subqueries: int = Field(default=3)
     max_histories: int = Field(default=5)
     max_sql_correction_retries: int = Field(default=3)
 

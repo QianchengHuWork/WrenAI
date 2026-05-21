@@ -156,6 +156,12 @@ def create_service_container(
                 "sql_generation_reasoning": generation.SQLGenerationReasoning(
                     **pipe_components["sql_generation_reasoning"],
                 ),
+                "denodo_query_decomposition": generation.DenodoQueryDecomposition(
+                    **pipe_components["sql_generation_reasoning"],
+                ),
+                "denodo_subquery_generation": generation.DenodoSubqueryGeneration(
+                    **pipe_components["sql_generation"],
+                ),
                 "followup_sql_generation_reasoning": generation.FollowUpSQLGenerationReasoning(
                     **pipe_components["followup_sql_generation_reasoning"],
                 ),
@@ -187,6 +193,9 @@ def create_service_container(
             max_histories=settings.max_histories,
             enable_column_pruning=settings.enable_column_pruning,
             max_sql_correction_retries=settings.max_sql_correction_retries,
+            enable_denodo_query_decomposition=settings.enable_denodo_query_decomposition,
+            enable_denodo_parallel_subquery_generation=settings.enable_denodo_parallel_subquery_generation,
+            denodo_query_decomposition_max_subqueries=settings.denodo_query_decomposition_max_subqueries,
             **query_cache,
         ),
         ask_feedback_service=services.AskFeedbackService(

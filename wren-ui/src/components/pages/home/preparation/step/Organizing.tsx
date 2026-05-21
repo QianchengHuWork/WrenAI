@@ -20,6 +20,15 @@ interface Props {
     canonicalValue: string;
     reason?: string | null;
   }> | null;
+  queryDecomposition?: {
+    complexity: string;
+    subqueryCount: number;
+    subqueries: Array<{
+      cteName: string;
+      objective: string;
+      grain?: string | null;
+    }>;
+  } | null;
   loading?: boolean;
   isAdjustment?: boolean;
 }
@@ -85,10 +94,17 @@ export default function Organizing(props: Props) {
     selectedModels,
     normalizedQuery,
     matchedRewrites,
+    queryDecomposition,
   } = props;
 
   const isDone = stream && !loading;
   const steps = useMemo(() => parseNumberedSteps(stream), [stream]);
+  const hasContextBlocks = !!(
+    selectedModels ||
+    normalizedQuery ||
+    matchedRewrites?.length ||
+    queryDecomposition?.subqueries?.length
+  );
 
   const scrollBottom = () => {
     if ($wrapper.current) {
@@ -107,6 +123,58 @@ export default function Organizing(props: Props) {
   }, [isDone]);
 
   const title = isAdjustment ? '已应用用户提供的推理步骤' : '正在组织思路';
+  const renderContextBlocks = () => (
+    <>
+      {!!selectedModels && (
+        <div>
+          <div className="gray-8 font-medium">已选作用域</div>
+          <div className="mt-1 pl-4">
+            主模型: {selectedModels.primaryModel}
+            {!!selectedModels.secondaryModels?.length &&
+              `；辅助模型: ${selectedModels.secondaryModels.join(', ')}`}
+            {selectedModels.needsJoin ? '；需要 Join' : ''}
+          </div>
+        </div>
+      )}
+      {!!normalizedQuery && (
+        <div>
+          <div className="gray-8 font-medium">归一化问题</div>
+          <div className="mt-1 pl-4">{normalizedQuery}</div>
+        </div>
+      )}
+      {!!queryDecomposition?.subqueries?.length && (
+        <div>
+          <div className="gray-8 font-medium">问题拆解</div>
+          <div className="mt-1 pl-4">
+            <div>
+              正在拆解问题为 {queryDecomposition.subqueryCount} 个子任务
+            </div>
+            {queryDecomposition.subqueries.map((subquery) => (
+              <div key={subquery.cteName}>
+                {subquery.objective}
+                {!!subquery.grain && `（粒度：${subquery.grain}）`}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {!!matchedRewrites?.length && (
+        <div>
+          <div className="gray-8 font-medium">命中改写</div>
+          <div className="mt-1 pl-4">
+            {matchedRewrites.map((rewrite) => (
+              <div
+                key={`${rewrite.scope.model}.${rewrite.scope.column}.${rewrite.userPhrase}.${rewrite.canonicalValue}`}
+              >
+                {rewrite.scope.model}.{rewrite.scope.column}: "
+                {rewrite.userPhrase}" → "{rewrite.canonicalValue}"
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <>
@@ -117,44 +185,16 @@ export default function Organizing(props: Props) {
         style={{ maxHeight: 'calc(100vh - 550px)', overflowY: 'auto' }}
       >
         {loading && !stream ? (
-          <div className="d-flex align-center gx-2">
-            思考中
-            <Spinner className="gray-6" size={12} />
+          <div className="d-flex flex-column gy-3">
+            {hasContextBlocks && renderContextBlocks()}
+            <div className="d-flex align-center gx-2">
+              思考中
+              <Spinner className="gray-6" size={12} />
+            </div>
           </div>
         ) : steps.length ? (
           <div className="d-flex flex-column gy-3">
-            {!!selectedModels && (
-              <div>
-                <div className="gray-8 font-medium">已选作用域</div>
-                <div className="mt-1 pl-4">
-                  主模型: {selectedModels.primaryModel}
-                  {!!selectedModels.secondaryModels?.length &&
-                    `；辅助模型: ${selectedModels.secondaryModels.join(', ')}`}
-                  {selectedModels.needsJoin ? '；需要 Join' : ''}
-                </div>
-              </div>
-            )}
-            {!!normalizedQuery && (
-              <div>
-                <div className="gray-8 font-medium">归一化问题</div>
-                <div className="mt-1 pl-4">{normalizedQuery}</div>
-              </div>
-            )}
-            {!!matchedRewrites?.length && (
-              <div>
-                <div className="gray-8 font-medium">命中改写</div>
-                <div className="mt-1 pl-4">
-                  {matchedRewrites.map((rewrite) => (
-                    <div
-                      key={`${rewrite.scope.model}.${rewrite.scope.column}.${rewrite.userPhrase}.${rewrite.canonicalValue}`}
-                    >
-                      {rewrite.scope.model}.{rewrite.scope.column}: "
-                      {rewrite.userPhrase}" → "{rewrite.canonicalValue}"
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {renderContextBlocks()}
             {steps.map((step) => (
               <div key={`${step.index}-${step.title}`}>
                 <div className="gray-8 font-medium">
@@ -170,38 +210,7 @@ export default function Organizing(props: Props) {
           </div>
         ) : (
           <div className="d-flex flex-column gy-3">
-            {!!selectedModels && (
-              <div>
-                <div className="gray-8 font-medium">已选作用域</div>
-                <div className="mt-1 pl-4">
-                  主模型: {selectedModels.primaryModel}
-                  {!!selectedModels.secondaryModels?.length &&
-                    `；辅助模型: ${selectedModels.secondaryModels.join(', ')}`}
-                  {selectedModels.needsJoin ? '；需要 Join' : ''}
-                </div>
-              </div>
-            )}
-            {!!normalizedQuery && (
-              <div>
-                <div className="gray-8 font-medium">归一化问题</div>
-                <div className="mt-1 pl-4">{normalizedQuery}</div>
-              </div>
-            )}
-            {!!matchedRewrites?.length && (
-              <div>
-                <div className="gray-8 font-medium">命中改写</div>
-                <div className="mt-1 pl-4">
-                  {matchedRewrites.map((rewrite) => (
-                    <div
-                      key={`${rewrite.scope.model}.${rewrite.scope.column}.${rewrite.userPhrase}.${rewrite.canonicalValue}`}
-                    >
-                      {rewrite.scope.model}.{rewrite.scope.column}: "
-                      {rewrite.userPhrase}" → "{rewrite.canonicalValue}"
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {renderContextBlocks()}
             <MarkdownBlock content={stream} />
           </div>
         )}

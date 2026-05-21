@@ -40,6 +40,8 @@ import {
   AskFeedbackStatus,
   SQLDialect,
   TimingEvent,
+  SelectedModels,
+  SqlTraceEvent,
 } from '@server/models/adaptor';
 import { getLogger } from '@server/utils';
 import * as Errors from '@server/utils/error';
@@ -68,6 +70,86 @@ const transformTimingEvents = (events: any[] = []): TimingEvent[] =>
           name: event.name,
           durationMs: Number(event.durationMs ?? event.duration_ms ?? 0),
           ...(event.metadata ? { metadata: event.metadata } : {}),
+        }))
+    : [];
+
+const toOptionalNumber = (value: any): number | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const numberValue = Number(value);
+  return Number.isNaN(numberValue) ? undefined : numberValue;
+};
+
+const transformSelectedModels = (
+  selectedModels: any,
+): SelectedModels | undefined =>
+  selectedModels
+    ? {
+        primaryModel:
+          selectedModels.primary_model ?? selectedModels.primaryModel,
+        secondaryModels:
+          selectedModels.secondary_models ??
+          selectedModels.secondaryModels ??
+          [],
+        needsJoin: !!(selectedModels.needs_join ?? selectedModels.needsJoin),
+        reasoning: selectedModels.reasoning || [],
+      }
+    : undefined;
+
+const transformSqlTraceEvents = (events: any[] = []): SqlTraceEvent[] =>
+  Array.isArray(events)
+    ? events
+        .filter((event) => event?.stage && event?.source)
+        .map((event) => ({
+          source: event.source,
+          stage: event.stage,
+          attempt: toOptionalNumber(event.attempt),
+          candidateIndex: toOptionalNumber(
+            event.candidate_index ?? event.candidateIndex,
+          ),
+          status: event.status ?? null,
+          durationMs: toOptionalNumber(event.duration_ms ?? event.durationMs),
+          generationDurationMs: toOptionalNumber(
+            event.generation_duration_ms ?? event.generationDurationMs,
+          ),
+          diagnosisDurationMs: toOptionalNumber(
+            event.diagnosis_duration_ms ?? event.diagnosisDurationMs,
+          ),
+          validationDurationMs: toOptionalNumber(
+            event.validation_duration_ms ?? event.validationDurationMs,
+          ),
+          correctionQueryId:
+            event.correction_query_id ?? event.correctionQueryId ?? null,
+          error: event.error ?? null,
+          sql: event.sql ?? null,
+          originalSql: event.original_sql ?? event.originalSql ?? null,
+          beforeSql: event.before_sql ?? event.beforeSql ?? null,
+          afterSql: event.after_sql ?? event.afterSql ?? null,
+          candidateSql: event.candidate_sql ?? event.candidateSql ?? null,
+          nativeSql: event.native_sql ?? event.nativeSql ?? null,
+          semanticRewriteBeforeSql:
+            event.semantic_rewrite_before_sql ??
+            event.semanticRewriteBeforeSql ??
+            null,
+          semanticRewriteAfterSql:
+            event.semantic_rewrite_after_sql ??
+            event.semanticRewriteAfterSql ??
+            null,
+          denseRankRewriteBeforeSql:
+            event.dense_rank_rewrite_before_sql ??
+            event.denseRankRewriteBeforeSql ??
+            null,
+          denseRankRewriteAfterSql:
+            event.dense_rank_rewrite_after_sql ??
+            event.denseRankRewriteAfterSql ??
+            null,
+          validateSql: event.validate_sql ?? event.validateSql ?? null,
+          selectedModels: transformSelectedModels(
+            event.selected_models ?? event.selectedModels,
+          ),
+          normalizedQuery:
+            event.normalized_query ?? event.normalizedQuery ?? null,
+          traceId: event.trace_id ?? event.traceId ?? null,
         }))
     : [];
 
@@ -946,7 +1028,8 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
     const candidates = (body?.response || []).map((candidate: any) => ({
       type: candidate?.type?.toUpperCase() as AskCandidateType,
       sql: candidate.sql,
-      sqlDialect: candidate?.sqlDialect as SQLDialect | undefined,
+      sqlDialect: (candidate?.sqlDialect ??
+        candidate?.sql_dialect) as SQLDialect | undefined,
       viewId: candidate?.viewId ? Number(candidate.viewId) : null,
       sqlpairId: candidate?.sqlpairId ? Number(candidate.sqlpairId) : null,
     }));
@@ -968,14 +1051,7 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
         availableCanonicalMappings: candidate?.available_canonical_mappings,
         fieldDescriptions: candidate?.field_descriptions,
       })),
-      selectedModels: body?.selected_models
-        ? {
-            primaryModel: body.selected_models.primary_model,
-            secondaryModels: body.selected_models.secondary_models || [],
-            needsJoin: !!body.selected_models.needs_join,
-            reasoning: body.selected_models.reasoning || [],
-          }
-        : undefined,
+      selectedModels: transformSelectedModels(body?.selected_models),
       normalizedQuery: body?.normalized_query,
       matchedRewrites: body?.matched_rewrites?.map((rewrite: any) => ({
         scope: {
@@ -986,9 +1062,23 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
         canonicalValue: rewrite?.canonical_value,
         reason: rewrite?.reason,
       })),
+      queryDecomposition: body?.query_decomposition
+        ? {
+            complexity: body.query_decomposition.complexity,
+            subqueryCount: body.query_decomposition.subquery_count,
+            subqueries: (body.query_decomposition.subqueries || []).map(
+              (subquery: any) => ({
+                cteName: subquery?.cte_name,
+                objective: subquery?.objective,
+                grain: subquery?.grain,
+              }),
+            ),
+          }
+        : null,
       invalidSql: body?.invalid_sql,
       traceId: body?.trace_id,
       timingEvents: transformTimingEvents(body?.timing_events),
+      sqlTraceEvents: transformSqlTraceEvents(body?.sql_trace_events),
     };
   }
 

@@ -1,4 +1,4 @@
-from src.web.v1.services.ask import AskResultResponse, TimingEvent
+from src.web.v1.services.ask import AskResult, AskResultResponse, TimingEvent
 from src.web.v1.services.sql_answer import (
     SqlAnswerResultResponse,
     TimingEvent as SqlAnswerTimingEvent,
@@ -25,6 +25,22 @@ def test_ask_result_response_serializes_timing_events():
             "metadata": {"primaryModel": "dm_ord_day_status"},
         }
     ]
+
+
+def test_ask_result_serializes_denodo_sql_dialect():
+    response = AskResultResponse(
+        status="finished",
+        type="TEXT_TO_SQL",
+        response=[
+            AskResult(
+                sql='SELECT "city" FROM "dv_order_base"',
+                type="llm",
+                sql_dialect="DIALECT",
+            )
+        ],
+    )
+
+    assert response.model_dump()["response"][0]["sql_dialect"] == "DIALECT"
 
 
 def test_sql_answer_result_response_serializes_timing_events():

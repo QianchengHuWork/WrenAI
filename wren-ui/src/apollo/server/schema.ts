@@ -688,6 +688,18 @@ export const typeDefs = gql`
     reason: String
   }
 
+  type QueryDecompositionSubquery {
+    cteName: String!
+    objective: String!
+    grain: String
+  }
+
+  type QueryDecomposition {
+    complexity: String!
+    subqueryCount: Int!
+    subqueries: [QueryDecompositionSubquery!]!
+  }
+
   type AskingTask {
     status: AskingTaskStatus!
     type: AskingTaskType
@@ -701,6 +713,7 @@ export const typeDefs = gql`
     selectedModels: SelectedModels
     normalizedQuery: String
     matchedRewrites: [MatchedRewrite!]
+    queryDecomposition: QueryDecomposition
     toolCalls: [String!]
     semanticFiles: [String!]
     invalidSql: String

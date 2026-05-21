@@ -8,17 +8,21 @@ import {
   SQLDialect,
   SqlCorrectionResult,
   SqlCorrectionStatus,
+  SqlTraceEvent,
   TimingEvent,
 } from '@server/models/adaptor';
-import {
-  DENODO_MCP_CONNECTION_INFO,
-  Project,
-} from '@server/repositories';
+import { DENODO_MCP_CONNECTION_INFO, Project } from '@server/repositories';
 import { toIbisConnectionInfo } from '@server/dataSource';
-import { createTimingStep, getLogger, nowMs } from '@server/utils';
+import {
+  createTimingStep,
+  durationMsSince,
+  getLogger,
+  nowMs,
+} from '@server/utils';
 import * as Errors from '@server/utils/error';
 import {
   buildDenodoAiSemanticContext,
+  buildDenodoNativeVqlSchemaContext,
   isDenodoSemanticDictionaryEnabled,
   buildDenodoMcpValidateToolName,
   getDenodoManifestPath,
@@ -27,6 +31,8 @@ import {
   readDenodoSemanticDictionary,
   toDenodoSemanticContext,
   toDenodoNativeSql,
+  sanitizeDenodoDialectSql,
+  removeUnavailableDenodoPartitionFilters,
   applySemanticDictionaryToSql,
 } from '@server/utils/denodoMcp';
 
@@ -65,7 +71,9 @@ const formatList = (
   limit = 6,
 ): string => {
   const normalized = values
-    .filter((value): value is string => typeof value === 'string' && !!value.trim())
+    .filter(
+      (value): value is string => typeof value === 'string' && !!value.trim(),
+    )
     .map((value) => safeLogValue(value, 80));
 
   if (!normalized.length) return LOG_EMPTY_VALUE;
@@ -209,7 +217,11 @@ const rewriteDenseRankForDenodo = (sql: string) => {
       }
 
       const fromItem = fromItems[0];
-      if (fromItem?.join || fromItem?.expr?.ast || fromItem?.expr?.type === 'select') {
+      if (
+        fromItem?.join ||
+        fromItem?.expr?.ast ||
+        fromItem?.expr?.type === 'select'
+      ) {
         return;
       }
 
@@ -254,7 +266,8 @@ const rewriteDenseRankForDenodo = (sql: string) => {
 
         const orderColumnName = getColumnIdentifier(orderItem.expr.column);
         const orderTableName =
-          typeof orderItem.expr.table === 'string' && orderItem.expr.table.trim()
+          typeof orderItem.expr.table === 'string' &&
+          orderItem.expr.table.trim()
             ? orderItem.expr.table
             : outerTableAlias;
 
@@ -316,6 +329,7 @@ export interface GuardedDenodoSql {
   toolCalls: string[];
   semanticFiles: string[];
   timingEvents: TimingEvent[];
+  sqlTraceEvents: SqlTraceEvent[];
 }
 
 export interface IDenodoSqlGuardService {
@@ -334,6 +348,7 @@ export interface IDenodoSqlGuardService {
     matchedRewrites?: AskResult['matchedRewrites'];
     traceId?: string;
     candidateIndex?: number;
+    sqlDialect?: SQLDialect;
   }): Promise<GuardedDenodoSql>;
 }
 
@@ -371,6 +386,9 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
 
     const toolCalls: string[] = [];
     const timingEvents: TimingEvent[] = [];
+    const sqlTraceEvents: SqlTraceEvent[] = [
+      ...(askResult.sqlTraceEvents || []),
+    ];
     const guardStartedAt = nowMs();
     const semanticFiles = this.getSemanticFiles(project.id);
     const validCandidates = [];
@@ -401,11 +419,13 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
           matchedRewrites: askResult.matchedRewrites,
           traceId: askResult.traceId,
           candidateIndex: index + 1,
+          sqlDialect: candidate.sqlDialect,
         });
         toolCalls.push(
           ...this.prefixCandidateToolCalls(guarded.toolCalls, index, askResult),
         );
         timingEvents.push(...guarded.timingEvents);
+        sqlTraceEvents.push(...guarded.sqlTraceEvents);
         validCandidates.push({
           ...candidate,
           sql: guarded.sql,
@@ -420,6 +440,9 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
           ),
         );
         timingEvents.push(...(error?.extensions?.other?.timingEvents || []));
+        sqlTraceEvents.push(
+          ...(error?.extensions?.other?.sqlTraceEvents || []),
+        );
         lastErrorMessage = error?.message || 'Failed to validate Denodo SQL';
         lastInvalidSql =
           error?.extensions?.other?.invalidSql ||
@@ -460,6 +483,7 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
         toolCalls,
         semanticFiles,
         timingEvents: [...(askResult.timingEvents || []), ...timingEvents],
+        sqlTraceEvents,
         invalidSql: lastInvalidSql,
       };
     }
@@ -467,14 +491,16 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
     timingEvents.push(
       createTimingStep('denodo.guard_total', guardStartedAt, {
         validCandidateCount: validCandidates.length,
-        failedCandidateCount: askResult.response.length - validCandidates.length,
+        failedCandidateCount:
+          askResult.response.length - validCandidates.length,
       }),
     );
     logDenodoGuard('info', 'denodo_guard.final_result', {
       project_id: project.id,
       trace_id: askResult.traceId,
       valid_candidate_count: validCandidates.length,
-      failed_candidate_count: askResult.response.length - validCandidates.length,
+      failed_candidate_count:
+        askResult.response.length - validCandidates.length,
       invalid_sql_present: !!lastInvalidSql,
     });
     return {
@@ -483,6 +509,7 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
       toolCalls,
       semanticFiles,
       timingEvents: [...(askResult.timingEvents || []), ...timingEvents],
+      sqlTraceEvents,
     };
   }
 
@@ -496,6 +523,7 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
     matchedRewrites,
     traceId,
     candidateIndex,
+    sqlDialect,
   }: {
     sql: string;
     manifest: Manifest;
@@ -506,10 +534,12 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
     matchedRewrites?: AskResult['matchedRewrites'];
     traceId?: string;
     candidateIndex?: number;
+    sqlDialect?: SQLDialect;
   }): Promise<GuardedDenodoSql> {
     const semanticFiles = this.getSemanticFiles(project.id);
     const toolCalls: string[] = [];
     const timingEvents: TimingEvent[] = [];
+    const sqlTraceEvents: SqlTraceEvent[] = [];
     const connectionInfo = toIbisConnectionInfo(
       project.type,
       project.connectionInfo,
@@ -519,19 +549,22 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
     );
 
     let attempt = 1;
+    const candidateSql = sql;
     const toNativeStartedAt = nowMs();
-    let currentSql = toDenodoNativeSql(sql, manifest);
+    const alreadyDialectSql = sqlDialect === SQLDialect.DIALECT;
+    let currentSql = alreadyDialectSql
+      ? sanitizeDenodoDialectSql(sql)
+      : toDenodoNativeSql(sql, manifest);
+    const nativeSql = currentSql;
     timingEvents.push(
       createTimingStep('denodo.to_native_sql', toNativeStartedAt, {
         candidateIndex,
+        alreadyDialectSql,
       }),
     );
     let lastErrorMessage = '';
     const selectedModelNames = selectedModels
-      ? [
-          selectedModels.primaryModel,
-          ...(selectedModels.secondaryModels || []),
-        ]
+      ? [selectedModels.primaryModel, ...(selectedModels.secondaryModels || [])]
       : [];
     const correctionContextModels = selectedModelNames.length
       ? selectedModelNames
@@ -545,11 +578,15 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
       : null;
     if (isDenodoSemanticDictionaryEnabled()) {
       timingEvents.push(
-        createTimingStep('denodo.semantic_dictionary_read', dictionaryReadStartedAt, {
-          candidateIndex,
-          enabled: true,
-          entryCount: semanticDictionary?.entries?.length || 0,
-        }),
+        createTimingStep(
+          'denodo.semantic_dictionary_read',
+          dictionaryReadStartedAt,
+          {
+            candidateIndex,
+            enabled: true,
+            entryCount: semanticDictionary?.entries?.length || 0,
+          },
+        ),
       );
     }
     const dictionarySemanticContext =
@@ -562,38 +599,74 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
         : undefined;
     const semanticContext = buildDenodoAiSemanticContext(
       dictionarySemanticContext,
+      buildDenodoNativeVqlSchemaContext(manifest, {
+        models: correctionContextModels,
+      }),
     );
 
     while (attempt <= MAX_VALIDATE_ATTEMPTS) {
       let semanticSqlRewriteCount = 0;
+      const attemptInputSql = currentSql;
+      let semanticRewriteBeforeSql: string | null = null;
+      let semanticRewriteAfterSql: string | null = null;
       if (semanticDictionary) {
         const semanticRewriteStartedAt = nowMs();
+        semanticRewriteBeforeSql = currentSql;
         const semanticRewrite = applySemanticDictionaryToSql(
           currentSql,
           manifest,
           semanticDictionary,
         );
         currentSql = semanticRewrite.sql;
+        semanticRewriteAfterSql = currentSql;
         toolCalls.push(...semanticRewrite.appliedRewrites);
         semanticSqlRewriteCount = semanticRewrite.appliedRewrites.length;
         timingEvents.push(
-          createTimingStep('denodo.semantic_rewrite', semanticRewriteStartedAt, {
-            candidateIndex,
-            attempt,
-            rewriteCount: semanticSqlRewriteCount,
-          }),
+          createTimingStep(
+            'denodo.semantic_rewrite',
+            semanticRewriteStartedAt,
+            {
+              candidateIndex,
+              attempt,
+              rewriteCount: semanticSqlRewriteCount,
+            },
+          ),
         );
       }
       const denseRankRewriteStartedAt = nowMs();
+      const denseRankRewriteBeforeSql = currentSql;
       const denseRankRewrite = rewriteDenseRankForDenodo(currentSql);
       currentSql = denseRankRewrite.sql;
+      const denseRankRewriteAfterSql = currentSql;
       toolCalls.push(...denseRankRewrite.appliedRewrites);
       timingEvents.push(
-        createTimingStep('denodo.dense_rank_rewrite', denseRankRewriteStartedAt, {
-          candidateIndex,
-          attempt,
-          rewriteCount: denseRankRewrite.appliedRewrites.length,
-        }),
+        createTimingStep(
+          'denodo.dense_rank_rewrite',
+          denseRankRewriteStartedAt,
+          {
+            candidateIndex,
+            attempt,
+            rewriteCount: denseRankRewrite.appliedRewrites.length,
+          },
+        ),
+      );
+      const partitionFilterRewriteStartedAt = nowMs();
+      const partitionFilterRewrite = removeUnavailableDenodoPartitionFilters(
+        currentSql,
+        manifest,
+      );
+      currentSql = partitionFilterRewrite.sql;
+      toolCalls.push(...partitionFilterRewrite.appliedRewrites);
+      timingEvents.push(
+        createTimingStep(
+          'denodo.unavailable_partition_filter_rewrite',
+          partitionFilterRewriteStartedAt,
+          {
+            candidateIndex,
+            attempt,
+            rewriteCount: partitionFilterRewrite.appliedRewrites.length,
+          },
+        ),
       );
       logDenodoGuard('info', 'denodo_guard.validate_attempt', {
         project_id: project.id,
@@ -608,16 +681,57 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
       });
       toolCalls.push(`call MCP tool: ${validateToolName} (attempt ${attempt})`);
       const validateStartedAt = nowMs();
-      const validation = await this.denodoMcpAdaptor.validateSqlQuery(
-        currentSql,
-        connectionInfo,
-      );
+      const validateSql = currentSql;
+      let validation: { isValid: boolean; errorMessage?: string };
+      let validationException: any = null;
+      try {
+        validation = await this.denodoMcpAdaptor.validateSqlQuery(
+          validateSql,
+          connectionInfo,
+        );
+      } catch (error: any) {
+        validationException = error;
+        validation = {
+          isValid: false,
+          errorMessage: this.getValidationErrorMessage(error),
+        };
+      }
+      const validationDurationMs = durationMsSince(validateStartedAt);
       timingEvents.push(
-        createTimingStep(`denodo.validate_attempt_${attempt}`, validateStartedAt, {
-          candidateIndex,
-          isValid: validation.isValid,
-        }),
+        createTimingStep(
+          `denodo.validate_attempt_${attempt}`,
+          validateStartedAt,
+          {
+            candidateIndex,
+            isValid: validation.isValid,
+            threw: !!validationException,
+          },
+        ),
       );
+      sqlTraceEvents.push({
+        source: 'denodo_guard',
+        stage: 'denodo_guard_validate_attempt',
+        attempt,
+        candidateIndex,
+        status: validation.isValid ? 'VALID' : 'INVALID',
+        durationMs: validationDurationMs,
+        validationDurationMs,
+        error: validation.errorMessage || null,
+        sql: validateSql,
+        originalSql: candidateSql,
+        beforeSql: attemptInputSql,
+        afterSql: validateSql,
+        candidateSql,
+        nativeSql,
+        semanticRewriteBeforeSql,
+        semanticRewriteAfterSql,
+        denseRankRewriteBeforeSql,
+        denseRankRewriteAfterSql,
+        validateSql,
+        selectedModels,
+        normalizedQuery,
+        traceId,
+      });
 
       if (validation.isValid) {
         toolCalls.push('validate succeeded');
@@ -635,6 +749,7 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
           toolCalls,
           semanticFiles,
           timingEvents,
+          sqlTraceEvents,
         };
       }
 
@@ -665,9 +780,10 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
         matched_rewrite_count: matchedRewrites?.length || 0,
       });
       toolCalls.push(`call AI service: sql_correction (attempt ${attempt})`);
+      const correctionInputSql = currentSql;
       const correctionCreateStartedAt = nowMs();
       const correctionTask = await this.wrenAIAdaptor.createSqlCorrection({
-        sql: currentSql,
+        sql: correctionInputSql,
         error: lastErrorMessage,
         projectId: project.id.toString(),
         retrievedTables: correctionContextModels,
@@ -677,6 +793,9 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
         selectedModels,
         matchedRewrites,
       });
+      const correctionCreateDurationMs = durationMsSince(
+        correctionCreateStartedAt,
+      );
       timingEvents.push(
         createTimingStep(
           `denodo.sql_correction_create_${attempt}`,
@@ -686,8 +805,10 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
       );
       let correctionResult: SqlCorrectionResult;
       const correctionWaitStartedAt = nowMs();
+      let correctionWaitDurationMs = 0;
       try {
         correctionResult = await this.waitSqlCorrection(correctionTask.queryId);
+        correctionWaitDurationMs = durationMsSince(correctionWaitStartedAt);
         timingEvents.push(
           createTimingStep(
             `denodo.sql_correction_wait_${attempt}`,
@@ -700,6 +821,7 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
           ),
         );
       } catch (error: any) {
+        correctionWaitDurationMs = durationMsSince(correctionWaitStartedAt);
         timingEvents.push(
           createTimingStep(
             `denodo.sql_correction_wait_${attempt}`,
@@ -719,9 +841,39 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
           correction_query_id: correctionTask.queryId,
           correction_status: 'TIMEOUT',
           sql_changed: false,
-          error: error?.message || 'Timed out waiting for SQL correction result',
+          error:
+            error?.message || 'Timed out waiting for SQL correction result',
         });
-        throw error;
+        sqlTraceEvents.push({
+          source: 'denodo_guard',
+          stage: 'denodo_guard_sql_correction_generated',
+          attempt,
+          candidateIndex,
+          status: 'TIMEOUT',
+          durationMs: correctionCreateDurationMs + correctionWaitDurationMs,
+          generationDurationMs: correctionWaitDurationMs,
+          correctionQueryId: correctionTask.queryId,
+          error:
+            error?.message || 'Timed out waiting for SQL correction result',
+          sql: null,
+          originalSql: correctionInputSql,
+          beforeSql: correctionInputSql,
+          afterSql: null,
+          selectedModels,
+          normalizedQuery,
+          traceId,
+        });
+        throw Errors.create(Errors.GeneralErrorCodes.POLLING_TIMEOUT, {
+          customMessage:
+            error?.message || 'Timed out waiting for SQL correction result',
+          other: {
+            invalidSql: currentSql,
+            toolCalls,
+            semanticFiles,
+            timingEvents,
+            sqlTraceEvents,
+          },
+        });
       }
       logDenodoGuard(
         correctionResult.status === SqlCorrectionStatus.FINISHED
@@ -741,6 +893,24 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
           error: correctionResult.error?.message,
         },
       );
+      sqlTraceEvents.push({
+        source: 'denodo_guard',
+        stage: 'denodo_guard_sql_correction_generated',
+        attempt,
+        candidateIndex,
+        status: correctionResult.status,
+        durationMs: correctionCreateDurationMs + correctionWaitDurationMs,
+        generationDurationMs: correctionWaitDurationMs,
+        correctionQueryId: correctionTask.queryId,
+        error: correctionResult.error?.message || null,
+        sql: correctionResult.response || null,
+        originalSql: correctionInputSql,
+        beforeSql: correctionInputSql,
+        afterSql: correctionResult.response || null,
+        selectedModels,
+        normalizedQuery,
+        traceId: correctionResult.traceId || traceId,
+      });
 
       if (
         correctionResult.status !== SqlCorrectionStatus.FINISHED ||
@@ -765,6 +935,7 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
         toolCalls,
         semanticFiles,
         timingEvents,
+        sqlTraceEvents,
       },
     });
   }
@@ -804,6 +975,15 @@ export class DenodoSqlGuardService implements IDenodoSqlGuardService {
       );
     }
     return files;
+  }
+
+  private getValidationErrorMessage(error: any): string {
+    return (
+      error?.message ||
+      error?.extensions?.message ||
+      error?.extensions?.code ||
+      'Denodo validation failed'
+    );
   }
 
   private prefixCandidateToolCalls(

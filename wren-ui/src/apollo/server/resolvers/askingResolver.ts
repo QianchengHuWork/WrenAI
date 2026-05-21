@@ -93,6 +93,15 @@ export interface AskingTask {
     canonicalValue: string;
     reason?: string;
   }>;
+  queryDecomposition?: {
+    complexity: 'simple' | 'complex';
+    subqueryCount: number;
+    subqueries: Array<{
+      cteName: string;
+      objective: string;
+      grain?: string | null;
+    }>;
+  } | null;
   toolCalls?: string[];
   semanticFiles?: string[];
   invalidSql?: string;
@@ -884,6 +893,7 @@ export class AskingResolver {
       selectedModels: askingTask.selectedModels,
       normalizedQuery: askingTask.normalizedQuery,
       matchedRewrites: askingTask.matchedRewrites,
+      queryDecomposition: askingTask.queryDecomposition,
       toolCalls,
       semanticFiles,
       invalidSql: askingTask.invalidSql

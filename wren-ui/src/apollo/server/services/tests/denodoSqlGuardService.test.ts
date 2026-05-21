@@ -3,6 +3,7 @@ import { encryptConnectionInfo } from '@server/dataSource';
 import {
   AskCandidateType,
   AskResultStatus,
+  SQLDialect,
   SqlCorrectionStatus,
 } from '@server/models/adaptor';
 import * as denodoMcpUtils from '@server/utils/denodoMcp';
@@ -98,6 +99,205 @@ describe('DenodoSqlGuardService', () => {
         'denodo.to_native_sql',
         'denodo.validate_attempt_1',
         'denodo.guard_total',
+      ]),
+    );
+    expect(result.sqlTraceEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'denodo_guard',
+          stage: 'denodo_guard_validate_attempt',
+          attempt: 1,
+          status: 'VALID',
+          candidateSql: 'SELECT city FROM dv_order_base',
+          validateSql: expect.stringContaining('FROM "dv_order_base"'),
+        }),
+      ]),
+    );
+  });
+
+  it('validates dialect SQL directly without converting through manifest', async () => {
+    const mappedManifest = {
+      models: [
+        {
+          name: 'logical_order',
+          cached: false,
+          tableReference: {
+            table: 'physical_order',
+          },
+          columns: [
+            {
+              name: 'city',
+              isCalculated: false,
+              expression: '"physical_city"',
+            },
+          ],
+        },
+      ],
+    } as any;
+    const denodoMcpAdaptor = {
+      validateSqlQuery: jest.fn().mockResolvedValue({ isValid: true }),
+    };
+    const wrenAIAdaptor = {
+      createSqlCorrection: jest.fn(),
+      getSqlCorrectionResult: jest.fn(),
+    };
+    const service = new DenodoSqlGuardService({
+      denodoMcpAdaptor: denodoMcpAdaptor as any,
+      wrenAIAdaptor: wrenAIAdaptor as any,
+    });
+
+    const result = await service.guardAskResult({
+      askResult: {
+        status: AskResultStatus.FINISHED,
+        type: 'TEXT_TO_SQL',
+        error: null,
+        response: [
+          {
+            type: AskCandidateType.LLM,
+            sql: 'SELECT "city" FROM "logical_order"',
+            sqlDialect: SQLDialect.DIALECT,
+          },
+        ],
+      } as any,
+      manifest: mappedManifest,
+      project: encryptedProject,
+    });
+
+    expect(denodoMcpAdaptor.validateSqlQuery).toHaveBeenCalledWith(
+      'SELECT "city" FROM "logical_order"',
+      expect.any(Object),
+    );
+    expect(result.response?.[0]?.sql).toBe(
+      'SELECT "city" FROM "logical_order"',
+    );
+    expect(result.timingEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'denodo.to_native_sql',
+          metadata: expect.objectContaining({
+            alreadyDialectSql: true,
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('sanitizes dialect SQL expressions before validation', async () => {
+    const denodoMcpAdaptor = {
+      validateSqlQuery: jest.fn().mockResolvedValue({ isValid: true }),
+    };
+    const wrenAIAdaptor = {
+      createSqlCorrection: jest.fn(),
+      getSqlCorrectionResult: jest.fn(),
+    };
+    const service = new DenodoSqlGuardService({
+      denodoMcpAdaptor: denodoMcpAdaptor as any,
+      wrenAIAdaptor: wrenAIAdaptor as any,
+    });
+
+    const result = await service.guardAskResult({
+      askResult: {
+        status: AskResultStatus.FINISHED,
+        type: 'TEXT_TO_SQL',
+        error: null,
+        response: [
+          {
+            type: AskCandidateType.LLM,
+            sql: 'SELECT AVG(TO_NUMBER("dv_package_order_core"."package_price")) AS "avg_price_increase" FROM "dv_package_order_core"',
+            sqlDialect: SQLDialect.DIALECT,
+          },
+        ],
+      } as any,
+      manifest,
+      project: encryptedProject,
+    });
+
+    expect(denodoMcpAdaptor.validateSqlQuery).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'AVG(CAST("dv_package_order_core"."package_price" AS DECIMAL(18, 2))) AS "avg_price_increase"',
+      ),
+      expect.any(Object),
+    );
+    expect(result.response?.[0]?.sql).not.toContain('TO_NUMBER');
+    expect(result.response?.[0]?.sqlDialect).toBe(SQLDialect.DIALECT);
+  });
+
+  it('removes unavailable Denodo partition filters before validation', async () => {
+    const cityManifest = {
+      models: [
+        {
+          name: 'dm_ord_month_city',
+          cached: false,
+          tableReference: {
+            table: 'dm_ord_month_city',
+          },
+          columns: [
+            {
+              name: 'order_year_month',
+              isCalculated: false,
+              expression: '"order_year_month"',
+            },
+            {
+              name: 'city_code',
+              isCalculated: false,
+              expression: '"city_code"',
+            },
+          ],
+        },
+      ],
+    } as any;
+    const denodoMcpAdaptor = {
+      validateSqlQuery: jest.fn().mockResolvedValue({ isValid: true }),
+    };
+    const wrenAIAdaptor = {
+      createSqlCorrection: jest.fn(),
+      getSqlCorrectionResult: jest.fn(),
+    };
+    const service = new DenodoSqlGuardService({
+      denodoMcpAdaptor: denodoMcpAdaptor as any,
+      wrenAIAdaptor: wrenAIAdaptor as any,
+    });
+
+    const result = await service.guardAskResult({
+      askResult: {
+        status: AskResultStatus.FINISHED,
+        type: 'TEXT_TO_SQL',
+        error: null,
+        response: [
+          {
+            type: AskCandidateType.LLM,
+            sql: `SELECT "city_code"
+              FROM "dm_ord_month_city"
+              WHERE "order_year_month" >= '202506'
+                AND "ptstart" >= '20250601'
+                AND "ptend" <= '20260531'`,
+            sqlDialect: SQLDialect.DIALECT,
+          },
+        ],
+      } as any,
+      manifest: cityManifest,
+      project: encryptedProject,
+    });
+
+    const validatedSql = denodoMcpAdaptor.validateSqlQuery.mock.calls[0][0];
+    expect(validatedSql).toContain('"order_year_month" >= \'202506\'');
+    expect(validatedSql).not.toContain('"ptstart"');
+    expect(validatedSql).not.toContain('"ptend"');
+    expect(wrenAIAdaptor.createSqlCorrection).not.toHaveBeenCalled();
+    expect(result.toolCalls).toEqual(
+      expect.arrayContaining([
+        'remove unavailable Denodo partition filter: dm_ord_month_city.ptstart',
+        'remove unavailable Denodo partition filter: dm_ord_month_city.ptend',
+      ]),
+    );
+    expect(result.timingEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'denodo.unavailable_partition_filter_rewrite',
+          metadata: expect.objectContaining({
+            rewriteCount: 2,
+          }),
+        }),
       ]),
     );
   });
@@ -202,9 +402,7 @@ describe('DenodoSqlGuardService', () => {
     expect(validatedSql).toContain(
       'COUNT(DISTINCT "denodo_rank_source_1"."total_amount")',
     );
-    expect(validatedSql).toContain(
-      'WHERE "ranked_cities"."rank" <= 5',
-    );
+    expect(validatedSql).toContain('WHERE "ranked_cities"."rank" <= 5');
     expect(result.toolCalls).toEqual(
       expect.arrayContaining([
         'rewrite dense_rank for denodo: city_totals.total_amount -> correlated subquery',
@@ -264,6 +462,29 @@ describe('DenodoSqlGuardService', () => {
       }),
     );
     expect(denodoMcpAdaptor.validateSqlQuery).toHaveBeenCalledTimes(2);
+    expect(result.sqlTraceEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'denodo_guard_validate_attempt',
+          attempt: 1,
+          status: 'INVALID',
+          error: "View 'dv_order_base' not found",
+        }),
+        expect.objectContaining({
+          stage: 'denodo_guard_sql_correction_generated',
+          attempt: 1,
+          status: SqlCorrectionStatus.FINISHED,
+          beforeSql: expect.stringContaining('FROM "dv_order_base"'),
+          afterSql: 'SELECT "city" FROM "dv_order_base"',
+        }),
+        expect.objectContaining({
+          stage: 'denodo_guard_validate_attempt',
+          attempt: 2,
+          status: 'VALID',
+          validateSql: 'SELECT "city" FROM "dv_order_base"',
+        }),
+      ]),
+    );
     expect(result.toolCalls).toEqual(
       expect.arrayContaining([
         'call MCP tool: denodo_admin_validate_sql_query (attempt 1)',
@@ -271,6 +492,82 @@ describe('DenodoSqlGuardService', () => {
         'call AI service: sql_correction (attempt 1)',
         'call MCP tool: denodo_admin_validate_sql_query (attempt 2)',
         'validate succeeded',
+      ]),
+    );
+  });
+
+  it('treats validate tool exceptions as invalid SQL and runs correction', async () => {
+    const denodoMcpAdaptor = {
+      validateSqlQuery: jest
+        .fn()
+        .mockRejectedValueOnce(
+          new Error("Cannot read properties of null (reading 'id')"),
+        )
+        .mockResolvedValueOnce({
+          isValid: true,
+        }),
+    };
+    const correctedSql =
+      'SELECT "package_name", COUNT("biz_order_no") AS "order_count", AVG(CAST("package_price" AS DECIMAL(18, 2))) AS "avg_package_price" FROM "dv_package_order_core" WHERE lower("order_year_month") = lower(\'202604\') GROUP BY "package_name" ORDER BY "order_count" DESC';
+    const wrenAIAdaptor = {
+      createSqlCorrection: jest.fn().mockResolvedValue({ queryId: 'c-cte-1' }),
+      getSqlCorrectionResult: jest.fn().mockResolvedValue({
+        status: SqlCorrectionStatus.FINISHED,
+        response: correctedSql,
+      }),
+    };
+    const service = new DenodoSqlGuardService({
+      denodoMcpAdaptor: denodoMcpAdaptor as any,
+      wrenAIAdaptor: wrenAIAdaptor as any,
+    });
+
+    const result = await service.guardAskResult({
+      askResult: {
+        status: AskResultStatus.FINISHED,
+        type: 'TEXT_TO_SQL',
+        error: null,
+        response: [
+          {
+            type: AskCandidateType.LLM,
+            sql: `WITH "package_data" AS (
+              SELECT "package_name", "biz_order_no", CAST("package_price" AS DECIMAL(18, 2)) AS "package_price_decimal"
+              FROM "dv_package_order_core"
+              WHERE lower("order_year_month") = lower('202604')
+            )
+            SELECT "package_data"."package_name", COUNT("package_data"."biz_order_no") AS "order_count", AVG("package_data"."package_price_decimal") AS "avg_package_price"
+            FROM "package_data"
+            GROUP BY "package_data"."package_name"
+            ORDER BY "order_count" DESC`,
+            sqlDialect: SQLDialect.DIALECT,
+          },
+        ],
+      } as any,
+      manifest,
+      project: encryptedProject,
+    });
+
+    expect(wrenAIAdaptor.createSqlCorrection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: "Cannot read properties of null (reading 'id')",
+        validationMode: 'none',
+      }),
+    );
+    expect(denodoMcpAdaptor.validateSqlQuery).toHaveBeenCalledTimes(2);
+    expect(result.response?.[0]?.sql).toBe(correctedSql);
+    expect(result.sqlTraceEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stage: 'denodo_guard_validate_attempt',
+          attempt: 1,
+          status: 'INVALID',
+          error: "Cannot read properties of null (reading 'id')",
+        }),
+        expect.objectContaining({
+          stage: 'denodo_guard_validate_attempt',
+          attempt: 2,
+          status: 'VALID',
+          validateSql: correctedSql,
+        }),
       ]),
     );
   });

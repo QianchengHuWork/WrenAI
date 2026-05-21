@@ -1,0 +1,42 @@
+[
+  {
+    "id": "q01_generic_conversion_rate",
+    "question": "最近三个月每个月的订单转化率是多少？"
+  },
+  {
+    "id": "q03_conversion_mom",
+    "question": "最近三个月订单转化率环比是上升还是下降？"
+  },
+  {
+    "id": "q04_assignment_coverage",
+    "question": "按月份统计最近三个月的智能分配覆盖率。"
+  },
+  {
+    "id": "q06_top_city_amount",
+    "question": "2026 年订单金额最高的前 5 个城市分别是多少？"
+  },
+  {
+    "id": "q10_strategy_conversion",
+    "question": "按分配策略统计最近三个月的已分配线索数、转化订单数和智能分配订单转化率。"
+  },
+  {
+    "id": "q11_monthly_multi_metric",
+    "question": "最近六个月，每个月的整体订单转化率、智能分配订单转化率和智能分配覆盖率分别是多少？"
+  },
+  {
+    "id": "q14_monthly_status_amount_share",
+    "question": "最近六个月，按月份和订单状态统计订单数、订单金额及金额占比。"
+  },
+  {
+    "id": "q16_coverage_mom_decline",
+    "question": "最近六个月，智能分配覆盖率环比下降的月份有哪些？每个月下降了多少个百分点。"
+  },
+  {
+    "id": "q17_top_city_amount_vs_conversion",
+    "question": "最近六个月，按城市统计订单金额和订单转化率，只保留订单金额前 10 的城市，并比较这些城市与整体转化率的差值。"
+  },
+  {
+    "id": "q20_top_city_consecutive_decline",
+    "question": "最近 12 个月，订单金额排名前 5 的城市中，哪些城市出现过订单转化率连续两个月下降？同时给出对应月份和降幅。"
+  }
+]

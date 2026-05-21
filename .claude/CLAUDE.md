@@ -1,5 +1,19 @@
 # CLAUDE.md
 
+## Persistent AI Memory
+
+This repository uses `/ai` as the shared long-term memory layer for AI coding assistants.
+
+Before implementation decisions, read:
+- `/ai/AGENTS.md`
+- `/ai/AI_CONTEXT.md`
+- `/ai/ACTIVE_STATE.md`
+- `/ai/DECISIONS.md`
+
+After significant changes, update the relevant `/ai` memory files and append `/ai/CHANGELOG.md`.
+
+---
+
 WrenAI is an open-source GenBI (Generative BI) agent that converts natural language questions into SQL queries and charts. It uses a semantic layer (MDL - Metadata Definition Language) to guide LLM-powered text-to-SQL generation via retrieval-augmented generation (RAG).
 
 ## Repository Structure

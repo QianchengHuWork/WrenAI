@@ -9,10 +9,6 @@ from pydantic import AliasChoices, BaseModel, Field
 
 from src.config import settings
 from src.core.pipeline import BasicPipeline
-from src.pipelines.generation.denodo_prompt_context import (
-    build_denodo_runtime_instructions,
-    prioritize_conversion_core_documents,
-)
 from src.utils import trace_metadata
 from src.web.v1.services import BaseRequest, SSEEvent
 from src.web.v1.services.denodo_scope_normalization import (
@@ -41,6 +37,46 @@ class TimingEvent(BaseModel):
     name: str
     duration_ms: int
     metadata: Optional[Dict[str, Any]] = None
+
+
+class SqlTraceEvent(BaseModel):
+    source: Literal["ai_service", "denodo_guard"]
+    stage: str
+    attempt: Optional[int] = None
+    candidate_index: Optional[int] = None
+    status: Optional[str] = None
+    duration_ms: Optional[int] = None
+    generation_duration_ms: Optional[int] = None
+    diagnosis_duration_ms: Optional[int] = None
+    validation_duration_ms: Optional[int] = None
+    correction_query_id: Optional[str] = None
+    error: Optional[str] = None
+    sql: Optional[str] = None
+    original_sql: Optional[str] = None
+    before_sql: Optional[str] = None
+    after_sql: Optional[str] = None
+    candidate_sql: Optional[str] = None
+    native_sql: Optional[str] = None
+    semantic_rewrite_before_sql: Optional[str] = None
+    semantic_rewrite_after_sql: Optional[str] = None
+    dense_rank_rewrite_before_sql: Optional[str] = None
+    dense_rank_rewrite_after_sql: Optional[str] = None
+    validate_sql: Optional[str] = None
+    selected_models: Optional[Dict[str, Any]] = None
+    normalized_query: Optional[str] = None
+    trace_id: Optional[str] = None
+
+
+class QueryDecompositionSubquery(BaseModel):
+    cte_name: str
+    objective: str
+    grain: Optional[str] = None
+
+
+class QueryDecomposition(BaseModel):
+    complexity: Literal["simple", "complex"]
+    subquery_count: int
+    subqueries: List[QueryDecompositionSubquery] = Field(default_factory=list)
 
 
 def _duration_ms_since(started_at: float) -> int:
@@ -81,6 +117,10 @@ def build_runtime_sql_instructions(
     instructions: list[dict] | None = None,
     semantic_context: str | None = None,
 ) -> list[dict]:
+    from src.pipelines.generation.denodo_prompt_context import (
+        build_denodo_runtime_instructions,
+    )
+
     return build_denodo_runtime_instructions(
         query,
         table_names,
@@ -103,6 +143,39 @@ def _selected_model_names(selected_models: SelectedModels | None) -> list[str]:
     ]
 
 
+def _override_denodo_scope_for_known_patterns(
+    query: str,
+    selected_models: SelectedModels | None,
+    candidate_models: list[CandidateModelSummary],
+) -> SelectedModels | None:
+    from src.pipelines.generation.denodo_prompt_context import (
+        CONVERSION_CORE_TABLE,
+        ORDER_CITY_TABLE,
+        is_denodo_q20_city_conversion_decline_query,
+    )
+
+    if not is_denodo_q20_city_conversion_decline_query(query):
+        return selected_models
+
+    candidate_names = {candidate.model for candidate in candidate_models}
+    required_models = {CONVERSION_CORE_TABLE, ORDER_CITY_TABLE}
+    if not required_models <= candidate_names:
+        return selected_models
+
+    existing_reasoning = selected_models.reasoning if selected_models else []
+    return SelectedModels(
+        primary_model=CONVERSION_CORE_TABLE,
+        secondary_models=[ORDER_CITY_TABLE],
+        needs_join=True,
+        reasoning=[
+            "Rule override: city conversion-rate consecutive-decline questions "
+            f"use {CONVERSION_CORE_TABLE} for monthly conversion and "
+            f"{ORDER_CITY_TABLE} for Top-N city order amount.",
+            *existing_reasoning,
+        ][:6],
+    )
+
+
 def _filter_documents_by_models(
     documents: list[dict],
     selected_models: SelectedModels | None,
@@ -122,6 +195,33 @@ def _should_log_denodo(
     semantic_context: str | None,
 ) -> bool:
     return bool(semantic_dictionary or semantic_context)
+
+
+def _build_scoped_denodo_semantic_context(
+    semantic_context: str | None,
+    scoped_dictionary_summary: str | None,
+) -> str | None:
+    if not scoped_dictionary_summary:
+        return semantic_context
+
+    if not semantic_context:
+        return scoped_dictionary_summary
+
+    from src.pipelines.generation.denodo_prompt_context import DENODO_CONTEXT_MARKER
+
+    if DENODO_CONTEXT_MARKER not in semantic_context:
+        return scoped_dictionary_summary
+
+    dictionary_heading = "Semantic dictionary entries:"
+    if dictionary_heading in semantic_context:
+        base_context = semantic_context.split(dictionary_heading, 1)[0].rstrip()
+    else:
+        base_context = semantic_context.rstrip()
+
+    return (
+        f"{base_context}\n\n"
+        f"{dictionary_heading}\n{scoped_dictionary_summary.strip()}"
+    )
 
 
 def _resolve_denodo_normalization_reason(
@@ -206,6 +306,7 @@ class StopAskResponse(BaseModel):
 class AskResult(BaseModel):
     sql: str
     type: Literal["llm", "view"] = "llm"
+    sql_dialect: Optional[Literal["DIALECT"]] = None
     viewId: Optional[str] = None
 
 
@@ -238,7 +339,9 @@ class _AskResultResponse(BaseModel):
     selected_models: Optional[SelectedModels] = None
     normalized_query: Optional[str] = None
     matched_rewrites: Optional[List[MatchedRewrite]] = None
+    query_decomposition: Optional[QueryDecomposition] = None
     timing_events: Optional[List[TimingEvent]] = None
+    sql_trace_events: Optional[List[SqlTraceEvent]] = None
     response: Optional[List[AskResult]] = None
     invalid_sql: Optional[str] = None
     error: Optional[AskError] = None
@@ -268,6 +371,9 @@ class AskService:
         enable_column_pruning: bool = False,
         max_sql_correction_retries: int = 3,
         max_histories: int = 5,
+        enable_denodo_query_decomposition: bool = True,
+        enable_denodo_parallel_subquery_generation: bool = True,
+        denodo_query_decomposition_max_subqueries: int = 3,
         maxsize: int = 1_000_000,
         ttl: int = 120,
     ):
@@ -283,6 +389,13 @@ class AskService:
         self._enable_column_pruning = enable_column_pruning
         self._max_histories = max_histories
         self._max_sql_correction_retries = max_sql_correction_retries
+        self._enable_denodo_query_decomposition = enable_denodo_query_decomposition
+        self._enable_denodo_parallel_subquery_generation = (
+            enable_denodo_parallel_subquery_generation
+        )
+        self._denodo_query_decomposition_max_subqueries = (
+            denodo_query_decomposition_max_subqueries
+        )
 
     def _is_stopped(self, query_id: str, container: dict):
         if (
@@ -337,7 +450,11 @@ class AskService:
         current_sql_correction_retries = 0
         use_dry_plan = ask_request.use_dry_plan
         allow_dry_plan_fallback = ask_request.allow_dry_plan_fallback
+        sql_functions: list[Any] = []
         sql_knowledge = None
+        query_decomposition: QueryDecomposition | None = None
+        query_decomposition_context: str | None = None
+        validated_subquery_drafts: str | None = None
         semantic_context = ask_request.semantic_context
         raw_semantic_dictionary = normalize_semantic_dictionary(
             ask_request.semantic_dictionary
@@ -358,13 +475,308 @@ class AskService:
         scoped_semantic_context = semantic_context
         ask_started_at = time.perf_counter()
         timing_events: list[TimingEvent] = []
+        sql_trace_events: list[SqlTraceEvent] = []
 
         def timing_snapshot() -> list[TimingEvent]:
             return list(timing_events)
 
+        def sql_trace_snapshot() -> list[SqlTraceEvent]:
+            return list(sql_trace_events)
+
+        def latest_timing_duration(
+            name: str,
+            attempt: Optional[int] = None,
+        ) -> int:
+            for event in reversed(timing_events):
+                if event.name != name:
+                    continue
+                if attempt is not None and (
+                    not event.metadata or event.metadata.get("attempt") != attempt
+                ):
+                    continue
+                return event.duration_ms
+            return 0
+
+        def selected_models_trace() -> Optional[Dict[str, Any]]:
+            return selected_models.model_dump() if selected_models else None
+
+        def append_sql_trace_event(
+            *,
+            stage: str,
+            attempt: Optional[int] = None,
+            status: Optional[str] = None,
+            duration_ms: Optional[int] = None,
+            generation_duration_ms: Optional[int] = None,
+            diagnosis_duration_ms: Optional[int] = None,
+            error: Optional[str] = None,
+            sql: Optional[str] = None,
+            original_sql: Optional[str] = None,
+            before_sql: Optional[str] = None,
+            after_sql: Optional[str] = None,
+        ):
+            sql_trace_events.append(
+                SqlTraceEvent(
+                    source="ai_service",
+                    stage=stage,
+                    attempt=attempt,
+                    status=status,
+                    duration_ms=duration_ms,
+                    generation_duration_ms=generation_duration_ms,
+                    diagnosis_duration_ms=diagnosis_duration_ms,
+                    error=error,
+                    sql=sql,
+                    original_sql=original_sql,
+                    before_sql=before_sql,
+                    after_sql=after_sql,
+                    selected_models=selected_models_trace(),
+                    normalized_query=normalized_query,
+                    trace_id=trace_id,
+                )
+            )
+
         def append_ask_total_once():
             if not any(event.name == "ai.ask_total" for event in timing_events):
                 _append_timing_event(timing_events, "ai.ask_total", ask_started_at)
+
+        def denodo_decomposition_ready() -> bool:
+            from src.pipelines.generation.denodo_prompt_context import (
+                is_denodo_context,
+            )
+
+            return (
+                self._enable_denodo_query_decomposition
+                and self._enable_denodo_parallel_subquery_generation
+                and (
+                    is_denodo_context(scoped_semantic_context)
+                    or is_denodo_context(semantic_context)
+                )
+                and "denodo_query_decomposition" in self._pipelines
+                and "denodo_subquery_generation" in self._pipelines
+            )
+
+        def denodo_generated_sql_dialect() -> Optional[Literal["DIALECT"]]:
+            from src.pipelines.generation.denodo_prompt_context import (
+                is_denodo_context,
+            )
+
+            if is_denodo_context(scoped_semantic_context) or is_denodo_context(
+                semantic_context
+            ):
+                return "DIALECT"
+            return None
+
+        async def generate_denodo_subquery_draft(
+            *,
+            attempt: int,
+            subquery: dict,
+            decomposition: dict,
+            query_for_generation: str,
+            sql_functions: list[Any],
+        ) -> dict:
+            attempt_started_at = time.perf_counter()
+            cte_name = subquery.get("cte_name")
+            try:
+                result = await self._pipelines["denodo_subquery_generation"].run(
+                    query=query_for_generation,
+                    contexts=table_ddls,
+                    subquery=subquery,
+                    subqueries=decomposition.get("subqueries", []),
+                    final_assembly=decomposition.get("final_assembly", ""),
+                    instructions=instructions,
+                    semantic_context=scoped_semantic_context,
+                    project_id=ask_request.project_id,
+                    sql_functions=sql_functions,
+                    use_dry_plan=use_dry_plan,
+                    allow_dry_plan_fallback=allow_dry_plan_fallback,
+                    sql_knowledge=sql_knowledge,
+                    original_query=user_query,
+                    normalized_query=normalized_query,
+                    matched_rewrites=[
+                        rewrite.model_dump() for rewrite in matched_rewrites
+                    ],
+                    selected_models=(
+                        selected_models.model_dump() if selected_models else None
+                    ),
+                )
+                post_process = result.get("post_process", {})
+                valid_result = post_process.get("valid_generation_result")
+                invalid_result = post_process.get("invalid_generation_result")
+                metadata = {
+                    "attempt": attempt,
+                    "cteName": cte_name,
+                    "status": "valid" if valid_result else "invalid",
+                }
+                if invalid_result:
+                    metadata["errorType"] = invalid_result.get("type")
+                _append_timing_event(
+                    timing_events,
+                    "ai.denodo_subquery_generation_attempt",
+                    attempt_started_at,
+                    metadata,
+                )
+                if not valid_result:
+                    return {
+                        "ok": False,
+                        "subquery": subquery,
+                        "error": (invalid_result or {}).get("error")
+                        or "subquery validation failed",
+                    }
+                return {
+                    "ok": True,
+                    "subquery": subquery,
+                    "sql": valid_result.get("sql"),
+                }
+            except Exception as error:
+                _append_timing_event(
+                    timing_events,
+                    "ai.denodo_subquery_generation_attempt",
+                    attempt_started_at,
+                    {
+                        "attempt": attempt,
+                        "cteName": cte_name,
+                        "status": "error",
+                        "error": str(error),
+                    },
+                )
+                return {
+                    "ok": False,
+                    "subquery": subquery,
+                    "error": str(error),
+                }
+
+        async def maybe_prepare_denodo_query_decomposition(
+            *,
+            query_for_generation: str,
+            sql_functions: list[Any],
+        ) -> tuple[QueryDecomposition | None, str | None, str | None]:
+            if not denodo_decomposition_ready():
+                return None, None, None
+
+            max_subqueries = max(
+                2,
+                min(3, self._denodo_query_decomposition_max_subqueries),
+            )
+            try:
+                decomposition = (
+                    await _timed_await(
+                        timing_events,
+                        "ai.denodo_query_decomposition",
+                        self._pipelines["denodo_query_decomposition"].run(
+                            query=query_for_generation,
+                            contexts=table_ddls,
+                            max_subqueries=max_subqueries,
+                            instructions=instructions,
+                            semantic_context=scoped_semantic_context,
+                            original_query=user_query,
+                            normalized_query=normalized_query,
+                            matched_rewrites=[
+                                rewrite.model_dump() for rewrite in matched_rewrites
+                            ],
+                            selected_models=(
+                                selected_models.model_dump()
+                                if selected_models
+                                else None
+                            ),
+                        ),
+                        lambda result: {
+                            "complexity": result.get("post_process", {}).get(
+                                "complexity"
+                            ),
+                            "subqueryCount": len(
+                                result.get("post_process", {}).get("subqueries", [])
+                            ),
+                        },
+                    )
+                ).get("post_process", {})
+            except Exception as error:
+                logger.warning("Denodo query decomposition fallback: %s", error)
+                return None, None, None
+
+            if decomposition.get("complexity") != "complex":
+                return None, None, None
+
+            subqueries = decomposition.get("subqueries", [])
+            if not 2 <= len(subqueries) <= max_subqueries:
+                return None, None, None
+
+            decomposition_summary = QueryDecomposition(
+                complexity="complex",
+                subquery_count=len(subqueries),
+                subqueries=[
+                    QueryDecompositionSubquery(
+                        cte_name=subquery.get("cte_name"),
+                        objective=subquery.get("objective"),
+                        grain=subquery.get("grain") or None,
+                    )
+                    for subquery in subqueries
+                ],
+            )
+            if not self._is_stopped(query_id, self._ask_results):
+                self._ask_results[query_id] = AskResultResponse(
+                    status="planning",
+                    type="TEXT_TO_SQL",
+                    rephrased_question=rephrased_question,
+                    intent_reasoning=intent_reasoning,
+                    retrieved_tables=table_names,
+                    candidate_models=candidate_models or None,
+                    selected_models=selected_models,
+                    normalized_query=normalized_query,
+                    matched_rewrites=matched_rewrites,
+                    query_decomposition=decomposition_summary,
+                    trace_id=trace_id,
+                    timing_events=timing_snapshot(),
+                    is_followup=True if histories else False,
+                )
+
+            parallel_started_at = time.perf_counter()
+            drafts = await asyncio.gather(
+                *[
+                    generate_denodo_subquery_draft(
+                        attempt=index + 1,
+                        subquery=subquery,
+                        decomposition=decomposition,
+                        query_for_generation=query_for_generation,
+                        sql_functions=sql_functions,
+                    )
+                    for index, subquery in enumerate(subqueries)
+                ],
+                return_exceptions=False,
+            )
+            valid_drafts = [draft for draft in drafts if draft.get("ok")]
+            _append_timing_event(
+                timing_events,
+                "ai.denodo_subquery_generation_parallel",
+                parallel_started_at,
+                {
+                    "requestedCount": len(subqueries),
+                    "validCount": len(valid_drafts),
+                    "fallback": len(valid_drafts) != len(subqueries),
+                },
+            )
+
+            if len(valid_drafts) != len(subqueries):
+                if denodo_logging_enabled:
+                    _log_denodo_event(
+                        "warning",
+                        "denodo_ask.subquery_generation_fallback",
+                        query_id,
+                        trace_id,
+                        ask_request.project_id,
+                        requested_count=len(subqueries),
+                        valid_count=len(valid_drafts),
+                    )
+                return None, None, None
+
+            from src.pipelines.generation.denodo_query_decomposition import (
+                format_query_decomposition_context,
+                format_validated_subquery_drafts,
+            )
+
+            return (
+                decomposition_summary,
+                format_query_decomposition_context(decomposition),
+                format_validated_subquery_drafts(decomposition, valid_drafts),
+            )
 
         try:
             user_query = ask_request.query
@@ -606,6 +1018,10 @@ class AskService:
                 _retrieval_result = retrieval_result.get(
                     "construct_retrieval_results", {}
                 )
+                from src.pipelines.generation.denodo_prompt_context import (
+                    prioritize_conversion_core_documents,
+                )
+
                 documents = prioritize_conversion_core_documents(
                     user_query,
                     _retrieval_result.get("retrieval_results", []),
@@ -688,6 +1104,11 @@ class AskService:
                             scope_resolution_payload,
                             candidate_models,
                         )
+                        selected_models = _override_denodo_scope_for_known_patterns(
+                            user_query,
+                            selected_models,
+                            candidate_models,
+                        )
 
                         if selected_models:
                             if denodo_logging_enabled:
@@ -718,8 +1139,12 @@ class AskService:
                                 _selected_model_names(selected_models),
                             )
                             scoped_semantic_context = (
-                                summarize_dictionary_entries(selected_dictionary_entries)
-                                or semantic_context
+                                _build_scoped_denodo_semantic_context(
+                                    semantic_context,
+                                    summarize_dictionary_entries(
+                                        selected_dictionary_entries
+                                    ),
+                                )
                             )
                             normalization_result = await _timed_await(
                                 timing_events,
@@ -901,13 +1326,78 @@ class AskService:
                             selected_models=selected_models,
                             normalized_query=normalized_query,
                             matched_rewrites=matched_rewrites,
+                            query_decomposition=query_decomposition,
                             trace_id=trace_id,
                             timing_events=timing_snapshot(),
+                            sql_trace_events=sql_trace_snapshot(),
                             is_followup=True if histories else False,
                         )
                     results["metadata"]["error_type"] = "NO_RELEVANT_DATA"
                     results["metadata"]["type"] = "TEXT_TO_SQL"
                     return results
+
+            if not self._is_stopped(query_id, self._ask_results) and not api_results:
+                query_for_generation = normalized_query or user_query
+                self._ask_results[query_id] = AskResultResponse(
+                    status="planning",
+                    type="TEXT_TO_SQL",
+                    rephrased_question=rephrased_question,
+                    intent_reasoning=intent_reasoning,
+                    retrieved_tables=table_names,
+                    candidate_models=candidate_models or None,
+                    selected_models=selected_models,
+                    normalized_query=normalized_query,
+                    matched_rewrites=matched_rewrites,
+                    trace_id=trace_id,
+                    timing_events=timing_snapshot(),
+                    is_followup=True if histories else False,
+                )
+
+                if allow_sql_functions_retrieval:
+                    sql_functions = await _timed_await(
+                        timing_events,
+                        "ai.sql_functions_retrieval",
+                        self._pipelines["sql_functions_retrieval"].run(
+                            project_id=ask_request.project_id,
+                        ),
+                    )
+                else:
+                    sql_functions = []
+
+                if allow_sql_knowledge_retrieval:
+                    sql_knowledge = await _timed_await(
+                        timing_events,
+                        "ai.sql_knowledge_retrieval",
+                        self._pipelines["sql_knowledge_retrieval"].run(
+                            project_id=ask_request.project_id,
+                        ),
+                    )
+
+                (
+                    query_decomposition,
+                    query_decomposition_context,
+                    validated_subquery_drafts,
+                ) = await maybe_prepare_denodo_query_decomposition(
+                    query_for_generation=query_for_generation,
+                    sql_functions=sql_functions,
+                )
+
+                if query_decomposition:
+                    self._ask_results[query_id] = AskResultResponse(
+                        status="planning",
+                        type="TEXT_TO_SQL",
+                        rephrased_question=rephrased_question,
+                        intent_reasoning=intent_reasoning,
+                        retrieved_tables=table_names,
+                        candidate_models=candidate_models or None,
+                        selected_models=selected_models,
+                        normalized_query=normalized_query,
+                        matched_rewrites=matched_rewrites,
+                        query_decomposition=query_decomposition,
+                        trace_id=trace_id,
+                        timing_events=timing_snapshot(),
+                        is_followup=True if histories else False,
+                    )
 
             if (
                 not self._is_stopped(query_id, self._ask_results)
@@ -944,6 +1434,7 @@ class AskService:
                     selected_models=selected_models,
                     normalized_query=normalized_query,
                     matched_rewrites=matched_rewrites,
+                    query_decomposition=query_decomposition,
                     trace_id=trace_id,
                     timing_events=timing_snapshot(),
                     is_followup=True if histories else False,
@@ -973,6 +1464,7 @@ class AskService:
                                     if selected_models
                                     else None
                                 ),
+                                query_decomposition_context=query_decomposition_context,
                             ),
                             lambda _result: {"followup": True},
                         )
@@ -1000,6 +1492,7 @@ class AskService:
                                     if selected_models
                                     else None
                                 ),
+                                query_decomposition_context=query_decomposition_context,
                             ),
                             lambda _result: {"followup": False},
                         )
@@ -1016,6 +1509,7 @@ class AskService:
                     selected_models=selected_models,
                     normalized_query=normalized_query,
                     matched_rewrites=matched_rewrites,
+                    query_decomposition=query_decomposition,
                     trace_id=trace_id,
                     timing_events=timing_snapshot(),
                     is_followup=True if histories else False,
@@ -1053,30 +1547,11 @@ class AskService:
                     selected_models=selected_models,
                     normalized_query=normalized_query,
                     matched_rewrites=matched_rewrites,
+                    query_decomposition=query_decomposition,
                     trace_id=trace_id,
                     timing_events=timing_snapshot(),
                     is_followup=True if histories else False,
                 )
-
-                if allow_sql_functions_retrieval:
-                    sql_functions = await _timed_await(
-                        timing_events,
-                        "ai.sql_functions_retrieval",
-                        self._pipelines["sql_functions_retrieval"].run(
-                            project_id=ask_request.project_id,
-                        ),
-                    )
-                else:
-                    sql_functions = []
-
-                if allow_sql_knowledge_retrieval:
-                    sql_knowledge = await _timed_await(
-                        timing_events,
-                        "ai.sql_knowledge_retrieval",
-                        self._pipelines["sql_knowledge_retrieval"].run(
-                            project_id=ask_request.project_id,
-                        ),
-                    )
 
                 has_calculated_field = _retrieval_result.get(
                     "has_calculated_field", False
@@ -1112,6 +1587,7 @@ class AskService:
                             selected_models=(
                                 selected_models.model_dump() if selected_models else None
                             ),
+                            validated_subquery_drafts=validated_subquery_drafts,
                         ),
                         lambda _result: {"followup": True},
                     )
@@ -1142,18 +1618,32 @@ class AskService:
                             selected_models=(
                                 selected_models.model_dump() if selected_models else None
                             ),
+                            validated_subquery_drafts=validated_subquery_drafts,
                         ),
                         lambda _result: {"followup": False},
                     )
 
+                sql_generation_duration_ms = latest_timing_duration(
+                    "ai.sql_generation"
+                )
                 if sql_valid_result := text_to_sql_generation_results["post_process"][
                     "valid_generation_result"
                 ]:
+                    append_sql_trace_event(
+                        stage="ai_initial_generation_valid",
+                        attempt=1,
+                        status="VALID",
+                        duration_ms=sql_generation_duration_ms,
+                        generation_duration_ms=sql_generation_duration_ms,
+                        sql=sql_valid_result.get("sql"),
+                        original_sql=sql_valid_result.get("sql"),
+                    )
                     api_results = [
                         AskResult(
                             **{
                                 "sql": sql_valid_result.get("sql"),
                                 "type": "llm",
+                                "sql_dialect": denodo_generated_sql_dialect(),
                             }
                         )
                     ]
@@ -1170,6 +1660,22 @@ class AskService:
                 elif failed_dry_run_result := text_to_sql_generation_results[
                     "post_process"
                 ]["invalid_generation_result"]:
+                    failed_original_sql = failed_dry_run_result.get(
+                        "original_sql",
+                        failed_dry_run_result.get("sql"),
+                    )
+                    append_sql_trace_event(
+                        stage="ai_initial_dry_run_failed",
+                        attempt=1,
+                        status=failed_dry_run_result.get("type") or "INVALID",
+                        duration_ms=sql_generation_duration_ms,
+                        generation_duration_ms=sql_generation_duration_ms,
+                        error=failed_dry_run_result.get("error"),
+                        sql=failed_dry_run_result.get("sql"),
+                        original_sql=failed_original_sql,
+                        before_sql=failed_original_sql,
+                        after_sql=failed_dry_run_result.get("sql"),
+                    )
                     if denodo_logging_enabled:
                         _log_denodo_event(
                             "warning",
@@ -1195,7 +1701,10 @@ class AskService:
                                 )
                             break
 
-                        original_sql = failed_dry_run_result["original_sql"]
+                        original_sql = failed_dry_run_result.get(
+                            "original_sql",
+                            failed_dry_run_result["sql"],
+                        )
                         invalid_sql = failed_dry_run_result["sql"]
                         error_message = failed_dry_run_result["error"]
                         current_sql_correction_retries += 1
@@ -1222,8 +1731,10 @@ class AskService:
                             selected_models=selected_models,
                             normalized_query=normalized_query,
                             matched_rewrites=matched_rewrites,
+                            query_decomposition=query_decomposition,
                             trace_id=trace_id,
                             timing_events=timing_snapshot(),
+                            sql_trace_events=sql_trace_snapshot(),
                             is_followup=True if histories else False,
                         )
 
@@ -1274,20 +1785,54 @@ class AskService:
                                     if selected_models
                                     else None
                                 ),
+                                validated_subquery_drafts=validated_subquery_drafts,
                             ),
                             lambda _result: {
                                 "attempt": current_sql_correction_retries
                             },
                         )
 
-                        if valid_generation_result := sql_correction_results[
+                        correction_generation_duration_ms = latest_timing_duration(
+                            f"ai.sql_correction_attempt_{current_sql_correction_retries}",
+                            current_sql_correction_retries,
+                        )
+                        correction_diagnosis_duration_ms = (
+                            latest_timing_duration(
+                                "ai.sql_diagnosis",
+                                current_sql_correction_retries,
+                            )
+                            if allow_sql_diagnosis
+                            else 0
+                        )
+                        correction_total_duration_ms = (
+                            correction_generation_duration_ms
+                            + correction_diagnosis_duration_ms
+                        )
+                        correction_post_process = sql_correction_results[
                             "post_process"
-                        ]["valid_generation_result"]:
+                        ]
+
+                        if valid_generation_result := correction_post_process[
+                            "valid_generation_result"
+                        ]:
+                            append_sql_trace_event(
+                                stage="ai_sql_correction_generated",
+                                attempt=current_sql_correction_retries,
+                                status="CORRECTED",
+                                duration_ms=correction_total_duration_ms,
+                                generation_duration_ms=correction_generation_duration_ms,
+                                diagnosis_duration_ms=correction_diagnosis_duration_ms,
+                                sql=valid_generation_result.get("sql"),
+                                original_sql=original_sql,
+                                before_sql=invalid_sql,
+                                after_sql=valid_generation_result.get("sql"),
+                            )
                             api_results = [
                                 AskResult(
                                     **{
                                         "sql": valid_generation_result.get("sql"),
                                         "type": "llm",
+                                        "sql_dialect": denodo_generated_sql_dialect(),
                                     }
                                 )
                             ]
@@ -1303,9 +1848,22 @@ class AskService:
                                 )
                             break
 
-                        failed_dry_run_result = sql_correction_results["post_process"][
+                        failed_dry_run_result = correction_post_process[
                             "invalid_generation_result"
                         ]
+                        append_sql_trace_event(
+                            stage="ai_sql_correction_generated",
+                            attempt=current_sql_correction_retries,
+                            status=failed_dry_run_result.get("type") or "RETRY_FAILED",
+                            duration_ms=correction_total_duration_ms,
+                            generation_duration_ms=correction_generation_duration_ms,
+                            diagnosis_duration_ms=correction_diagnosis_duration_ms,
+                            error=failed_dry_run_result.get("error"),
+                            sql=failed_dry_run_result.get("sql"),
+                            original_sql=original_sql,
+                            before_sql=invalid_sql,
+                            after_sql=failed_dry_run_result.get("sql"),
+                        )
                         if denodo_logging_enabled:
                             _log_denodo_event(
                                 "warning",
@@ -1343,8 +1901,10 @@ class AskService:
                         selected_models=selected_models,
                         normalized_query=normalized_query,
                         matched_rewrites=matched_rewrites,
+                        query_decomposition=query_decomposition,
                         trace_id=trace_id,
                         timing_events=timing_snapshot(),
+                        sql_trace_events=sql_trace_snapshot(),
                         is_followup=True if histories else False,
                     )
                 results["ask_result"] = api_results
@@ -1380,8 +1940,10 @@ class AskService:
                         selected_models=selected_models,
                         normalized_query=normalized_query,
                         matched_rewrites=matched_rewrites,
+                        query_decomposition=query_decomposition,
                         trace_id=trace_id,
                         timing_events=timing_snapshot(),
+                        sql_trace_events=sql_trace_snapshot(),
                         is_followup=True if histories else False,
                     )
                 results["metadata"]["error_type"] = "NO_RELEVANT_SQL"
@@ -1415,8 +1977,10 @@ class AskService:
                 selected_models=selected_models,
                 normalized_query=normalized_query,
                 matched_rewrites=matched_rewrites,
+                query_decomposition=query_decomposition,
                 trace_id=trace_id,
                 timing_events=timing_snapshot(),
+                sql_trace_events=sql_trace_snapshot(),
                 is_followup=True if histories else False,
             )
 

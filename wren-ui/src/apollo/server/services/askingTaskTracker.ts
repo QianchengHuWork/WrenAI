@@ -1,4 +1,5 @@
 import {
+  appendSqlTraceEntries,
   appendTimingTrace,
   countToolCalls,
   createTimingStep,
@@ -43,6 +44,7 @@ interface TrackedTask {
   aiPollStartedAt?: number;
   aiPollRecorded?: boolean;
   timingTraceWritten?: boolean;
+  sqlTraceWritten?: boolean;
 }
 
 export type TrackedAskingResult = AskResult & {
@@ -390,6 +392,7 @@ export class AskingTaskTracker implements IAskingTaskTracker {
             if (this.isTaskFinalized(result.status)) {
               task.isFinalized = true;
               this.writeAskTimingTrace(task, result);
+              this.writeAskSqlTrace(task, result);
               // update thread response if threadResponseId is provided
               if (task.threadResponseId) {
                 await this.updateThreadResponseWhenTaskFinalized(task);
@@ -464,10 +467,7 @@ export class AskingTaskTracker implements IAskingTaskTracker {
 
     const toolCalls = result.toolCalls || [];
     const { validateCount, correctionCount } = countToolCalls(toolCalls);
-    const steps = [
-      ...(task.timingSteps || []),
-      ...(result.timingEvents || []),
-    ];
+    const steps = [...(task.timingSteps || []), ...(result.timingEvents || [])];
 
     try {
       appendTimingTrace({
@@ -485,6 +485,32 @@ export class AskingTaskTracker implements IAskingTaskTracker {
       task.timingTraceWritten = true;
     } catch (error: any) {
       logger.warn(`Failed to write ask timing trace: ${error.message}`);
+    }
+  }
+
+  private writeAskSqlTrace(task: TrackedTask, result: AskResult) {
+    if (task.sqlTraceWritten) return;
+
+    const sqlTraceEvents = result.sqlTraceEvents || [];
+    if (!sqlTraceEvents.length) {
+      task.sqlTraceWritten = true;
+      return;
+    }
+
+    try {
+      appendSqlTraceEntries(
+        sqlTraceEvents.map((event) => ({
+          ...event,
+          askQueryId: task.queryId,
+          traceId: event.traceId || result.traceId,
+          question: task.question,
+          selectedModels: event.selectedModels || result.selectedModels,
+          normalizedQuery: event.normalizedQuery ?? result.normalizedQuery,
+        })),
+      );
+      task.sqlTraceWritten = true;
+    } catch (error: any) {
+      logger.warn(`Failed to write ask SQL trace: ${error.message}`);
     }
   }
 

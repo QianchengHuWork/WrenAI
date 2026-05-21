@@ -104,6 +104,7 @@ export type AskingTask = {
   invalidSql?: Maybe<Scalars['String']>;
   matchedRewrites?: Maybe<Array<MatchedRewrite>>;
   normalizedQuery?: Maybe<Scalars['String']>;
+  queryDecomposition?: Maybe<QueryDecomposition>;
   queryId?: Maybe<Scalars['String']>;
   rephrasedQuestion?: Maybe<Scalars['String']>;
   retrievedTables?: Maybe<Array<Scalars['String']>>;
@@ -704,6 +705,20 @@ export type MatchedRewrite = {
   reason?: Maybe<Scalars['String']>;
   scope: SemanticScope;
   userPhrase: Scalars['String'];
+};
+
+export type QueryDecomposition = {
+  __typename?: 'QueryDecomposition';
+  complexity: Scalars['String'];
+  subqueries: Array<QueryDecompositionSubquery>;
+  subqueryCount: Scalars['Int'];
+};
+
+export type QueryDecompositionSubquery = {
+  __typename?: 'QueryDecompositionSubquery';
+  cteName: Scalars['String'];
+  grain?: Maybe<Scalars['String']>;
+  objective: Scalars['String'];
 };
 
 export type ModelInfo = {

@@ -2,9 +2,19 @@ from src.pipelines.generation.denodo_prompt_context import (
     DENODO_BUSINESS_FORMULA_INSTRUCTION_ID,
     DENODO_CONTEXT_MARKER,
     DENODO_TECHNICAL_RULES_INSTRUCTION_ID,
+    CONVERSION_CORE_TABLE,
+    ORDER_CITY_TABLE,
     build_denodo_runtime_instructions,
     is_conversion_rate_query,
     prioritize_conversion_core_documents,
+)
+from src.web.v1.services.ask import (
+    _build_scoped_denodo_semantic_context,
+    _override_denodo_scope_for_known_patterns,
+)
+from src.web.v1.services.denodo_scope_normalization import (
+    CandidateModelSummary,
+    SelectedModels,
 )
 
 
@@ -62,3 +72,72 @@ def test_skip_runtime_instruction_without_denodo_context():
     )
 
     assert instructions == []
+
+
+def test_scoped_denodo_semantic_context_preserves_marker_and_native_context():
+    semantic_context = "\n\n".join(
+        [
+            f"Denodo context marker: {DENODO_CONTEXT_MARKER}",
+            "Native Denodo VQL schema mapping.",
+            'model all_model -> native view "all_model"; native columns: "old_col"',
+            "Semantic dictionary entries:\n- scope: old_model.old_col",
+        ]
+    )
+
+    scoped = _build_scoped_denodo_semantic_context(
+        semantic_context,
+        '- scope: dv_package_order_core.package_name | aliases: ["选装包"]',
+    )
+
+    assert DENODO_CONTEXT_MARKER in scoped
+    assert "Native Denodo VQL schema mapping." in scoped
+    assert "old_model.old_col" not in scoped
+    assert "dv_package_order_core.package_name" in scoped
+
+
+def test_q20_scope_override_selects_conversion_core_and_city_order_amount():
+    selected = _override_denodo_scope_for_known_patterns(
+        (
+            "最近 12 个月，订单金额排名前 5 的城市中，哪些城市出现过订单转化率"
+            "连续两个月下降？同时给出对应月份和降幅。"
+        ),
+        SelectedModels(
+            primary_model="dm_conversion_month_strategy",
+            secondary_models=[ORDER_CITY_TABLE],
+            needs_join=True,
+            reasoning=["llm selected strategy aggregate"],
+        ),
+        [
+            CandidateModelSummary(model="dm_conversion_month_strategy"),
+            CandidateModelSummary(model=ORDER_CITY_TABLE),
+            CandidateModelSummary(model=CONVERSION_CORE_TABLE),
+        ],
+    )
+
+    assert selected is not None
+    assert selected.primary_model == CONVERSION_CORE_TABLE
+    assert selected.secondary_models == [ORDER_CITY_TABLE]
+    assert selected.needs_join is True
+    assert "Rule override" in selected.reasoning[0]
+
+
+def test_q20_scope_override_does_not_force_missing_required_models():
+    original = SelectedModels(
+        primary_model="dm_conversion_month_strategy",
+        secondary_models=[ORDER_CITY_TABLE],
+        needs_join=True,
+    )
+
+    selected = _override_denodo_scope_for_known_patterns(
+        (
+            "最近 12 个月，订单金额排名前 5 的城市中，哪些城市出现过订单转化率"
+            "连续两个月下降？同时给出对应月份和降幅。"
+        ),
+        original,
+        [
+            CandidateModelSummary(model="dm_conversion_month_strategy"),
+            CandidateModelSummary(model=ORDER_CITY_TABLE),
+        ],
+    )
+
+    assert selected == original

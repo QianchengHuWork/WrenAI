@@ -106,6 +106,15 @@ const COMMON_ASKING_TASK = gql`
       canonicalValue
       reason
     }
+    queryDecomposition {
+      complexity
+      subqueryCount
+      subqueries {
+        cteName
+        objective
+        grain
+      }
+    }
     toolCalls
     semanticFiles
     invalidSql

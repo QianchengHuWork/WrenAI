@@ -106,10 +106,50 @@ export interface MatchedRewrite {
   reason?: string;
 }
 
+export interface QueryDecompositionSubquery {
+  cteName: string;
+  objective: string;
+  grain?: string | null;
+}
+
+export interface QueryDecomposition {
+  complexity: 'simple' | 'complex';
+  subqueryCount: number;
+  subqueries: QueryDecompositionSubquery[];
+}
+
 export interface TimingEvent {
   name: string;
   durationMs: number;
   metadata?: Record<string, any>;
+}
+
+export interface SqlTraceEvent {
+  source: 'ai_service' | 'denodo_guard';
+  stage: string;
+  attempt?: number | null;
+  candidateIndex?: number | null;
+  status?: string | null;
+  durationMs?: number | null;
+  generationDurationMs?: number | null;
+  diagnosisDurationMs?: number | null;
+  validationDurationMs?: number | null;
+  correctionQueryId?: string | null;
+  error?: string | null;
+  sql?: string | null;
+  originalSql?: string | null;
+  beforeSql?: string | null;
+  afterSql?: string | null;
+  candidateSql?: string | null;
+  nativeSql?: string | null;
+  semanticRewriteBeforeSql?: string | null;
+  semanticRewriteAfterSql?: string | null;
+  denseRankRewriteBeforeSql?: string | null;
+  denseRankRewriteAfterSql?: string | null;
+  validateSql?: string | null;
+  selectedModels?: SelectedModels;
+  normalizedQuery?: string | null;
+  traceId?: string | null;
 }
 
 export interface SemanticDictionaryEntry {
@@ -204,11 +244,13 @@ export type AskResult = AskResponse<
   selectedModels?: SelectedModels;
   normalizedQuery?: string;
   matchedRewrites?: MatchedRewrite[];
+  queryDecomposition?: QueryDecomposition | null;
   toolCalls?: string[];
   semanticFiles?: string[];
   invalidSql?: string;
   traceId?: string;
   timingEvents?: TimingEvent[];
+  sqlTraceEvents?: SqlTraceEvent[];
 };
 
 export interface SqlCorrectionInput {

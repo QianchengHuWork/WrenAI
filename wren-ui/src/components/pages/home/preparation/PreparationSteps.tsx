@@ -117,6 +117,7 @@ export default function PreparationSteps(
             selectedModels={preparedTask?.selectedModels}
             normalizedQuery={preparedTask?.normalizedQuery}
             matchedRewrites={preparedTask?.matchedRewrites}
+            queryDecomposition={preparedTask?.queryDecomposition}
             isAdjustment={preparedTask.isAdjustment}
           />
         </Timeline.Item>

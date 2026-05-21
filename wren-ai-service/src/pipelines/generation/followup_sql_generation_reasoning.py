@@ -69,6 +69,11 @@ Needs Join: {{ selected_models.needs_join }}
 {% endfor %}
 {% endif %}
 
+{% if query_decomposition_context %}
+### QUERY DECOMPOSITION ###
+{{ query_decomposition_context }}
+{% endif %}
+
 ### User's QUERY HISTORY ###
 {% for history in histories %}
 Question:
@@ -84,6 +89,13 @@ Normalized User Question: {{ normalized_query }}
 {% endif %}
 Language: {{ language }}
 Current Time: {{ current_time }}
+
+### DENODO PLANNING CONSTRAINTS ###
+- If selected models are present, reason only over those selected models and the retrieved schema.
+- Treat `ptstart` and `ptend` as view-specific. Plan them only for views whose retrieved schema explicitly includes both columns; for `dm_ord_month_city`, plan month filtering with `order_year_month` unless its schema lists `ptstart` and `ptend`.
+- For YYYYMM fields, do not plan expressions like `MAX(order_year_month) - 12`. Use concrete YYYYMM bounds for relative windows, or derive `month_index` before month arithmetic.
+- For intermediate Top-N sets that feed later joins/filters, plan a true Top-N filter instead of relying on final ORDER BY.
+- For continuous two-month decline, plan three consecutive month rows and two decreases using YYYYMM month_index self joins, not LAG/LEAD.
 
 Let's think step by step.
 """
@@ -104,6 +116,7 @@ def prompt(
     normalized_query: str | None = None,
     matched_rewrites: list[dict] | None = None,
     selected_models: dict | None = None,
+    query_decomposition_context: str | None = None,
 ) -> dict:
     _prompt = prompt_builder.run(
         query=query,
@@ -118,6 +131,7 @@ def prompt(
         normalized_query=normalized_query or query,
         matched_rewrites=matched_rewrites or [],
         selected_models=selected_models,
+        query_decomposition_context=query_decomposition_context or "",
         language=configuration.language,
         current_time=configuration.show_current_time(),
     )
@@ -218,6 +232,7 @@ class FollowUpSQLGenerationReasoning(BasicPipeline):
         normalized_query: str | None = None,
         matched_rewrites: list[dict] | None = None,
         selected_models: dict | None = None,
+        query_decomposition_context: str | None = None,
     ):
         logger.info("Followup SQL Generation Reasoning pipeline is running...")
         has_normalization_context = bool(
@@ -251,6 +266,7 @@ class FollowUpSQLGenerationReasoning(BasicPipeline):
                 "normalized_query": normalized_query or query,
                 "matched_rewrites": matched_rewrites or [],
                 "selected_models": selected_models,
+                "query_decomposition_context": query_decomposition_context,
                 **self._components,
             },
         )
