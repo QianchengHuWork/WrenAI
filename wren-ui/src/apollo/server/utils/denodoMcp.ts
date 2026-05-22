@@ -365,11 +365,7 @@ const normalizeDenodoAssociationMultiplicity = (
   const normalized = value?.trim();
   if (!normalized) return null;
   if (normalized === '1' || normalized === '0,1') return 'one';
-  if (
-    normalized === '0,*' ||
-    normalized === '1,*' ||
-    normalized === '*'
-  ) {
+  if (normalized === '0,*' || normalized === '1,*' || normalized === '*') {
     return 'many';
   }
   return null;
@@ -895,7 +891,8 @@ const collectDenodoSemanticCandidateColumns = ({
             candidateText,
             EXCLUDED_DICTIONARY_PATTERNS,
           );
-          const explicitMappings = extractEnumMappingsFromDescription(description);
+          const explicitMappings =
+            extractEnumMappingsFromDescription(description);
           const mappings = explicitMappings.length
             ? explicitMappings
             : extractCanonicalMappings({
@@ -1478,13 +1475,6 @@ const buildDecimalTarget = (scale = 6) => [
   },
 ];
 
-const buildFloatTarget = () => [
-  {
-    dataType: 'FLOAT',
-    suffix: [],
-  },
-];
-
 const buildCastExpr = (expr: any, target: any[]) => ({
   type: 'cast',
   keyword: 'cast',
@@ -1572,9 +1562,7 @@ const getDateBucketUnit = (value?: string): DateBucketUnit | null => {
   }
 };
 
-type RewriteExpressionOptions = {
-  forceFloatForCountRate?: boolean;
-};
+type RewriteExpressionOptions = Record<string, never>;
 
 const getColumnRefName = (expr: any) => {
   if (expr?.type !== 'column_ref') {
@@ -1583,27 +1571,7 @@ const getColumnRefName = (expr: any) => {
   return `${typeof expr.column === 'string' ? expr.column : expr.column?.expr?.value || expr.column?.value || ''}`;
 };
 
-const containsCountLikeColumn = (expr: any): boolean => {
-  if (!expr || typeof expr !== 'object') {
-    return false;
-  }
-
-  if (expr.type === 'column_ref') {
-    const columnName = getColumnRefName(expr).toLowerCase();
-    return /(^|_)(count|cnt)(_|$)/.test(columnName);
-  }
-
-  if (Array.isArray(expr)) {
-    return expr.some((item) => containsCountLikeColumn(item));
-  }
-
-  return Object.values(expr).some((value) => containsCountLikeColumn(value));
-};
-
-const normalizeCastTarget = (
-  target: any,
-  options: RewriteExpressionOptions = {},
-) => {
+const normalizeCastTarget = (target: any) => {
   const dataType = `${target?.dataType || ''}`.toUpperCase();
 
   if (
@@ -1615,15 +1583,6 @@ const normalizeCastTarget = (
       ...target,
       suffix: [],
     };
-  }
-
-  if (
-    options.forceFloatForCountRate &&
-    ['DECIMAL', 'NUMERIC', 'DOUBLE', 'FLOAT', 'REAL', 'NUMBER'].includes(
-      dataType,
-    )
-  ) {
-    return buildFloatTarget()[0];
   }
 
   if (['DOUBLE', 'FLOAT', 'REAL', 'NUMBER'].includes(dataType)) {
@@ -1782,7 +1741,10 @@ export const removeUnavailableDenodoPartitionFilters = (
     const rewriteCondition = (expr: any, scope: StatementScope): any | null => {
       if (!expr || typeof expr !== 'object') return expr;
 
-      if (expr.type === 'binary_expr' && `${expr.operator}`.toUpperCase() === 'AND') {
+      if (
+        expr.type === 'binary_expr' &&
+        `${expr.operator}`.toUpperCase() === 'AND'
+      ) {
         return combineAnd(
           rewriteCondition(expr.left, scope),
           rewriteCondition(expr.right, scope),
@@ -1839,7 +1801,9 @@ export const removeUnavailableDenodoPartitionFilters = (
         }
       });
 
-      (statement.from || []).forEach((item: any) => rewriteFromItem(item, scope));
+      (statement.from || []).forEach((item: any) =>
+        rewriteFromItem(item, scope),
+      );
       statement.where = rewriteCondition(statement.where, scope);
       statement.having = rewriteCondition(statement.having, scope);
 
@@ -2037,19 +2001,14 @@ const rewriteAst = (ast: any, manifest: Manifest): any => {
     if (expr.type === 'cast' && Array.isArray(expr.target)) {
       expr.expr = rewriteExpression(expr.expr, scope, options);
       expr.target = expr.target.map((target: any) =>
-        normalizeCastTarget(target, options),
+        normalizeCastTarget(target),
       );
       return expr;
     }
 
     if (expr.type === 'binary_expr' && expr.operator === '/') {
-      const divisionOptions = {
-        ...options,
-        forceFloatForCountRate:
-          options.forceFloatForCountRate || containsCountLikeColumn(expr),
-      };
-      expr.left = rewriteExpression(expr.left, scope, divisionOptions);
-      expr.right = rewriteExpression(expr.right, scope, divisionOptions);
+      expr.left = rewriteExpression(expr.left, scope, options);
+      expr.right = rewriteExpression(expr.right, scope, options);
       return expr;
     }
 
@@ -2269,19 +2228,14 @@ const rewriteDenodoDialectExpressionAst = (ast: any): any => {
     if (expr.type === 'cast' && Array.isArray(expr.target)) {
       expr.expr = rewriteExpression(expr.expr, options);
       expr.target = expr.target.map((target: any) =>
-        normalizeCastTarget(target, options),
+        normalizeCastTarget(target),
       );
       return expr;
     }
 
     if (expr.type === 'binary_expr' && expr.operator === '/') {
-      const divisionOptions = {
-        ...options,
-        forceFloatForCountRate:
-          options.forceFloatForCountRate || containsCountLikeColumn(expr),
-      };
-      expr.left = rewriteExpression(expr.left, divisionOptions);
-      expr.right = rewriteExpression(expr.right, divisionOptions);
+      expr.left = rewriteExpression(expr.left, options);
+      expr.right = rewriteExpression(expr.right, options);
       return expr;
     }
 
@@ -2322,7 +2276,10 @@ const rewriteDenodoDialectExpressionAst = (ast: any): any => {
       if (functionName === 'TO_NUMBER' && args.length === 1) {
         return replaceNode(
           expr,
-          buildCastExpr(rewriteExpression(args[0], options), buildDecimalTarget(2)),
+          buildCastExpr(
+            rewriteExpression(args[0], options),
+            buildDecimalTarget(2),
+          ),
         );
       }
     }
@@ -2377,7 +2334,9 @@ const rewriteDenodoDialectExpressionAst = (ast: any): any => {
     });
 
     (statement.from || []).forEach((item) => rewriteFromItem(item));
-    (statement.columns || []).forEach((column) => rewriteExpression(column?.expr));
+    (statement.columns || []).forEach((column) =>
+      rewriteExpression(column?.expr),
+    );
     rewriteExpression(statement.where);
     rewriteExpression(statement.having);
     (statement.groupby?.columns || []).forEach((column) =>

@@ -92,7 +92,8 @@ Current Time: {{ current_time }}
 
 ### DENODO PLANNING CONSTRAINTS ###
 - If selected models are present, reason only over those selected models and the retrieved schema.
-- Treat `ptstart` and `ptend` as view-specific. Plan them only for views whose retrieved schema explicitly includes both columns; for `dm_ord_month_city`, plan month filtering with `order_year_month` unless its schema lists `ptstart` and `ptend`.
+- If runtime metric formula instructions are present, use those formulas as the source of truth for metric expressions and forbidden patterns.
+- Treat `ptstart` and `ptend` as view-specific Denodo parameter fields. Plan them only for views whose retrieved schema explicitly includes both columns; for `dm_ord_month_city`, plan month filtering with `order_year_month` unless its schema lists `ptstart` and `ptend`. If planned, use equality only: `ptstart = '<start_yyyymmdd>' AND ptend = '<end_yyyymmdd>'`; never plan range operators for them.
 - For YYYYMM fields, do not plan expressions like `MAX(order_year_month) - 12`. Use concrete YYYYMM bounds for relative windows, or derive `month_index` before month arithmetic.
 - For intermediate Top-N sets that feed later joins/filters, plan a true Top-N filter instead of relying on final ORDER BY.
 - For continuous two-month decline, plan three consecutive month rows and two decreases using YYYYMM month_index self joins, not LAG/LEAD.

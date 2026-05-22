@@ -116,6 +116,7 @@ def build_runtime_sql_instructions(
     table_names: list[str],
     instructions: list[dict] | None = None,
     semantic_context: str | None = None,
+    metric_formulas: list[Any] | None = None,
 ) -> list[dict]:
     from src.pipelines.generation.denodo_prompt_context import (
         build_denodo_runtime_instructions,
@@ -126,6 +127,7 @@ def build_runtime_sql_instructions(
         table_names,
         semantic_context,
         instructions,
+        metric_formulas,
     )
 
 
@@ -147,17 +149,86 @@ def _override_denodo_scope_for_known_patterns(
     query: str,
     selected_models: SelectedModels | None,
     candidate_models: list[CandidateModelSummary],
+    metric_formulas: list[Any] | None = None,
 ) -> SelectedModels | None:
     from src.pipelines.generation.denodo_prompt_context import (
+        ASSIGN_TOTAL_CONVERSION_TABLE,
+        CLEW_CORE_TABLE,
         CONVERSION_CORE_TABLE,
         ORDER_CITY_TABLE,
+        ORD_CORE_TABLE,
+        get_denodo_metric_formula_scope_override,
         is_denodo_q20_city_conversion_decline_query,
+        is_lead_overview_conversion_query,
+        is_lead_source_conversion_query,
+        is_smart_assignment_conversion_metric_query,
     )
+
+    candidate_names = {candidate.model for candidate in candidate_models}
+    if (
+        (
+            is_lead_source_conversion_query(query)
+            or is_lead_overview_conversion_query(query)
+        )
+        and CLEW_CORE_TABLE in candidate_names
+        and ORD_CORE_TABLE in candidate_names
+    ):
+        existing_reasoning = selected_models.reasoning if selected_models else []
+        return SelectedModels(
+            primary_model=CLEW_CORE_TABLE,
+            secondary_models=[ORD_CORE_TABLE],
+            needs_join=True,
+            reasoning=[
+                "Rule override: general lead conversion questions use "
+                f"{CLEW_CORE_TABLE} as the lead-side primary model and "
+                f"{ORD_CORE_TABLE} for order attribution.",
+                *existing_reasoning,
+            ][:6],
+        )
+
+    metric_formula_override = get_denodo_metric_formula_scope_override(
+        query,
+        candidate_names,
+        metric_formulas,
+    )
+    if metric_formula_override:
+        primary_model = metric_formula_override["primary_model"]
+        required_models = metric_formula_override.get("required_models") or []
+        existing_reasoning = selected_models.reasoning if selected_models else []
+        return SelectedModels(
+            primary_model=primary_model,
+            secondary_models=[
+                model for model in required_models if model != primary_model
+            ],
+            needs_join=bool(required_models),
+            reasoning=[
+                "Rule override: metric formula "
+                f"{metric_formula_override.get('name')} "
+                f"uses {primary_model} as the authoritative primary model.",
+                *existing_reasoning,
+            ][:6],
+        )
+
+    if (
+        is_smart_assignment_conversion_metric_query(query)
+        and ASSIGN_TOTAL_CONVERSION_TABLE in candidate_names
+    ):
+        existing_reasoning = selected_models.reasoning if selected_models else []
+        return SelectedModels(
+            primary_model=ASSIGN_TOTAL_CONVERSION_TABLE,
+            secondary_models=[],
+            needs_join=False,
+            reasoning=[
+                "Rule override: smart-assignment conversion metric questions "
+                f"use {ASSIGN_TOTAL_CONVERSION_TABLE} as the authoritative "
+                "conversion-detail view.",
+                *existing_reasoning,
+            ][:6],
+        )
 
     if not is_denodo_q20_city_conversion_decline_query(query):
         return selected_models
 
-    candidate_names = {candidate.model for candidate in candidate_models}
     required_models = {CONVERSION_CORE_TABLE, ORDER_CITY_TABLE}
     if not required_models <= candidate_names:
         return selected_models
@@ -270,6 +341,56 @@ class AskHistory(BaseModel):
     question: str
 
 
+class MetricFormulaMetric(BaseModel):
+    name: str
+    expression: str
+    description: Optional[str] = None
+
+
+class MetricFormulaScope(BaseModel):
+    primary_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("primary_model", "primaryModel"),
+    )
+    required_models: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("required_models", "requiredModels"),
+    )
+
+
+class MetricFormulaMatch(BaseModel):
+    trigger_phrases: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("trigger_phrases", "triggerPhrases"),
+    )
+    example_questions: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("example_questions", "exampleQuestions"),
+    )
+
+
+class MetricFormula(BaseModel):
+    id: str
+    enabled: bool = True
+    data_source: str = Field(
+        default="denodo",
+        validation_alias=AliasChoices("data_source", "dataSource"),
+    )
+    name: str
+    description: Optional[str] = None
+    scope: MetricFormulaScope
+    match: MetricFormulaMatch = Field(default_factory=MetricFormulaMatch)
+    metrics: list[MetricFormulaMetric] = Field(default_factory=list)
+    forbidden_patterns: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("forbidden_patterns", "forbiddenPatterns"),
+    )
+    extra_instruction: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("extra_instruction", "extraInstruction"),
+    )
+
+
 # POST /v1/asks
 class AskRequest(BaseRequest):
     query: str
@@ -286,6 +407,10 @@ class AskRequest(BaseRequest):
     semantic_dictionary: Optional[ScopedCanonicalValueDictionary] = Field(
         default=None,
         validation_alias=AliasChoices("semantic_dictionary", "semanticDictionary"),
+    )
+    metric_formulas: list[MetricFormula] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("metric_formulas", "metricFormulas"),
     )
 
 
@@ -455,6 +580,7 @@ class AskService:
         query_decomposition: QueryDecomposition | None = None
         query_decomposition_context: str | None = None
         validated_subquery_drafts: str | None = None
+        hidden_sql_exemplar_context: str | None = None
         semantic_context = ask_request.semantic_context
         raw_semantic_dictionary = normalize_semantic_dictionary(
             ask_request.semantic_dictionary
@@ -1025,6 +1151,7 @@ class AskService:
                 documents = prioritize_conversion_core_documents(
                     user_query,
                     _retrieval_result.get("retrieval_results", []),
+                    ask_request.metric_formulas,
                 )
                 table_names = [document.get("table_name") for document in documents]
                 table_ddls = [document.get("table_ddl") for document in documents]
@@ -1041,6 +1168,7 @@ class AskService:
                     table_names,
                     instructions,
                     scoped_semantic_context,
+                    ask_request.metric_formulas,
                 )
                 if denodo_logging_enabled:
                     _log_denodo_event(
@@ -1108,6 +1236,7 @@ class AskService:
                             user_query,
                             selected_models,
                             candidate_models,
+                            ask_request.metric_formulas,
                         )
 
                         if selected_models:
@@ -1241,6 +1370,33 @@ class AskService:
                             table_ddls = [
                                 document.get("table_ddl") for document in documents
                             ]
+                            instruction_table_names = list(
+                                dict.fromkeys(
+                                    [
+                                        *table_names_after_narrowing,
+                                        *_selected_model_names(selected_models),
+                                    ]
+                                )
+                            )
+                            instructions = build_runtime_sql_instructions(
+                                user_query,
+                                instruction_table_names,
+                                instructions,
+                                scoped_semantic_context,
+                                ask_request.metric_formulas,
+                            )
+                            from src.pipelines.generation.denodo_prompt_context import (
+                                get_denodo_hidden_sql_exemplar_context,
+                            )
+
+                            hidden_sql_exemplar_context = (
+                                get_denodo_hidden_sql_exemplar_context(
+                                    user_query,
+                                    _selected_model_names(selected_models),
+                                    normalized_query=normalized_query,
+                                    reference_time=ask_request.configurations.show_current_time(),
+                                )
+                            )
                             if denodo_logging_enabled:
                                 _log_denodo_event(
                                     "info",
@@ -1588,6 +1744,7 @@ class AskService:
                                 selected_models.model_dump() if selected_models else None
                             ),
                             validated_subquery_drafts=validated_subquery_drafts,
+                            hidden_sql_exemplar_context=hidden_sql_exemplar_context,
                         ),
                         lambda _result: {"followup": True},
                     )
@@ -1619,6 +1776,7 @@ class AskService:
                                 selected_models.model_dump() if selected_models else None
                             ),
                             validated_subquery_drafts=validated_subquery_drafts,
+                            hidden_sql_exemplar_context=hidden_sql_exemplar_context,
                         ),
                         lambda _result: {"followup": False},
                     )
@@ -1786,6 +1944,7 @@ class AskService:
                                     else None
                                 ),
                                 validated_subquery_drafts=validated_subquery_drafts,
+                                hidden_sql_exemplar_context=hidden_sql_exemplar_context,
                             ),
                             lambda _result: {
                                 "attempt": current_sql_correction_retries

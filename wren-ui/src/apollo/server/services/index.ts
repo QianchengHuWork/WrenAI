@@ -9,3 +9,4 @@ export * from './dashboardService';
 export * from './askingTaskTracker';
 export * from './instructionService';
 export * from './denodoSqlGuardService';
+export * from './metricFormulaService';

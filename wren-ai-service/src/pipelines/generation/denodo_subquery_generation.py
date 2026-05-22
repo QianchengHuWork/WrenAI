@@ -105,7 +105,8 @@ output_columns: {{ subquery.output_columns | join(", ") }}
 - Do not depend on temporary tables, previous subquery result rows, or user-visible intermediate data.
 - Do not use LIMIT, FETCH, TOP, OFFSET, NULLS FIRST/LAST, or comments.
 - Avoid ORDER BY unless it is required for a supported standalone semantic; final ordering belongs in the final SQL.
-- `ptstart` and `ptend` are view-specific partition columns. Add them only when the target view's retrieved schema explicitly contains both columns. Do not add `ptstart` or `ptend` to `dm_ord_month_city` unless that view's schema lists them.
+- If runtime metric formula instructions are present, use those formulas as the source of truth for metric expressions and forbidden patterns.
+- `ptstart` and `ptend` are view-specific Denodo partition parameter columns. Add them only when the target view's retrieved schema explicitly contains both columns. Do not add `ptstart` or `ptend` to `dm_ord_month_city` unless that view's schema lists them. When used, write equality predicates only: `ptstart = '<start_yyyymmdd>' AND ptend = '<end_yyyymmdd>'`; never use <, <=, >, >=, or BETWEEN with them.
 - Do not add/subtract integers directly from YYYYMM fields or `MAX(yyyymm)` subqueries. For relative windows, use concrete YYYYMM lower/upper bounds from the normalized question/current time, or compare derived `month_index` integers when dynamic arithmetic is required.
 - If the target subquery defines an intermediate Top-N population for downstream joins, ORDER BY alone is not enough; use a Denodo-safe correlated-count filter with deterministic tie-break keys.
 - Do not use LAG or LEAD for month-over-month or consecutive-month logic. Use a YYYYMM `month_index` expression and self joins for adjacent months.

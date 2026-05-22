@@ -877,8 +877,8 @@ describe('denodoMcp utils', () => {
     expect(sql).not.toContain('DATE_TRUNC');
     expect(sql).not.toContain('DATETRUNC');
     expect(sql).toContain('FULL OUTER JOIN');
-    expect(sql).toContain('CAST("orders_count" AS FLOAT)');
-    expect(sql).toContain('CAST("leads_count" AS FLOAT)');
+    expect(sql).toContain('CAST("orders_count" AS DECIMAL(18, 6))');
+    expect(sql).toContain('CAST("leads_count" AS DECIMAL(18, 6))');
     expect(sql).toContain(
       'EXTRACT(YEAR FROM CAST("create_time" AS TIMESTAMP)) * 100 + EXTRACT(MONTH FROM CAST("create_time" AS TIMESTAMP)) AS "month"',
     );
@@ -887,7 +887,7 @@ describe('denodoMcp utils', () => {
     );
   });
 
-  it('converts decimal casts back to float for count-based conversion rates', () => {
+  it('keeps decimal casts for count-based conversion rates', () => {
     const manifest = {
       models: [
         {
@@ -926,9 +926,30 @@ describe('denodoMcp utils', () => {
       manifest,
     );
 
-    expect(sql).toContain('AS FLOAT)');
+    expect(sql).toContain('AS DECIMAL(18, 6)');
     expect(sql).toContain('NULLIF');
-    expect(sql).not.toContain('AS DECIMAL(18, 6)');
+    expect(sql).not.toContain('AS FLOAT)');
+  });
+
+  it('normalizes float casts in rounded dialect conversion rates to decimal', () => {
+    const sql = sanitizeDenodoDialectSql(
+      `SELECT
+          ROUND(
+            CAST(
+              COUNT(DISTINCT CASE WHEN "o"."has_ord_pay" = 1 THEN "l"."niche_id" END)
+              AS FLOAT
+            ) * CAST(100 AS FLOAT)
+            / NULLIF(CAST(SUM("l"."lead_count") AS FLOAT), 0),
+            2
+          ) AS "conversion_rate_with_refund"
+       FROM "leads_per_niche" AS "l"
+       LEFT JOIN "orders_per_niche" AS "o" ON "l"."niche_id" = "o"."niche_id"`,
+    );
+
+    expect(sql).toContain('ROUND(');
+    expect(sql).toContain('AS DECIMAL(18, 6)');
+    expect(sql).not.toMatch(/\bFLOAT\b/i);
+    expect(sql).not.toMatch(/\bDOUBLE\b/i);
   });
 
   it('rewrites day buckets for daily trend queries', () => {

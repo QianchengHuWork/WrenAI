@@ -118,6 +118,10 @@ Use these VQL drafts as internal guidance when correcting the final query.
 The corrected answer must still be one complete Denodo VQL query and will be validated as a whole by Denodo MCP.
 {% endif %}
 
+{% if hidden_sql_exemplar_context %}
+{{ hidden_sql_exemplar_context }}
+{% endif %}
+
 {% if original_query %}
 ### ORIGINAL QUESTION ###
 {{ original_query }}
@@ -133,9 +137,12 @@ SQL: {{ invalid_generation_result.sql }}
 Error Message: {{ invalid_generation_result.error }}
 
 ### DENODO-SPECIFIC FIX PRIORITIES ###
+- If runtime metric formula instructions are present, use those formulas as the source of truth for metric expressions and forbidden patterns.
 - If the error mentions `Function lag is not executable`, remove LAG/LEAD/window previous-row logic and rewrite consecutive-month comparisons as self joins over a YYYYMM `month_index`.
 - If the error says a `ptstart` or `ptend` field is not found on a view, remove that partition predicate from that view. Only use `ptstart`/`ptend` on views whose retrieved schema explicitly includes both columns; for `dm_ord_month_city`, use `order_year_month` for month filtering unless its schema lists `ptstart` and `ptend`.
+- If the invalid SQL uses <, <=, >, >=, or BETWEEN with `ptstart` or `ptend`, rewrite those predicates to equality boundaries: `ptstart = '<start_yyyymmdd>' AND ptend = '<end_yyyymmdd>'`.
 - If the error mentions invalid `subtract` parameter types around `MAX(...year_month...)` or a YYYYMM field, remove raw YYYYMM arithmetic. Use concrete YYYYMM lower/upper bounds from the normalized question/current time, or derive month_index integers before arithmetic.
+- If the error mentions `round(double precision, integer)`, replace FLOAT/DOUBLE casts inside rounded rate, ratio, percentage, or conversion-rate expressions with DECIMAL casts. Use `CAST(<numerator> AS DECIMAL(18, 6)) * CAST(100 AS DECIMAL(18, 6)) / NULLIF(CAST(<denominator> AS DECIMAL(18, 6)), 0)` for percentage-style rates.
 - If the invalid SQL uses ORDER BY only for an intermediate Top-N CTE that is later joined or filtered, add a real correlated-count Top-N filter with deterministic tie-break fields instead of LIMIT/FETCH/TOP.
 - Keep corrected Denodo VQL within the selected models/retrieved schema above; do not introduce unselected views from broader semantic/native mapping text.
 
@@ -158,6 +165,7 @@ def prompt(
     matched_rewrites: list[dict] | None = None,
     selected_models: dict | None = None,
     validated_subquery_drafts: str | None = None,
+    hidden_sql_exemplar_context: str | None = None,
 ) -> dict:
     _prompt = prompt_builder.run(
         documents=documents,
@@ -173,6 +181,7 @@ def prompt(
         matched_rewrites=matched_rewrites or [],
         selected_models=selected_models,
         validated_subquery_drafts=validated_subquery_drafts or "",
+        hidden_sql_exemplar_context=hidden_sql_exemplar_context or "",
     )
     return {"prompt": clean_up_new_lines(_prompt.get("prompt"))}
 
@@ -271,6 +280,7 @@ class SQLCorrection(BasicPipeline):
         matched_rewrites: list[dict] | None = None,
         selected_models: dict | None = None,
         validated_subquery_drafts: str | None = None,
+        hidden_sql_exemplar_context: str | None = None,
     ):
         logger.info("SQLCorrection pipeline is running...")
         has_normalization_context = bool(
@@ -314,6 +324,7 @@ class SQLCorrection(BasicPipeline):
                 "matched_rewrites": matched_rewrites or [],
                 "selected_models": selected_models,
                 "validated_subquery_drafts": validated_subquery_drafts,
+                "hidden_sql_exemplar_context": hidden_sql_exemplar_context,
                 **self._components,
             },
         )

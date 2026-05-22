@@ -80,6 +80,7 @@ For Denodo SQL generation:
 7. Do not use bare CAST(... AS DECIMAL) for rate, ratio, or percentage calculations, especially in HAVING, WHERE, CTE filters, or comparisons with decimal thresholds.
 8. Do not generate LIMIT, FETCH, or TOP.
 9. Only use views and columns that exist in the manifest.
+10. If a selected Denodo view has ptstart and ptend, use equality predicates only, for example ptstart = '20240501' AND ptend = '20240531'. Do not use <, <=, >, >=, or BETWEEN with ptstart or ptend.
 `.trim();
 
 const normalizeDenodoSelectedViews = (views?: string[] | null): string[] =>

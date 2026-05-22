@@ -1,5 +1,7 @@
+import calendar
 import re
 from collections.abc import Iterable
+from datetime import datetime, timedelta
 from typing import Any
 
 from src.core.engine import clean_generation_result
@@ -9,13 +11,72 @@ DENODO_CONTEXT_MARKER = "[[WREN_DENODO_CONTEXT]]"
 DENODO_TECHNICAL_RULES_INSTRUCTION_ID = "denodo_vql_technical_rules"
 DENODO_BUSINESS_FORMULA_INSTRUCTION_ID = "denodo_business_formula_rules"
 DENODO_TEMPORAL_TOPN_DECLINE_INSTRUCTION_ID = "denodo_temporal_topn_decline_rules"
+DENODO_METRIC_FORMULA_INSTRUCTION_ID_PREFIX = "denodo_metric_formula"
 
 CONVERSION_CORE_TABLE = "dv_clew_ord_conversion_core"
+ASSIGN_TOTAL_CONVERSION_TABLE = "dv_assign_total_conversion_core"
 ORDER_CITY_TABLE = "dm_ord_month_city"
 TOTAL_CLEW_TABLE = "dv_clew_total_core"
+CLEW_CORE_TABLE = "dv_clew_core"
+ORD_CORE_TABLE = "dv_ord_core"
+
+_HIDDEN_CLEW_OVERVIEW_SQL_TEMPLATE = """
+WITH leads_per_niche AS (
+    SELECT
+        niche_id,
+        COUNT(DISTINCT clew_id) AS lead_count,
+        MIN(create_date) AS min_clue_date
+    FROM dv_clew_core
+    WHERE create_date >= '{start_date_key}'
+      AND create_date < '{next_month_start_date_key}'
+      AND niche_id IS NOT NULL
+    GROUP BY niche_id
+),
+orders_per_niche AS (
+    SELECT
+        o.niche_id,
+        MAX(CASE WHEN o.is_ord_pay = 1 THEN 1 ELSE 0 END) AS has_ord_pay,
+        MAX(CASE WHEN o.is_ord_fdpay = 1 THEN 1 ELSE 0 END) AS has_ord_fdpay,
+        COALESCE(SUM(CASE WHEN o.is_ord_pay = 1 THEN o.gross_order_amount END), 0) AS total_amt_pay,
+        COALESCE(SUM(CASE WHEN o.is_ord_fdpay = 1 THEN o.gross_order_amount END), 0) AS total_amt_fdpay
+    FROM dv_ord_core o
+    JOIN leads_per_niche l ON o.niche_id = l.niche_id
+    WHERE order_date_key >= l.min_clue_date
+    GROUP BY o.niche_id
+)
+SELECT
+    SUM(l.lead_count) AS total_clues,
+    COUNT(DISTINCT CASE WHEN o.has_ord_pay = 1 THEN l.niche_id END) AS order_with_refund_cnt,
+    COUNT(DISTINCT CASE WHEN o.has_ord_fdpay = 1 THEN l.niche_id END) AS order_no_refund_cnt,
+    COALESCE(SUM(o.total_amt_pay), 0) AS amount_with_refund,
+    COALESCE(SUM(o.total_amt_fdpay), 0) AS amount_no_refund,
+    ROUND(
+        CAST(COUNT(DISTINCT CASE WHEN o.has_ord_pay = 1 THEN l.niche_id END) AS DECIMAL(18, 6))
+        * CAST(100 AS DECIMAL(18, 6))
+        / NULLIF(CAST(SUM(l.lead_count) AS DECIMAL(18, 6)), 0),
+        2
+    ) AS conversion_with_refund,
+    ROUND(
+        CAST(COUNT(DISTINCT CASE WHEN o.has_ord_fdpay = 1 THEN l.niche_id END) AS DECIMAL(18, 6))
+        * CAST(100 AS DECIMAL(18, 6))
+        / NULLIF(CAST(SUM(l.lead_count) AS DECIMAL(18, 6)), 0),
+        2
+    ) AS conversion_no_refund,
+    ROUND(
+        CAST(
+            COUNT(DISTINCT CASE WHEN o.has_ord_pay = 1 THEN l.niche_id END)
+            - COUNT(DISTINCT CASE WHEN o.has_ord_fdpay = 1 THEN l.niche_id END)
+            AS DECIMAL(18, 6)
+        ) * CAST(100 AS DECIMAL(18, 6))
+        / NULLIF(CAST(SUM(l.lead_count) AS DECIMAL(18, 6)), 0),
+        2
+    ) AS refund_impact_pct
+FROM leads_per_niche l
+LEFT JOIN orders_per_niche o ON l.niche_id = o.niche_id
+""".strip()
 
 SMART_ASSIGNMENT_CONVERSION_TABLES = {
-    CONVERSION_CORE_TABLE,
+    ASSIGN_TOTAL_CONVERSION_TABLE,
     "dm_conversion_month_strategy",
 }
 TOTAL_CLEW_TABLES = {
@@ -43,6 +104,48 @@ _SMART_ASSIGNMENT_CONTEXT_PATTERNS = [
     re.compile(r"assignment", re.IGNORECASE),
     re.compile(r"post[- ]assignment", re.IGNORECASE),
     re.compile(r"strategy", re.IGNORECASE),
+]
+_SMART_ASSIGNMENT_METRIC_PATTERNS = [
+    re.compile(r"线索数"),
+    re.compile(r"线索量"),
+    re.compile(r"订单数"),
+    re.compile(r"转化订单数"),
+    re.compile(r"转化订单金额"),
+    re.compile(r"转化金额"),
+    re.compile(r"订单金额"),
+    re.compile(r"lead count", re.IGNORECASE),
+    re.compile(r"order count", re.IGNORECASE),
+    re.compile(r"conversion amount", re.IGNORECASE),
+    re.compile(r"conversion order amount", re.IGNORECASE),
+]
+_LEAD_SOURCE_PATTERNS = [
+    re.compile(r"线索.{0,8}来源"),
+    re.compile(r"来源.{0,8}线索"),
+    re.compile(r"四级来源"),
+    re.compile(r"来源目录"),
+    re.compile(r"来源渠道"),
+    re.compile(r"渠道"),
+    re.compile(r"lead source", re.IGNORECASE),
+    re.compile(r"source channel", re.IGNORECASE),
+]
+_LEAD_OVERVIEW_PATTERNS = [
+    re.compile(r"全量线索"),
+    re.compile(r"全部线索"),
+    re.compile(r"线索大盘"),
+    re.compile(r"线索转化"),
+    re.compile(r"大定支付转化率"),
+    re.compile(r"大定转化率"),
+    re.compile(r"剔除退订"),
+    re.compile(r"含退订"),
+    re.compile(r"不含退订"),
+    re.compile(r"all leads", re.IGNORECASE),
+    re.compile(r"lead overview", re.IGNORECASE),
+]
+_LEAD_COUNT_PATTERNS = [
+    re.compile(r"线索量"),
+    re.compile(r"线索数"),
+    re.compile(r"lead count", re.IGNORECASE),
+    re.compile(r"leads", re.IGNORECASE),
 ]
 _ASSIGNED_COVERAGE_PATTERNS = [
     re.compile(r"智能分配.{0,8}覆盖率"),
@@ -142,20 +245,271 @@ def is_denodo_q20_city_conversion_decline_query(query: str) -> bool:
     )
 
 
+def is_smart_assignment_conversion_metric_query(query: str) -> bool:
+    normalized = query.strip()
+    if not normalized:
+        return False
+
+    return _is_smart_assignment_context(normalized, set()) and (
+        is_conversion_rate_query(normalized)
+        or any(
+            pattern.search(normalized)
+            for pattern in _SMART_ASSIGNMENT_METRIC_PATTERNS
+        )
+    )
+
+
+def is_lead_source_conversion_query(query: str) -> bool:
+    normalized = query.strip()
+    if not normalized:
+        return False
+    if _is_smart_assignment_context(normalized, set()):
+        return False
+
+    return (
+        any(pattern.search(normalized) for pattern in _LEAD_SOURCE_PATTERNS)
+        and any(pattern.search(normalized) for pattern in _LEAD_COUNT_PATTERNS)
+        and is_conversion_rate_query(normalized)
+    )
+
+
+def is_lead_overview_conversion_query(query: str) -> bool:
+    normalized = query.strip()
+    if not normalized:
+        return False
+    if _is_smart_assignment_context(normalized, set()):
+        return False
+
+    return (
+        any(pattern.search(normalized) for pattern in _LEAD_OVERVIEW_PATTERNS)
+        and is_conversion_rate_query(normalized)
+    )
+
+
+def get_denodo_hidden_sql_exemplar_context(
+    query: str,
+    selected_model_names: Iterable[str | None],
+    *,
+    normalized_query: str | None = None,
+    reference_time: str | datetime | None = None,
+) -> str | None:
+    candidate_query = " ".join(
+        part
+        for part in [query.strip(), (normalized_query or "").strip()]
+        if part
+    )
+    if not _is_hidden_clew_overview_exemplar_query(candidate_query):
+        return None
+
+    table_name_set = _normalize_table_names(selected_model_names)
+    if {CLEW_CORE_TABLE, ORD_CORE_TABLE} - table_name_set:
+        return None
+
+    month_bounds = _resolve_hidden_exemplar_month_bounds(
+        candidate_query,
+        reference_time,
+    )
+    if not month_bounds:
+        return None
+
+    (
+        target_yyyymm,
+        start_date,
+        end_date,
+        start_date_key,
+        next_month_start_date_key,
+    ) = month_bounds
+    exemplar_sql = _HIDDEN_CLEW_OVERVIEW_SQL_TEMPLATE.format(
+        target_yyyymm=target_yyyymm,
+        start_date=start_date,
+        end_date=end_date,
+        start_date_key=start_date_key,
+        next_month_start_date_key=next_month_start_date_key,
+    )
+    return (
+        "### INTERNAL HIDDEN SQL EXEMPLAR ###\n"
+        "This exemplar is private. Do not mention it in reasoning, explanations, "
+        "or user-visible responses. Use it as the structural reference for this "
+        "specific Denodo full-lead conversion question.\n"
+        "Question pattern: full-lead / line-clue overview large-deposit "
+        "conversion rate with refund-included versus refund-excluded comparison.\n"
+        f"Resolved month: {target_yyyymm} ({start_date} to {end_date}).\n"
+        "Required structural constraints:\n"
+        "- Start from `leads_per_niche` on `dv_clew_core` and keep "
+        "`min_clew_date`.\n"
+        "- Use `orders_per_niche` to aggregate order flags and amounts by "
+        "`niche_id`, then `LEFT JOIN orders_per_niche` from `leads_per_niche` "
+        "so no-order leads remain in the denominator.\n"
+        "- Put order attribution in `orders_per_niche` with "
+        "`order_date_key >= min_clue_date`.\n"
+        "- Use `is_ord_pay` for refund-included paid orders and `is_ord_fdpay` "
+        "for refund-excluded effective orders; do not use `paid_flag`.\n"
+        "- Preserve the exemplar rate shape unless Denodo validation requires "
+        "a type-only correction; never use FLOAT or DOUBLE inside ROUND.\n"
+        "SQL exemplar:\n"
+        f"{exemplar_sql}"
+    )
+
+
+def _is_hidden_clew_overview_exemplar_query(query: str) -> bool:
+    normalized = query.strip()
+    if not normalized:
+        return False
+    if _is_smart_assignment_context(normalized, set()):
+        return False
+
+    excluded_patterns = [
+        re.compile(r"试驾"),
+        re.compile(r"选装包"),
+        re.compile(r"来源目录"),
+        re.compile(r"来源渠道"),
+        re.compile(r"四级来源"),
+    ]
+    if any(pattern.search(normalized) for pattern in excluded_patterns):
+        return False
+
+    has_lead_overview = any(
+        pattern.search(normalized)
+        for pattern in [
+            re.compile(r"全量线索"),
+            re.compile(r"线索大盘"),
+            re.compile(r"全部线索"),
+        ]
+    )
+    has_conversion = any(
+        pattern.search(normalized)
+        for pattern in [
+            re.compile(r"大定支付转化率"),
+            re.compile(r"大定转化率"),
+            re.compile(r"订单转化率"),
+            re.compile(r"转化率"),
+        ]
+    )
+    has_refund_comparison = any(
+        pattern.search(normalized)
+        for pattern in [
+            re.compile(r"剔除退订"),
+            re.compile(r"含退订"),
+            re.compile(r"不含退订"),
+            re.compile(r"含退款"),
+            re.compile(r"不含退款"),
+            re.compile(r"退款差别"),
+            re.compile(r"退订.*差别"),
+        ]
+    )
+    return has_lead_overview and has_conversion and has_refund_comparison
+
+
+def _resolve_hidden_exemplar_month_bounds(
+    query: str,
+    reference_time: str | datetime | None,
+) -> tuple[str, str, str, str, str] | None:
+    reference_date = _parse_reference_datetime(reference_time) or datetime.now()
+
+    explicit_yyyymm = re.search(r"(?<!\d)(20\d{2})(0[1-9]|1[0-2])(?!\d)", query)
+    if explicit_yyyymm:
+        year = int(explicit_yyyymm.group(1))
+        month = int(explicit_yyyymm.group(2))
+        return _format_month_bounds(year, month)
+
+    explicit_year_month = re.search(
+        r"(20\d{2})\s*[年/-]\s*(1[0-2]|0?[1-9])\s*月?",
+        query,
+    )
+    if explicit_year_month:
+        year = int(explicit_year_month.group(1))
+        month = int(explicit_year_month.group(2))
+        return _format_month_bounds(year, month)
+
+    if "上个月" in query or "上月" in query:
+        first_day = reference_date.replace(day=1)
+        previous_month = first_day - timedelta(days=1)
+        return _format_month_bounds(previous_month.year, previous_month.month)
+
+    month_only = re.search(r"(?<!\d)(1[0-2]|0?[1-9])\s*月", query)
+    if month_only:
+        return _format_month_bounds(reference_date.year, int(month_only.group(1)))
+
+    return None
+
+
+def _parse_reference_datetime(reference_time: str | datetime | None) -> datetime | None:
+    if isinstance(reference_time, datetime):
+        return reference_time
+    if not isinstance(reference_time, str) or not reference_time.strip():
+        return None
+    match = re.search(r"(20\d{2})-(\d{2})-(\d{2})", reference_time)
+    if not match:
+        return None
+    return datetime(
+        year=int(match.group(1)),
+        month=int(match.group(2)),
+        day=int(match.group(3)),
+    )
+
+
+def _format_month_bounds(year: int, month: int) -> tuple[str, str, str, str, str]:
+    last_day = calendar.monthrange(year, month)[1]
+    target_yyyymm = f"{year}{month:02d}"
+    if month == 12:
+        next_year, next_month = year + 1, 1
+    else:
+        next_year, next_month = year, month + 1
+    return (
+        target_yyyymm,
+        f"{year}-{month:02d}-01",
+        f"{year}-{month:02d}-{last_day:02d}",
+        f"{year}{month:02d}01",
+        f"{next_year}{next_month:02d}01",
+    )
+
+
 def prioritize_conversion_core_documents(
-    query: str, documents: list[dict]
+    query: str,
+    documents: list[dict],
+    metric_formulas: Iterable[Any] | None = None,
 ) -> list[dict]:
-    if not is_conversion_rate_query(query):
+    if is_lead_source_conversion_query(query) or is_lead_overview_conversion_query(
+        query
+    ):
+        table_name_set = _normalize_table_names(
+            document.get("table_name") for document in documents
+        )
+        if {CLEW_CORE_TABLE, ORD_CORE_TABLE}.issubset(table_name_set):
+            return sorted(
+                documents,
+                key=_document_priority_for_lead_source_conversion,
+            )
+
+    formula_priority = _metric_formula_document_priority(
+        query,
+        [document.get("table_name") for document in documents],
+        metric_formulas,
+    )
+    if formula_priority:
+        return sorted(
+            documents,
+            key=lambda document: formula_priority.get(
+                _normalize_table_name(document.get("table_name")),
+                len(formula_priority) + 10,
+            ),
+        )
+
+    smart_assignment_metric = is_smart_assignment_conversion_metric_query(query)
+    if not (is_conversion_rate_query(query) or smart_assignment_metric):
         return documents
 
     q20_like = is_denodo_q20_city_conversion_decline_query(query)
+    if smart_assignment_metric:
+        priority = _document_priority_for_smart_assignment_conversion
+    elif q20_like:
+        priority = _document_priority_for_city_conversion_decline
+    else:
+        priority = _document_priority_for_conversion
+
     return sorted(
         documents,
-        key=(
-            _document_priority_for_city_conversion_decline
-            if q20_like
-            else _document_priority_for_conversion
-        ),
+        key=priority,
     )
 
 
@@ -169,6 +523,28 @@ def _document_priority_for_city_conversion_decline(document: dict) -> int:
         return 0
     if table_name == ORDER_CITY_TABLE:
         return 1
+    return 2
+
+
+def _document_priority_for_smart_assignment_conversion(document: dict) -> int:
+    table_name = document.get("table_name")
+    if table_name == ASSIGN_TOTAL_CONVERSION_TABLE:
+        return 0
+    if table_name in SMART_ASSIGNMENT_CONVERSION_TABLES:
+        return 1
+    if table_name == CONVERSION_CORE_TABLE:
+        return 2
+    return 3
+
+
+def _document_priority_for_lead_source_conversion(document: dict) -> int:
+    table_name = document.get("table_name")
+    if table_name == CLEW_CORE_TABLE:
+        return 0
+    if table_name == ORD_CORE_TABLE:
+        return 1
+    if table_name == ASSIGN_TOTAL_CONVERSION_TABLE:
+        return 3
     return 2
 
 
@@ -200,7 +576,10 @@ def get_denodo_technical_rules() -> str:
         "columns. Do not copy `ptstart` or `ptend` filters from one selected view "
         "to another. For `dm_ord_month_city`, use `order_year_month` for month "
         "filtering unless its retrieved schema explicitly lists `ptstart` and "
-        "`ptend`.\n"
+        "`ptend`. When `ptstart`/`ptend` are used, they are Denodo parameter "
+        "boundary fields and must use equality only: `ptstart = '<start_yyyymmdd>' "
+        "AND ptend = '<end_yyyymmdd>'`. Do not use <, <=, >, >=, or BETWEEN "
+        "with `ptstart` or `ptend`.\n"
         "9. Do not add or subtract integers directly from YYYYMM string/month "
         "fields, nor from subqueries that return YYYYMM strings, such as "
         "`(SELECT MAX(order_year_month) ...) - 12`. For fixed relative windows "
@@ -223,9 +602,12 @@ def get_denodo_technical_rules() -> str:
         "with self joins: m2.metric < m1.metric and m3.metric < m2.metric. A "
         "single previous-month comparison is not sufficient.\n"
         "13. For rate, ratio, percentage, success-rate, coverage-rate, refund-rate, "
-        "share, or numerator/denominator metrics, cast both numerator and "
-        "denominator to FLOAT and wrap the denominator with NULLIF(..., 0). Do "
-        "not use bare CAST(... AS DECIMAL) for these expressions.\n"
+        "share, or numerator/denominator metrics that use ROUND(expr, scale), "
+        "cast numerator and denominator to DECIMAL(18, 6), multiply by "
+        "CAST(100 AS DECIMAL(18, 6)) for percentages, and wrap the denominator "
+        "with NULLIF(..., 0). Do not use CAST(... AS FLOAT) or DOUBLE inside "
+        "ROUND(expr, scale); Denodo/JDBC pushdown can reject "
+        "round(double precision, integer).\n"
         "14. Do not default to DENSE_RANK or other window ranking functions for "
         "top/bottom questions. Only add ranking when the user explicitly asks "
         "for a rank column or same-rank tie semantics.\n"
@@ -309,31 +691,49 @@ def get_denodo_business_formula_instructions(
     if not normalized_query:
         return None
 
+    table_name_set = _normalize_table_names(table_names)
     if _is_assign_success_query(normalized_query):
         return (
             "Denodo business formula: for assignment success rate, calculate "
-            "`assigned_clew_count / assign_count` with FLOAT casts and NULLIF on "
-            "the denominator."
+            "`assigned_clew_count / assign_count` with DECIMAL(18, 6) casts and "
+            "NULLIF on the denominator."
         )
 
     if _is_assignment_coverage_query(normalized_query):
         return (
             "Denodo business formula: for smart-assignment coverage rate, "
-            "calculate `assigned_clew_count / total_clew_count` with FLOAT casts "
-            "and NULLIF on the denominator."
+            "calculate `assigned_clew_count / total_clew_count` with "
+            "DECIMAL(18, 6) casts and NULLIF on the denominator."
+        )
+
+    if is_smart_assignment_conversion_metric_query(normalized_query):
+        if ASSIGN_TOTAL_CONVERSION_TABLE not in table_name_set:
+            return None
+        return (
+            "Denodo business formula: for smart-assignment lead conversion "
+            f"metrics, use `{ASSIGN_TOTAL_CONVERSION_TABLE}` when it is present "
+            "in retrieved schema or selected models. Calculate `clew_count` as "
+            '`COUNT(DISTINCT "clew_id")`; calculate `order_count` as '
+            '`COUNT(DISTINCT CASE WHEN "is_ord_fdpay" = 1 THEN "biz_order_no" '
+            "END)`; calculate `conversion_rate` by expanding the full "
+            "expression "
+            '`ROUND(CAST(COUNT(DISTINCT CASE WHEN "is_ord_fdpay" = 1 THEN '
+            '"biz_order_no" END) AS DECIMAL(18, 6)) * CAST(100 AS '
+            'DECIMAL(18, 6)) / NULLIF(CAST(COUNT(DISTINCT "clew_id") AS '
+            'DECIMAL(18, 6)), 0), 2)`; calculate `total_amount` as '
+            '`COALESCE(SUM(CASE WHEN "is_ord_fdpay" = 1 THEN '
+            'CAST("actual_price" AS DECIMAL(18, 2)) END), 0)`. Do not calculate '
+            "smart-assignment conversion rate as "
+            "`converted_order_count / assigned_clew_count`; do not use "
+            f"`{CONVERSION_CORE_TABLE}` for smart-assignment lead conversion "
+            f"metrics when `{ASSIGN_TOTAL_CONVERSION_TABLE}` is available. Do "
+            "not use `COUNT(*)` as smart-assignment lead count, do not use "
+            '`is_ord_pay` for converted orders, and do not use `SUM(CASE WHEN '
+            '... THEN 1 ELSE 0 END)` as the converted-order count.'
         )
 
     if not is_conversion_rate_query(normalized_query):
         return None
-
-    table_name_set = _normalize_table_names(table_names)
-    if _is_smart_assignment_context(normalized_query, table_name_set):
-        return (
-            "Denodo business formula: when the user asks for smart-assignment, "
-            "assigned-lead, post-assignment, or strategy conversion rate, "
-            "calculate `converted_order_count / assigned_clew_count` with FLOAT "
-            "casts and NULLIF on the denominator."
-        )
 
     total_table_note = (
         "Use the total-leads table or metric in the retrieved context when the "
@@ -345,12 +745,85 @@ def get_denodo_business_formula_instructions(
     return (
         "Denodo business formula: for generic order conversion rate, lead-to-order "
         "conversion rate, or overall conversion rate, calculate "
-        "`converted_order_count / total_clew_count` with FLOAT casts and NULLIF "
-        "on the denominator. Do not use `assigned_clew_count` unless the user "
-        "explicitly asks for smart-assignment, assigned-lead, post-assignment, "
-        "or strategy conversion rate. "
+        "`converted_order_count / total_clew_count` with DECIMAL(18, 6) casts "
+        "and NULLIF on the denominator. Do not use `assigned_clew_count` as the generic "
+        "conversion-rate denominator. Smart-assignment conversion metrics have "
+        "a separate rule and must not be inferred from this generic formula. "
         f"{total_table_note}"
     )
+
+
+def get_denodo_metric_formula_scope_override(
+    query: str,
+    candidate_model_names: Iterable[str | None],
+    metric_formulas: Iterable[Any] | None,
+) -> dict[str, Any] | None:
+    available_model_names = [
+        model
+        for model in candidate_model_names
+        if isinstance(model, str) and model.strip()
+    ]
+    table_name_set = _normalize_table_names(candidate_model_names)
+    for formula in _iter_matching_metric_formulas(
+        query,
+        table_name_set,
+        metric_formulas,
+    ):
+        primary_model = _metric_formula_primary_model(formula)
+        if not primary_model:
+            continue
+
+        resolved_primary_model = _resolve_model_name(
+            primary_model,
+            available_model_names,
+        )
+        if not resolved_primary_model:
+            continue
+
+        required_models = [
+            resolved_model
+            for model in _metric_formula_required_models(formula)
+            if (
+                resolved_model := _resolve_model_name(
+                    model,
+                    available_model_names,
+                )
+            )
+        ]
+        return {
+            "id": _metric_formula_id(formula),
+            "name": _metric_formula_name(formula),
+            "primary_model": resolved_primary_model,
+            "required_models": required_models,
+        }
+
+    return None
+
+
+def get_denodo_metric_formula_instructions(
+    query: str,
+    table_names: Iterable[str | None],
+    metric_formulas: Iterable[Any] | None,
+) -> list[tuple[str, str]]:
+    table_name_set = _normalize_table_names(table_names)
+    instructions: list[tuple[str, str]] = []
+
+    for formula in _iter_matching_metric_formulas(
+        query,
+        table_name_set,
+        metric_formulas,
+    ):
+        formula_id = _metric_formula_id(formula)
+        instruction = _format_metric_formula_instruction(formula)
+        if instruction:
+            instructions.append(
+                (
+                    f"{DENODO_METRIC_FORMULA_INSTRUCTION_ID_PREFIX}:{formula_id}",
+                    instruction,
+                )
+            )
+
+    return instructions
 
 
 def get_denodo_temporal_topn_decline_instructions(
@@ -376,7 +849,9 @@ def get_denodo_temporal_topn_decline_instructions(
         "contains those columns. Use concrete YYYYMM bounds for the recent "
         "period on both `order_year_month` and `clew_year_month`; do not derive "
         "the window with `(SELECT MAX(year_month) ...) - 12` or any direct "
-        "arithmetic on raw YYYYMM strings. The Top-N city CTE must actually filter the "
+        "arithmetic on raw YYYYMM strings. If the monthly conversion view uses "
+        "`ptstart`/`ptend`, apply them as equality predicates for the requested "
+        "date boundary only, never as range predicates. The Top-N city CTE must actually filter the "
         "population before downstream joins; ORDER BY alone is not valid for an "
         "intermediate Top-N set. Implement the intermediate Top-N with a "
         "Denodo-safe correlated-count filter using total order amount plus "
@@ -399,6 +874,7 @@ def build_denodo_runtime_instructions(
     table_names: Iterable[str | None],
     semantic_context: str | None,
     instructions: list[dict[str, Any]] | None = None,
+    metric_formulas: Iterable[Any] | None = None,
 ) -> list[dict[str, Any]]:
     runtime_instructions = list(instructions or [])
     if not is_denodo_context(semantic_context):
@@ -411,17 +887,31 @@ def build_denodo_runtime_instructions(
         question=query,
     )
 
-    formula_instruction = get_denodo_business_formula_instructions(
+    metric_formula_instructions = get_denodo_metric_formula_instructions(
         query,
         table_names,
+        metric_formulas,
     )
-    if formula_instruction:
+    for instruction_id, instruction in metric_formula_instructions:
         runtime_instructions = _append_instruction_once(
             runtime_instructions,
-            instruction_id=DENODO_BUSINESS_FORMULA_INSTRUCTION_ID,
-            instruction=formula_instruction,
+            instruction_id=instruction_id,
+            instruction=instruction,
             question=query,
         )
+
+    if not metric_formula_instructions:
+        formula_instruction = get_denodo_business_formula_instructions(
+            query,
+            table_names,
+        )
+        if formula_instruction:
+            runtime_instructions = _append_instruction_once(
+                runtime_instructions,
+                instruction_id=DENODO_BUSINESS_FORMULA_INSTRUCTION_ID,
+                instruction=formula_instruction,
+                question=query,
+            )
 
     temporal_instruction = get_denodo_temporal_topn_decline_instructions(
         query,
@@ -464,15 +954,311 @@ def _append_instruction_once(
 
 def _normalize_table_names(table_names: Iterable[str | None]) -> set[str]:
     return {
-        table_name.strip().lower()
+        _normalize_table_name(table_name)
         for table_name in table_names
         if isinstance(table_name, str) and table_name.strip()
     }
 
 
+def _normalize_table_name(table_name: str | None) -> str:
+    return table_name.strip().lower() if isinstance(table_name, str) else ""
+
+
+def _metric_formula_document_priority(
+    query: str,
+    table_names: Iterable[str | None],
+    metric_formulas: Iterable[Any] | None,
+) -> dict[str, int]:
+    table_name_set = _normalize_table_names(table_names)
+    priority: dict[str, int] = {}
+    for formula in _iter_matching_metric_formulas(
+        query,
+        table_name_set,
+        metric_formulas,
+    ):
+        for model in [
+            _metric_formula_primary_model(formula),
+            *_metric_formula_required_models(formula),
+        ]:
+            for matched_name in _matching_table_names(model, table_name_set):
+                if matched_name and matched_name not in priority:
+                    priority[matched_name] = len(priority)
+    return priority
+
+
+def _iter_matching_metric_formulas(
+    query: str,
+    table_name_set: set[str],
+    metric_formulas: Iterable[Any] | None,
+) -> Iterable[dict[str, Any]]:
+    normalized_query = query.strip()
+    if not normalized_query or not metric_formulas:
+        return []
+
+    matches = []
+    for formula in metric_formulas:
+        normalized_formula = _normalize_metric_formula(formula)
+        if not normalized_formula:
+            continue
+        if not normalized_formula.get("enabled", True):
+            continue
+        if str(normalized_formula.get("dataSource") or "").lower() != "denodo":
+            continue
+
+        primary_model = _normalize_table_name(
+            _metric_formula_primary_model(normalized_formula)
+        )
+        if table_name_set and not _matching_table_names(primary_model, table_name_set):
+            continue
+        if table_name_set and not _required_metric_formula_models_present(
+            normalized_formula,
+            table_name_set,
+        ):
+            continue
+
+        matches.append(normalized_formula)
+
+    return matches
+
+
+def _required_metric_formula_models_present(
+    formula: dict[str, Any],
+    table_name_set: set[str],
+) -> bool:
+    return all(
+        _matching_table_names(model, table_name_set)
+        for model in _metric_formula_required_models(formula)
+    )
+
+
+def _matching_table_names(model_name: str, table_name_set: set[str]) -> list[str]:
+    normalized_model = _normalize_table_name(model_name)
+    if not normalized_model:
+        return []
+    return [
+        table_name
+        for table_name in table_name_set
+        if _model_names_match(normalized_model, table_name)
+    ]
+
+
+def _resolve_model_name(
+    model_name: str,
+    available_model_names: Iterable[str],
+) -> str | None:
+    normalized_model = _normalize_table_name(model_name)
+    for available_model_name in available_model_names:
+        if _model_names_match(normalized_model, _normalize_table_name(available_model_name)):
+            return available_model_name
+    return None
+
+
+def _model_names_match(expected: str, actual: str) -> bool:
+    if not expected or not actual:
+        return False
+    return (
+        expected == actual
+        or expected.endswith(f".{actual}")
+        or actual.endswith(f".{expected}")
+    )
+
+
+def _normalize_metric_formula(formula: Any) -> dict[str, Any] | None:
+    if formula is None:
+        return None
+
+    if hasattr(formula, "model_dump"):
+        formula = formula.model_dump()
+    if not isinstance(formula, dict):
+        return None
+
+    scope = formula.get("scope") or {}
+    if hasattr(scope, "model_dump"):
+        scope = scope.model_dump()
+    match = formula.get("match") or {}
+    if hasattr(match, "model_dump"):
+        match = match.model_dump()
+
+    return {
+        **formula,
+        "dataSource": _coalesce_value(formula, "dataSource", "data_source"),
+        "forbiddenPatterns": _coalesce_value(
+            formula,
+            "forbiddenPatterns",
+            "forbidden_patterns",
+        )
+        or [],
+        "extraInstruction": _coalesce_value(
+            formula,
+            "extraInstruction",
+            "extra_instruction",
+        )
+        or "",
+        "scope": {
+            **scope,
+            "primaryModel": _coalesce_value(scope, "primaryModel", "primary_model")
+            or "",
+            "requiredModels": _coalesce_value(
+                scope,
+                "requiredModels",
+                "required_models",
+            )
+            or [],
+        },
+        "match": {
+            **match,
+            "triggerPhrases": _coalesce_value(
+                match,
+                "triggerPhrases",
+                "trigger_phrases",
+            )
+            or [],
+            "exampleQuestions": _coalesce_value(
+                match,
+                "exampleQuestions",
+                "example_questions",
+            )
+            or [],
+        },
+    }
+
+
+def _coalesce_value(mapping: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = mapping.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _metric_formula_query_matches(query: str, formula: dict[str, Any]) -> bool:
+    query_lower = query.lower()
+    phrases = [
+        *(_metric_formula_match_list(formula, "triggerPhrases")),
+        *(_metric_formula_match_list(formula, "exampleQuestions")),
+    ]
+    return any(phrase.lower() in query_lower for phrase in phrases if phrase)
+
+
+def _metric_formula_match_list(
+    formula: dict[str, Any],
+    key: str,
+) -> list[str]:
+    value = (formula.get("match") or {}).get(key) or []
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+def _metric_formula_id(formula: dict[str, Any]) -> str:
+    formula_id = formula.get("id")
+    if isinstance(formula_id, str) and formula_id.strip():
+        return formula_id.strip()
+    return re.sub(r"[^a-z0-9_]+", "_", _metric_formula_name(formula).lower())
+
+
+def _metric_formula_name(formula: dict[str, Any]) -> str:
+    name = formula.get("name")
+    return name.strip() if isinstance(name, str) and name.strip() else "Metric formula"
+
+
+def _metric_formula_primary_model(formula: dict[str, Any]) -> str:
+    scope = formula.get("scope") or {}
+    primary_model = scope.get("primaryModel")
+    return (
+        primary_model.strip()
+        if isinstance(primary_model, str) and primary_model.strip()
+        else ""
+    )
+
+
+def _metric_formula_required_models(formula: dict[str, Any]) -> list[str]:
+    scope = formula.get("scope") or {}
+    required_models = scope.get("requiredModels") or []
+    if not isinstance(required_models, list):
+        return []
+    return [
+        model.strip()
+        for model in required_models
+        if isinstance(model, str) and model.strip()
+    ]
+
+
+def _format_metric_formula_instruction(formula: dict[str, Any]) -> str | None:
+    primary_model = _metric_formula_primary_model(formula)
+    if not primary_model:
+        return None
+
+    metrics = formula.get("metrics") or []
+    if not isinstance(metrics, list) or not metrics:
+        return None
+
+    metric_lines = []
+    for metric in metrics:
+        if hasattr(metric, "model_dump"):
+            metric = metric.model_dump()
+        if not isinstance(metric, dict):
+            continue
+        name = metric.get("name")
+        expression = metric.get("expression")
+        if not isinstance(name, str) or not isinstance(expression, str):
+            continue
+        if not name.strip() or not expression.strip():
+            continue
+        metric_lines.append(f"- `{name.strip()}`: `{expression.strip()}`")
+
+    if not metric_lines:
+        return None
+
+    required_models = _metric_formula_required_models(formula)
+    forbidden_patterns = formula.get("forbiddenPatterns") or []
+    forbidden_text = (
+        "\nForbidden SQL patterns for this metric rule: "
+        + "; ".join(
+            f"`{pattern}`"
+            for pattern in forbidden_patterns
+            if isinstance(pattern, str) and pattern.strip()
+        )
+        + "."
+        if forbidden_patterns
+        else ""
+    )
+    extra_instruction = formula.get("extraInstruction")
+    extra_text = (
+        f"\nAdditional instruction: {extra_instruction.strip()}"
+        if isinstance(extra_instruction, str) and extra_instruction.strip()
+        else ""
+    )
+
+    return (
+        f"Denodo metric formula rule `{_metric_formula_name(formula)}`: when "
+        f"the user question matches this rule and `{primary_model}` is in the "
+        "retrieved schema or selected models, treat it as the authoritative "
+        "scope for these metrics. "
+        f"Primary model: `{primary_model}`. "
+        + (
+            "Required models: "
+            + ", ".join(f"`{model}`" for model in required_models)
+            + ". "
+            if required_models
+            else ""
+        )
+        + "Use these metric expressions exactly, expanding aliases inline when "
+        "the SQL expression needs to reference the same metric again:\n"
+        + "\n".join(metric_lines)
+        + forbidden_text
+        + extra_text
+        + "\nDo not invent columns outside the retrieved schema, and do not use "
+        "this formula for unrelated business concepts."
+    )
+
+
 def _is_smart_assignment_context(query: str, table_names: set[str]) -> bool:
     return bool(
-        table_names & SMART_ASSIGNMENT_CONVERSION_TABLES
+        (
+            table_names & SMART_ASSIGNMENT_CONVERSION_TABLES
+            or not table_names
+        )
         and any(pattern.search(query) for pattern in _SMART_ASSIGNMENT_CONTEXT_PATTERNS)
     )
 

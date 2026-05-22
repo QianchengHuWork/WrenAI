@@ -112,6 +112,10 @@ Use these VQL drafts as internal guidance for CTEs or subqueries in the final qu
 The final answer must still be one complete Denodo VQL query and will be validated as a whole by Denodo MCP.
 {% endif %}
 
+{% if hidden_sql_exemplar_context %}
+{{ hidden_sql_exemplar_context }}
+{% endif %}
+
 ### QUESTION ###
 Original User Question: {{ original_query }}
 {% if normalized_query and normalized_query != original_query %}
@@ -125,14 +129,15 @@ Normalized User Question: {{ normalized_query }}
 
 ### CRITICAL SQL OUTPUT CONSTRAINTS ###
 - For Denodo VQL, treat selected models and retrieved schema as the hard allowed table set. Do not reference any view that is not present in `Primary Model` or `Secondary Models`, even if it appears in native semantic mapping text.
-- For Denodo VQL, `ptstart` and `ptend` are view-specific partition fields. Add them only to a view whose retrieved schema explicitly contains both columns; do not copy them to every selected view. For `dm_ord_month_city`, use `order_year_month` unless that exact view schema lists `ptstart` and `ptend`.
+- If runtime metric formula instructions are present, use those formulas as the source of truth for metric expressions and forbidden patterns.
+- For Denodo VQL, `ptstart` and `ptend` are view-specific partition parameter fields. Add them only to a view whose retrieved schema explicitly contains both columns; do not copy them to every selected view. For `dm_ord_month_city`, use `order_year_month` unless that exact view schema lists `ptstart` and `ptend`. When used, `ptstart` and `ptend` MUST be equality predicates only: `ptstart = '<start_yyyymmdd>' AND ptend = '<end_yyyymmdd>'`; never use <, <=, >, >=, or BETWEEN with them.
 - For Denodo VQL, never add/subtract integers directly from YYYYMM fields or from `MAX(yyyymm)` subqueries. For relative windows such as recent 12 months, use concrete YYYYMM lower/upper bounds from the normalized question/current time; if dynamic arithmetic is unavoidable, compare derived YYYYMM `month_index` integers instead.
 - For Denodo intermediate Top-N populations used by later joins or filters, ORDER BY alone is not a filter. Do not use LIMIT, FETCH, or TOP; use a correlated-count self filter with deterministic tie-break fields.
 - For Denodo consecutive month or month-over-month decline logic, do not use LAG or LEAD. Build a YYYYMM `month_index` with `CAST(SUBSTR(month_field, 1, 4) AS INTEGER) * 12 + CAST(SUBSTR(month_field, 5, 2) AS INTEGER)` and compare adjacent months with self joins.
 - Continuous two-month decline means three consecutive monthly rows with two decreases: `m2.month_index = m1.month_index + 1`, `m3.month_index = m2.month_index + 1`, `m2.metric < m1.metric`, and `m3.metric < m2.metric`.
-- If the reasoning plan, SQL rules, or user instructions specify FLOAT casts for a rate, ratio, percentage, or conversion-rate expression, the final SQL MUST preserve FLOAT casts and MUST NOT replace them with DECIMAL casts.
-- When this FLOAT-rate rule applies, count-based rate comparisons in SELECT, HAVING, WHERE, or CTE filters must cast both numerator and denominator to FLOAT before division and use NULLIF on the denominator.
-- Do not treat count-based rate or ratio calculations as numeric text conversions. Keep DECIMAL for monetary amount calculations and numeric text conversions.
+- For Denodo VQL, do not use CAST(... AS FLOAT) or DOUBLE inside ROUND(expr, scale) for rate, ratio, percentage, or conversion-rate expressions. Denodo/JDBC pushdown can reject `round(double precision, integer)`.
+- For rounded Denodo rates or percentages, cast numerator and denominator to DECIMAL(18, 6), use NULLIF on the denominator, and multiply by CAST(100 AS DECIMAL(18, 6)) when the metric is a percentage.
+- Keep DECIMAL for monetary amount calculations and numeric text conversions.
 
 Let's think step by step.
 """
@@ -158,6 +163,7 @@ def prompt(
     matched_rewrites: list[dict] | None = None,
     selected_models: dict | None = None,
     validated_subquery_drafts: str | None = None,
+    hidden_sql_exemplar_context: str | None = None,
 ) -> dict:
     _prompt = prompt_builder.run(
         query=query,
@@ -185,6 +191,7 @@ def prompt(
         matched_rewrites=matched_rewrites or [],
         selected_models=selected_models,
         validated_subquery_drafts=validated_subquery_drafts or "",
+        hidden_sql_exemplar_context=hidden_sql_exemplar_context or "",
     )
     return {"prompt": clean_up_new_lines(_prompt.get("prompt"))}
 
@@ -286,6 +293,7 @@ class SQLGeneration(BasicPipeline):
         matched_rewrites: list[dict] | None = None,
         selected_models: dict | None = None,
         validated_subquery_drafts: str | None = None,
+        hidden_sql_exemplar_context: str | None = None,
     ):
         logger.info("SQL Generation pipeline is running...")
         has_normalization_context = bool(
@@ -334,6 +342,7 @@ class SQLGeneration(BasicPipeline):
                 "matched_rewrites": matched_rewrites or [],
                 "selected_models": selected_models,
                 "validated_subquery_drafts": validated_subquery_drafts,
+                "hidden_sql_exemplar_context": hidden_sql_exemplar_context,
                 **self._components,
             },
         )

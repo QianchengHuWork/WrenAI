@@ -351,6 +351,7 @@ export class WrenAIAdaptor implements IWrenAIAdaptor {
         configurations: input.configurations,
         semantic_context: input.semanticContext,
         semantic_dictionary: input.semanticDictionary,
+        metric_formulas: input.metricFormulas,
       });
       return { queryId: res.data.query_id };
     } catch (err: any) {

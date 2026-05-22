@@ -1,6 +1,6 @@
 # Tasks
 
-Last updated: 2026-05-20 17:32 CST
+Last updated: 2026-05-22 17:04 CST
 
 Use stable task titles. Move completed items to `Done` with date and verification.
 
@@ -13,7 +13,9 @@ Use stable task titles. Move completed items to `Done` with date and verificatio
 ## Todo
 
 - Benchmark Denodo complex-query decomposition plus direct-VQL mode on customer-style questions and compare success rate, correction count, `ai.sql_generation` time, and ask total time.
-- Re-run Q20 through the GraphQL asking-task path after the prompt/scope/partition/YYYYMM fixes; verify `selectedModels` are `dv_clew_ord_conversion_core` + `dm_ord_month_city`, generated SQL has no `LAG`, intermediate Top 5 is truly filtered, `dm_ord_month_city` has no `ptstart`/`ptend` predicate, no raw `MAX(order_year_month) - 12` arithmetic appears, and Denodo validate succeeds.
+- Re-run Q20 through the GraphQL asking-task path after the prompt/scope/partition/YYYYMM fixes; verify `selectedModels` are `dv_clew_ord_conversion_core` + `dm_ord_month_city`, generated SQL has no `LAG`, intermediate Top 5 is truly filtered, `dm_ord_month_city` has no `ptstart`/`ptend` predicate, selected views that do use `ptstart`/`ptend` use equality only, no raw `MAX(order_year_month) - 12` arithmetic appears, and Denodo validate succeeds.
+- Run focused AI pytest for the smart-assignment metric mapping once a Poetry/pytest environment is available: `tests/pytest/pipelines/generation/test_denodo_prompt_context.py` and `tests/pytest/services/test_ask_runtime_instructions.py`.
+- Manually validate smart-assignment questions against Denodo after restart; generated SQL should use `dv_assign_total_conversion_core`, distinct `clew_id`, `is_ord_fdpay = 1`, distinct paid `biz_order_no`, `actual_price`, and equality-only `ptstart`/`ptend`.
 - Implement `scripts/ask-sql-trace-markdown.mjs` readability cleanup requested by the user: group by ask/question, remove duplicate SQL blocks, and show one folded block per attempt.
 - Investigate why q12/q17/q19 selected/generated SQL referenced missing view `dv_clew_ord_conversion_core_new`.
 - Re-run q20 or customer 10-question benchmark after confirming UI remains listening; previous q20 failed with `fetch failed` and no `ask_finished`.
@@ -38,6 +40,15 @@ Use stable task titles. Move completed items to `Done` with date and verificatio
 
 ## Done
 
+- 2026-05-22: Removed the legacy Denodo count-rate rewrite that converted DECIMAL casts back to FLOAT.
+  - Root cause: `wren-ui/src/apollo/server/utils/denodoMcp.ts` still had `forceFloatForCountRate`, so even when AI prompts/formulas used `DECIMAL(18, 6)`, UI SQL rewrite could emit `CAST(... AS FLOAT)` and trigger PostgreSQL/JDBC `round(double precision, integer)`.
+  - Changed: removed `forceFloatForCountRate`, `buildFloatTarget`, and count-like-column detection; `FLOAT`/`DOUBLE`/`REAL`/`NUMBER` casts now normalize to `DECIMAL(18, 6)` in both legacy `toDenodoNativeSql` and direct `sanitizeDenodoDialectSql` paths.
+  - Changed: SQL correction prompt now includes a fixed Denodo priority for `round(double precision, integer)` errors, instructing correction to replace FLOAT/DOUBLE rounded rate math with DECIMAL casts.
+  - Verification: `python3 -m py_compile wren-ai-service/src/pipelines/generation/sql_correction.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_hidden_exemplar_prompts.py`; `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/pipelines/generation/test_denodo_hidden_exemplar_prompts.py -q`; `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs test src/apollo/server/utils/tests/denodoMcp.test.ts src/apollo/server/services/tests/denodoSqlGuardService.test.ts --runInBand`; `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types`; `git diff --check`.
+- 2026-05-22: Hardened the Denodo hidden full-lead conversion exemplar against `round(double precision, integer)` pushdown failures.
+  - Changed: `wren-ai-service/src/pipelines/generation/denodo_prompt_context.py` now renders the hidden `leads_per_niche` / `orders_per_niche` exemplar with `DECIMAL(18, 6)` and `CAST(100 AS DECIMAL(18, 6))` instead of `100.0`.
+  - Added regression coverage in `tests/pytest/pipelines/generation/test_denodo_prompt_context.py` to assert the exemplar contains `CAST(100 AS DECIMAL(18, 6))` and no `* 100.0`.
+  - Verification: `cd wren-ai-service && poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q` (19 passed).
 - 2026-05-15: Started `/ai` memory layer with operating manual, context, active state, decisions, tasks, and changelog.
 - 2026-05-15: Added discovery pointers from root `AGENTS.md` and `.claude/CLAUDE.md` to `/ai`.
 - 2026-05-15: Added current agent progress snapshot to `/ai/ACTIVE_STATE.md`.
@@ -105,6 +116,96 @@ Use stable task titles. Move completed items to `Done` with date and verificatio
   - Required pattern: use concrete YYYYMM lower/upper bounds from normalized question/current time for fixed relative windows, or derive integer `month_index` before dynamic month arithmetic.
   - Verification: `poetry run python -m py_compile src/pipelines/generation/denodo_prompt_context.py src/pipelines/generation/sql_generation.py src/pipelines/generation/followup_sql_generation.py src/pipelines/generation/sql_generation_reasoning.py src/pipelines/generation/followup_sql_generation_reasoning.py src/pipelines/generation/denodo_subquery_generation.py src/pipelines/generation/denodo_query_decomposition.py src/pipelines/generation/sql_correction.py`; `poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py`; `poetry run pytest tests/pytest/pipelines/generation/test_denodo_query_decomposition.py`; `git diff --check`.
   - Not verified: live Denodo / GraphQL Q20 rerun after this prompt fix.
+- 2026-05-21: Tightened Denodo `ptstart`/`ptend` semantics to equality-only.
+  - Root cause: current Denodo prompts allowed the model to write range predicates such as `ptstart <= ...` or `ptend >= ...`, while the actual Denodo parameter contract requires equality boundaries.
+  - Changed AI service Denodo rules across generation, follow-up generation, reasoning, follow-up reasoning, subquery generation, correction, and generic SQL planning to require `ptstart = '<start_yyyymmdd>' AND ptend = '<end_yyyymmdd>'`.
+  - Updated UI default Denodo SQL instruction with the same equality-only rule.
+  - Verification: `poetry run python -m py_compile src/pipelines/generation/denodo_prompt_context.py src/pipelines/generation/sql_generation.py src/pipelines/generation/followup_sql_generation.py src/pipelines/generation/sql_generation_reasoning.py src/pipelines/generation/followup_sql_generation_reasoning.py src/pipelines/generation/denodo_subquery_generation.py src/pipelines/generation/sql_correction.py src/pipelines/generation/utils/sql.py`; `poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py`; `cd wren-ui && yarn check-types`; `git diff --check`.
+  - Not verified: live Denodo / GraphQL rerun after this prompt fix.
+- 2026-05-21: Mapped smart-assignment conversion metrics to `dv_assign_total_conversion_core`.
+  - Changed: Denodo prompt context now defines `dv_assign_total_conversion_core` as the smart-assignment conversion-detail view, prioritizes it for smart-assignment lead/order/conversion/amount questions, and injects formulas using `COUNT(DISTINCT "clew_id")`, distinct paid `biz_order_no` with `is_ord_fdpay = 1`, and `actual_price`.
+  - Scope: AskService now overrides smart-assignment metric scope to `primaryModel=dv_assign_total_conversion_core` when the candidate exists; generic conversion-rate questions still prefer `dv_clew_ord_conversion_core`.
+  - Follow-up: because a restarted AI service still generated executable but semantically wrong `COUNT(*)` / `is_ord_pay` SQL, the dedicated formula was also added directly to Denodo reasoning, subquery, final generation, follow-up generation, and correction prompt constraints.
+  - Verification: `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/scope_resolution.py wren-ai-service/src/web/v1/services/ask.py`; `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/sql_generation.py wren-ai-service/src/pipelines/generation/followup_sql_generation.py wren-ai-service/src/pipelines/generation/sql_generation_reasoning.py wren-ai-service/src/pipelines/generation/followup_sql_generation_reasoning.py wren-ai-service/src/pipelines/generation/denodo_subquery_generation.py wren-ai-service/src/pipelines/generation/sql_correction.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py`; `git diff --check`.
+  - Not verified: focused pytest could not run in this shell because `poetry` is unavailable and system Python has no `pytest`; live Denodo / GraphQL rerun still pending.
+- 2026-05-21: Implemented file-backed metric formula knowledge management.
+  - UI server: added `MetricFormulaService`, default `metric-formulas.json` creation, atomic write, REST CRUD under `/api/v1/knowledge/metric-formulas`, and Knowledge sidebar/page entry.
+  - Ask path: `AskingService.createAskingTask` reads enabled Denodo formulas per request and sends them to AI service as `metric_formulas`.
+  - AI service: `AskRequest` accepts optional metric formulas; Denodo retrieval prioritization, scope override, and runtime prompt instructions match formulas by data source, trigger phrases, and retrieved/selected model.
+  - Verification: `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/web/v1/services/ask.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`; `cd wren-ui && yarn check-types`; targeted `next lint --file ...` for the new/modified metric-formula UI files; `git diff --check`.
+  - Not verified: full `yarn lint` still fails on unrelated pre-existing files; direct AI module smoke import failed because local system Python lacks `hamilton`; live UI/API and Denodo Ask hot-update behavior still need runtime verification.
+- 2026-05-22: Added the default line-clue-overview conversion metric formula.
+  - Formula id: `denodo_clew_overview_conversion`.
+  - Scope: `primaryModel=dv_clew_core`, `requiredModels=["dv_ord_core"]`.
+  - Business logic: lead conversion must use `niche_id` attribution, aggregate leads by opportunity first, keep the earliest clue date, then only count orders created after that earliest clue date.
+  - Metrics: lead count, with-refund order count/rate/amount using `is_ord_pay = 1`, no-refund effective order count/rate/amount using `is_ord_fdpay = 1`, plus refund impact percentage.
+  - Verification: `jq empty wren-ui/data/metric-formulas.json`; `cd wren-ui && yarn check-types`; `cd wren-ui && yarn next lint --file src/apollo/server/services/metricFormulaService.ts --file src/pages/knowledge/metric-formulas.tsx --file src/pages/api/v1/knowledge/metric-formulas/index.ts --file 'src/pages/api/v1/knowledge/metric-formulas/[id].ts'`.
+  - Not verified: live Denodo Ask for the 6.11-style full-lead conversion question.
+- 2026-05-22: Corrected amount casts in metric formulas from `DOUBLE` to `DECIMAL(18, 2)`.
+  - Changed: file-backed default smart-assignment and line-clue-overview `total_amount` expressions now cast `actual_price` as `DECIMAL(18, 2)`.
+  - Changed: AI service hardcoded smart-assignment business formula prompt now also uses `DECIMAL(18, 2)` to avoid conflicting with the file-backed formula.
+  - Verification: `rg "actual_price.*DOUBLE|DOUBLE.*actual_price" ...` returned no matches in the formula/prompt/test files; `jq empty wren-ui/data/metric-formulas.json`; `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py`; `cd wren-ui && yarn check-types`; targeted `next lint` for metric-formula UI files.
+- 2026-05-22: Added the default smart-assignment test-drive conversion metric formula.
+  - Formula id: `denodo_niche_drive_conversion`.
+  - Scope: `primaryModel=admin.dv_niche_ord_conversion_core`; AI matching now also resolves schema-qualified formula models against unqualified retrieved models such as `dv_niche_ord_conversion_core`.
+  - Business logic: smart-assignment test-drive conversion must use the niche order conversion helper view, filter `ai_assign_drive_cnt > 0`, default to `is_ord_fdpay = 1`, and avoid rebuilding attribution via `mobile_md5 = phone_no_md5`.
+  - Verification: `jq empty wren-ui/data/metric-formulas.json`; `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`; `cd wren-ui && yarn check-types`; targeted `next lint` for metric-formula UI files; `git diff --check`.
+  - Not verified: live Denodo Ask for 6.6/6.9-style smart-assignment test-drive conversion questions.
+- 2026-05-22: Tightened metric-formula required-model semantics.
+  - Changed: dynamic Denodo metric formulas now inject/override only when both `primaryModel` and every `requiredModels` entry are present in retrieved/candidate model names.
+  - Behavior: if scope resolution picks `dv_ord_core` as primary and `dv_clew_core` as secondary for line-clue-overview, the formula override flips it back to `primaryModel=dv_clew_core`, `secondaryModels=["dv_ord_core"]`; if only one model is retrieved, the formula does not inject.
+  - Verification: `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`; `git diff --check`.
+- 2026-05-22: Changed dynamic Denodo metric-formula matching to scope-only.
+  - Changed: `triggerPhrases` / `exampleQuestions` are no longer required for formula injection or retrieval priority; they remain file/UI metadata.
+  - Effective conditions are now Denodo context, formula enabled, and every formula scope model present (`primaryModel` plus all `requiredModels`).
+  - Verification: `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`; `git diff --check`.
+- 2026-05-22: Fixed Denodo runtime metric-formula precedence over built-in business formulas.
+  - Changed: matching file-backed formulas now suppress the built-in Denodo business formula fallback, and static Denodo reasoning/generation/correction prompt blocks defer to runtime metric formulas rather than restating the smart-assignment formula.
+  - Verification: `python3 -m py_compile` for modified AI generation files; `poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q`; `git diff --check`.
+- 2026-05-22: Added `denodo_package_order_metrics` for option-package ranking and package-price uplift.
+  - Scope: `primaryModel=dv_package_order_core`.
+  - Metrics: distinct package order count, average package price/uplift, and total package revenue using `package_name`, `biz_order_no`, and `package_price`.
+  - Verification: `jq empty wren-ui/data/metric-formulas.json`; `poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q`; `cd wren-ui && yarn check-types`; targeted `next lint`; `git diff --check`.
+- 2026-05-22: Added a Denodo scope-routing override for non-smart-assignment lead-source conversion questions.
+  - Pattern: lead source/channel/fourth-level source + lead count + conversion rate.
+  - Scope: `primaryModel=dv_clew_core`, `secondaryModels=["dv_ord_core"]`.
+  - Verification: `python3 -m py_compile` for the changed AI files; `poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/services/test_ask_runtime_instructions.py -q`; `cd wren-ui && yarn check-types`; targeted `next lint`; `git diff --check`.
+- 2026-05-22: Added a scope-resolution prompt patch for lead-source conversion routing.
+  - Prompt now explicitly tells the LLM to choose `dv_clew_core` + `dv_ord_core` for general lead-source/fourth-level-source conversion, and not to use `dv_assign_total_conversion_core.channel_id` unless the user asks for smart assignment.
+  - Verification: `python3 -m py_compile wren-ai-service/src/pipelines/generation/scope_resolution.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`; `poetry run pytest tests/pytest/services/test_ask_runtime_instructions.py -q`; `git diff --check`.
+- 2026-05-22: Increased AI service table retrieval candidate scope to 10.
+  - Changed code defaults in `src/config.py` and `src/pipelines/retrieval/db_schema_retrieval.py`; also updated local ignored `wren-ai-service/config.yaml` to `table_retrieval_size: 10`.
+  - Verification: `python3 -m py_compile wren-ai-service/src/config.py wren-ai-service/src/pipelines/retrieval/db_schema_retrieval.py`; `poetry run pytest tests/pytest/test_config.py -q`; `git diff --check`.
+- 2026-05-22: Extended Denodo lead-conversion routing from lead-source questions to full-lead / lead-overview conversion questions.
+  - Pattern: non-smart-assignment questions mentioning all leads, full leads, lead overview, large-deposit conversion, refund-included conversion, or no-refund conversion.
+  - Scope: `primaryModel=dv_clew_core`, `secondaryModels=["dv_ord_core"]` when both are in candidates.
+  - Rationale: general lead conversion should use the line-clue overview attribution formula, not `dv_assign_total_conversion_core` even if that table has convenient `is_ord_pay` / `is_ord_fdpay` flags.
+  - Verification: `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/scope_resolution.py wren-ai-service/src/web/v1/services/ask.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`; `poetry run pytest tests/pytest/services/test_ask_runtime_instructions.py -q`; `poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q`; `git diff --check`.
+- 2026-05-22: Updated the line-clue-overview metric formula for Denodo pushdown constraints.
+  - Superseded by the 2026-05-22 15:24 update: do not model this as pre-`WHERE` then join.
+  - The current formula requires conditional aggregation, with the order-date attribution predicate inside each order count/rate/amount `CASE WHEN`.
+  - Verification: `jq empty wren-ui/data/metric-formulas.json`; `cd wren-ui && yarn check-types`; AI service runtime-instruction smoke check confirmed `orders_per_niche`, the `WHERE` date predicate, and final `LEFT JOIN orders_per_niche`; `cd wren-ui && yarn next lint --file src/apollo/server/services/metricFormulaService.ts`; `git diff --check`.
+- 2026-05-22: Revised line-clue-overview attribution to conditional aggregation.
+  - Changed runtime formula and default seed expressions so order count, conversion rate, refund impact, and amount expressions include `order_date >= min_clew_date` inside `CASE WHEN`.
+  - Extra instruction now explicitly says not to do "先 WHERE 过滤再 JOIN" and not to rely on a join-only attribution predicate.
+  - Target pattern: `COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)`, expanded with actual aliases in generated SQL.
+  - Verification: `jq empty wren-ui/data/metric-formulas.json`; `cd wren-ui && yarn check-types`; AI service runtime-instruction smoke check confirmed the conditional count pattern and alias-expanded example; `cd wren-ui && yarn next lint --file src/apollo/server/services/metricFormulaService.ts`; `git diff --check`.
+- 2026-05-22: Fixed Denodo rounded-rate casts for PostgreSQL/JDBC pushdown.
+  - Root cause: Denodo prompt rules still encouraged `CAST(... AS FLOAT)` for rate expressions, causing generated SQL like `ROUND(CAST(...) AS FLOAT) * 100.0 / ..., 2)` to fail downstream as `round(double precision, integer)`.
+  - Changed Denodo technical rules, final/follow-up SQL generation constraints, and default SQL rules to require `DECIMAL(18, 6)` casts for rounded rate/percentage expressions.
+  - Updated file-backed metric formulas and default seeds for smart assignment, line-clue overview, and smart-assignment test-drive conversion rates to use `CAST(... AS DECIMAL(18, 6)) * CAST(100 AS DECIMAL(18, 6)) / NULLIF(CAST(... AS DECIMAL(18, 6)), 0)`.
+  - Tightened line-clue-overview instructions to forbid `paid_flag` and require `LEFT JOIN dv_ord_core` from `leads_per_niche`, not `INNER JOIN`, to preserve no-order lead denominators.
+  - Verification: `jq empty wren-ui/data/metric-formulas.json`; `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/sql_generation.py wren-ai-service/src/pipelines/generation/followup_sql_generation.py wren-ai-service/src/pipelines/generation/utils/sql.py`; `cd wren-ui && yarn check-types`; `poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q`; `poetry run pytest tests/pytest/services/test_ask_runtime_instructions.py -q`; runtime-instruction smoke check confirmed no old `AS FLOAT) * 100.0` expression and confirmed `LEFT JOIN dv_ord_core` / `paid_flag` forbidden patterns; `cd wren-ui && yarn next lint --file src/apollo/server/services/metricFormulaService.ts`; `git diff --check`.
+- 2026-05-22: Implemented an AI-service-only hidden Denodo SQL exemplar for the full-lead conversion/refund-comparison test question.
+  - Matching: full-lead/line-clue overview + conversion rate + refund comparison wording, with month variants such as explicit `3月`, `4月`, or `上个月`; excludes smart assignment, test drive, option package, and lead-source questions.
+  - Scope guard: exemplar only injects when selected models include both `dv_clew_core` and `dv_ord_core`.
+  - Prompt behavior: injected only into final SQL generation, follow-up SQL generation, and SQL correction; not passed into SQL-generation reasoning or follow-up reasoning.
+  - Template behavior: resolves `target_yyyymm`, start date, and end date; shows `leads_per_niche`, `LEFT JOIN dv_ord_core`, CASE-based order attribution with `order_date >= min_clew_date`, `is_ord_pay`/`is_ord_fdpay`, and `DECIMAL(18, 6)` rates.
+  - Verification: `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/sql_generation.py wren-ai-service/src/pipelines/generation/followup_sql_generation.py wren-ai-service/src/pipelines/generation/sql_correction.py wren-ai-service/src/web/v1/services/ask.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_hidden_exemplar_prompts.py`; `poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/pipelines/generation/test_denodo_hidden_exemplar_prompts.py -q`; `poetry run pytest tests/pytest/services/test_ask_runtime_instructions.py -q`; smoke check confirmed month-variant hidden exemplar matching; `git diff --check`.
+- 2026-05-22: Replaced the hidden full-lead conversion exemplar with the user-provided SQL structure.
+  - Changed: the AI-service code constant now uses `leads_per_niche` followed by `orders_per_niche`; `leads_per_niche` filters `create_date >= '<yyyymm01>'` and `< '<next_yyyymm01>'`; `orders_per_niche` joins leads and filters `order_date_key >= l.min_clue_date`; amount metrics use `gross_order_amount`; the final summary preserves all leads with `LEFT JOIN orders_per_niche`.
+  - Behavior: month variants are still parameterized; for the March 2026 test question the hidden exemplar resolves `20260301` to `< 20260401`.
+  - Verification: `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/sql_generation.py wren-ai-service/src/pipelines/generation/followup_sql_generation.py wren-ai-service/src/pipelines/generation/sql_correction.py wren-ai-service/src/web/v1/services/ask.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_hidden_exemplar_prompts.py`; `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/pipelines/generation/test_denodo_hidden_exemplar_prompts.py -q`; `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/services/test_ask_runtime_instructions.py -q`; Poetry smoke check confirmed hidden exemplar matching and key SQL tokens; `git diff --check`.
 - 2026-05-20: Added dedicated Codex task agent `7. 外部调研` for external project research and developer handoff docs.
   - Verification: memory-only update; no business code or tests changed.
 - 2026-05-20: Opened `7. 外部调研`, read startup memory plus git branch/status, and recorded that the first assignment lacks a concrete research target.

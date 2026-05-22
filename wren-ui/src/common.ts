@@ -38,6 +38,7 @@ import {
   AskingTaskTracker,
   InstructionService,
   DenodoSqlGuardService,
+  MetricFormulaService,
 } from '@server/services';
 import { PostHogTelemetry } from './apollo/server/telemetry/telemetry';
 import {
@@ -145,19 +146,6 @@ export const initComponents = () => {
     deployService,
     denodoSqlGuardService,
   });
-  const askingService = new AskingService({
-    telemetry,
-    wrenAIAdaptor,
-    deployService,
-    projectService,
-    viewRepository,
-    threadRepository,
-    threadResponseRepository,
-    queryService,
-    mdlService,
-    askingTaskTracker,
-    askingTaskRepository,
-  });
   const dashboardService = new DashboardService({
     projectService,
     dashboardItemRepository,
@@ -171,6 +159,21 @@ export const initComponents = () => {
   const instructionService = new InstructionService({
     instructionRepository,
     wrenAIAdaptor,
+  });
+  const metricFormulaService = new MetricFormulaService();
+  const askingService = new AskingService({
+    telemetry,
+    wrenAIAdaptor,
+    deployService,
+    projectService,
+    viewRepository,
+    threadRepository,
+    threadResponseRepository,
+    queryService,
+    mdlService,
+    askingTaskTracker,
+    askingTaskRepository,
+    metricFormulaService,
   });
 
   // background trackers
@@ -236,6 +239,7 @@ export const initComponents = () => {
     dashboardService,
     sqlPairService,
     instructionService,
+    metricFormulaService,
     denodoSqlGuardService,
     askingTaskTracker,
 
@@ -253,4 +257,5 @@ const globalState = globalThis as typeof globalThis & {
 };
 
 export const components =
-  globalState.__wrenComponents || (globalState.__wrenComponents = initComponents());
+  globalState.__wrenComponents ||
+  (globalState.__wrenComponents = initComponents());

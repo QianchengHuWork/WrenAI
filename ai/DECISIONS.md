@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-05-20 17:09 CST
+Last updated: 2026-05-22 16:35 CST
 
 Preserve decisions unless obsolete. If superseded, move to `Archived Decisions` with reason and date.
 
@@ -96,6 +96,30 @@ Preserve decisions unless obsolete. If superseded, move to `Archived Decisions` 
 - Decision: Add Codex task agent `7. 外部调研` for studying external Git repositories, SDKs, papers, docs, and comparable projects.
 - Reason: Research work has a different output shape than implementation work; it should create source-backed developer handoffs that other agents can use without re-reading the external project.
 - Consequence: External research should capture source refs, commit/tag/date, reusable patterns, integration implications, risks, and documentation paths. Scratch material should stay under `.tmp/external-research/`; durable results should live in `docs/research/` when useful.
+
+### 2026-05-21 21:19 CST - Store runtime metric formulas in a UI-server file
+
+- Decision: Store editable runtime metric formulas in `metric-formulas.json` on the UI server side rather than project database tables.
+- Reason: Formula knowledge must survive project/data-source reset without adding DB migrations or requiring GraphQL codegen/rebuild for data changes.
+- Consequence: Formula CRUD uses REST and atomic file writes; Ask reads enabled formulas per request and passes them to AI service as runtime prompt context. Environment migration must copy the JSON file alongside the code or configure `METRIC_FORMULAS_FILE` to a persistent path.
+
+### 2026-05-22 16:35 CST - Store one-off hidden SQL exemplars as AI-service code constants
+
+- Decision: Keep the single full-lead conversion/refund-comparison hidden SQL exemplar in AI service code, not in public SQL pairs or the file-backed metric-formula knowledge UI.
+- Reason: The exemplar is a private benchmark scaffold that should influence final SQL generation/correction but must not appear in frontend reasoning, knowledge management, GraphQL fields, or user-visible SQL-pair content.
+- Consequence: Changing this exemplar requires code deployment and AI service restart. Runtime-editable business formulas should continue to live in `metric-formulas.json`; hidden exemplars should remain rare and narrowly matched.
+
+### 2026-05-22 16:48 CST - Hidden Denodo exemplars must use DECIMAL rate math
+
+- Decision: The hidden full-lead conversion exemplar must keep `DECIMAL(18, 6)` / `CAST(100 AS DECIMAL(18, 6))` rate math and must not regress to `100.0` / `FLOAT`-shaped rounding.
+- Reason: Denodo/JDBC pushdown can turn `ROUND(... * FLOAT, 2)` into `round(double precision, integer)`, which fails at execution time. The exemplar is a strong prompt prior, so leaving `100.0` there can reintroduce the bad shape even when the generic rules already discourage it.
+- Consequence: Any future edit to the exemplar must preserve decimal-typed numerator/denominator math and should be covered by a regression test before shipment.
+
+### 2026-05-22 17:04 CST - Denodo SQL rewrite must not force count rates to FLOAT
+
+- Decision: Denodo UI-side SQL rewrite and direct DIALECT sanitization must not convert count-based rates to `FLOAT`; rate/percentage math should stay as `DECIMAL(18, 6)`.
+- Reason: The old `forceFloatForCountRate` behavior conflicts with current Denodo/PostgreSQL pushdown requirements and can reintroduce `round(double precision, integer)` failures even when AI output and runtime formulas are correct.
+- Consequence: Future Denodo expression normalization may still convert numeric text and money to DECIMAL, but it must not add FLOAT/DOUBLE casts to rounded rates or conversion-rate expressions.
 
 ## Archived Decisions
 

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import styled from 'styled-components';
 import FunctionOutlined from '@ant-design/icons/FunctionOutlined';
+import CalculatorOutlined from '@ant-design/icons/CalculatorOutlined';
 import { Path, MENU_KEY } from '@/utils/enum';
 import { InstructionsSVG } from '@/utils/svgs';
 import SidebarMenu from '@/components/sidebar/SidebarMenu';
@@ -20,6 +21,7 @@ const Layout = styled.div`
 const MENU_KEY_MAP = {
   [Path.KnowledgeQuestionSQLPairs]: MENU_KEY.QUESTION_SQL_PAIRS,
   [Path.KnowledgeInstructions]: MENU_KEY.INSTRUCTIONS,
+  [Path.KnowledgeMetricFormulas]: MENU_KEY.METRIC_FORMULAS,
 };
 
 const linkStyle = { color: 'inherit', transition: 'none' };
@@ -48,6 +50,17 @@ export default function Knowledge() {
       ),
       icon: <InstructionsSVG />,
       key: MENU_KEY.INSTRUCTIONS,
+      className: 'pl-4',
+    },
+    {
+      'data-guideid': 'metric-formulas',
+      label: (
+        <Link style={linkStyle} href={Path.KnowledgeMetricFormulas}>
+          指标公式
+        </Link>
+      ),
+      icon: <CalculatorOutlined />,
+      key: MENU_KEY.METRIC_FORMULAS,
       className: 'pl-4',
     },
   ];

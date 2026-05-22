@@ -1,6 +1,6 @@
 # AI Context
 
-Last updated: 2026-05-20 17:32 CST
+Last updated: 2026-05-22 16:48 CST
 
 Long-term technical context for WrenAI AI agents. Keep this file stable and deduplicated.
 
@@ -75,6 +75,7 @@ User -> Wren UI / Apollo -> AI Service -> Wren Engine / Ibis
   - UI `DenodoSqlGuardService` skips `toDenodoNativeSql` for `DIALECT` candidates, then still runs semantic dictionary rewrite, DENSE_RANK rewrite, Denodo MCP validation, and optional AI-service correction.
   - Direct `DIALECT` candidates still pass through a narrow expression-only sanitizer before Denodo MCP validation. It does not remap native table/column names, but it normalizes Denodo-sensitive expressions such as `TO_NUMBER(x)` to `CAST(x AS DECIMAL(18, 2))`, Denodo date bucket functions, cast targets, and parser-emitted null limits.
   - Non-`DIALECT` candidates still use `toDenodoNativeSql` as a legacy fallback for historical SQL pairs/views/old results.
+- Denodo hidden exemplar hardening: the private full-lead conversion/refund-comparison exemplar in `denodo_prompt_context.py` now uses `DECIMAL(18, 6)` and `CAST(100 AS DECIMAL(18, 6))` instead of `100.0`. This is a durable prompt fix, not just a test tweak, and exists to keep the model away from `ROUND(... * FLOAT, 2)` shapes that Denodo/JDBC can push down as `round(double precision, integer)`.
 - Denodo prompts should not use `TO_NUMBER`; numeric text conversion inside aggregates should prefer `CAST(<expression> AS DECIMAL(18, 2))`. This was added after Denodo rejected `AVG(TO_NUMBER(package_price)) AS avg_price_increase` for a package-price uplift query.
 - Denodo prompts should avoid unnecessary CTEs for simple single-view aggregation. In particular, do not add a CTE only to compute a casted field, rename fields, or filter one table; inline `CAST` inside `SUM`/`AVG` instead. Use CTEs only when needed for mixed grains, top-N per group, or multi-step joins.
 - UI Denodo guard treats MCP validation tool exceptions as invalid SQL attempts and routes them through the existing correction loop. This was added after a CTE-style package aggregation surfaced `Cannot read properties of null (reading 'id')` during validate.

@@ -45,9 +45,8 @@ import {
 import { getConfig } from '@server/config';
 import { TextBasedAnswerBackgroundTracker } from '../backgrounds/textBasedAnswerBackgroundTracker';
 import { IAskingTaskTracker, TrackedAskingResult } from './askingTaskTracker';
-import {
-  buildDenodoAskAugmentation,
-} from '@server/utils/denodoMcp';
+import { IMetricFormulaService } from './metricFormulaService';
+import { buildDenodoAskAugmentation } from '@server/utils/denodoMcp';
 
 const config = getConfig();
 
@@ -421,6 +420,7 @@ export class AskingService implements IAskingService {
   private askingTaskTracker: IAskingTaskTracker;
   private askingTaskRepository: IAskingTaskRepository;
   private adjustmentBackgroundTracker: AdjustmentBackgroundTaskTracker;
+  private metricFormulaService: IMetricFormulaService;
 
   constructor({
     telemetry,
@@ -434,6 +434,7 @@ export class AskingService implements IAskingService {
     queryService,
     mdlService,
     askingTaskTracker,
+    metricFormulaService,
   }: {
     telemetry: PostHogTelemetry;
     wrenAIAdaptor: IWrenAIAdaptor;
@@ -446,6 +447,7 @@ export class AskingService implements IAskingService {
     queryService: IQueryService;
     mdlService: IMDLService;
     askingTaskTracker: IAskingTaskTracker;
+    metricFormulaService: IMetricFormulaService;
   }) {
     this.wrenAIAdaptor = wrenAIAdaptor;
     this.deployService = deployService;
@@ -495,6 +497,7 @@ export class AskingService implements IAskingService {
     this.askingTaskRepository = askingTaskRepository;
     this.mdlService = mdlService;
     this.askingTaskTracker = askingTaskTracker;
+    this.metricFormulaService = metricFormulaService;
   }
 
   public async getThreadRecommendationQuestions(
@@ -626,6 +629,10 @@ export class AskingService implements IAskingService {
             semanticContext: undefined,
             semanticDictionary: undefined,
           };
+    const metricFormulas =
+      project.type === DataSourceName.DENODO_MCP
+        ? await this.metricFormulaService.listEnabledFormulas()
+        : [];
 
     const response = await this.askingTaskTracker.createAskingTask({
       query: input.question,
@@ -635,6 +642,7 @@ export class AskingService implements IAskingService {
       configurations: { language },
       semanticContext: denodoAskAugmentation.semanticContext,
       semanticDictionary: denodoAskAugmentation.semanticDictionary,
+      metricFormulas,
       rerunFromCancelled,
       previousTaskId,
       threadResponseId,

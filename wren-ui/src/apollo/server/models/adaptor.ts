@@ -1,6 +1,7 @@
 import * as Errors from '@server/utils/error';
 import { Manifest } from '@server/mdl/type';
 import { ThreadResponse } from '../repositories';
+import { MetricFormula } from './metricFormula';
 
 // Add branded types for SQL strings
 type Brand<T, B> = T & { __brand: B };
@@ -173,6 +174,7 @@ export interface AskInput {
   configurations?: ProjectConfigurations;
   semanticContext?: string;
   semanticDictionary?: SemanticDictionary;
+  metricFormulas?: MetricFormula[];
 }
 
 export interface AsyncQueryResponse {

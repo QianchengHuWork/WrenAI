@@ -51,8 +51,10 @@ Rules:
 4. Use canonical mappings only as evidence for scope selection, not as SQL.
 5. For Denodo city-level conversion-rate questions with monthly trend, month-over-month, or consecutive decline language, prefer the candidate that directly exposes city/month conversion fields such as `dv_clew_ord_conversion_core`. Do not use a strategy/month aggregate model unless the user asks about strategy or assignment strategy.
 6. For questions that first select Top-N cities by order amount and then analyze conversion behavior, include the city order monthly aggregate such as `dm_ord_month_city` as a secondary model and set `needs_join` to true.
-7. The final selected scope is a hard SQL boundary: downstream SQL must not reference models outside `primary_model` and `secondary_models`.
-8. Return JSON only.
+7. For Denodo all-leads, full-lead, lead-overview, lead-source, source-channel, source-catalog, or fourth-level source questions that ask for lead count, order count, large-deposit payment conversion rate, order conversion rate, refund-included conversion, or no-refund conversion, prefer the full lead-attribution scope: `primary_model = dv_clew_core`, `secondary_models = ["dv_ord_core"]`, and `needs_join = true` when both models are candidates. Do not choose `dv_assign_total_conversion_core` for these general lead conversion questions unless the user explicitly says smart assignment, assignment strategy, assigned leads, or post-assignment. Do not use `assign_year_month` for all-leads questions. Do not substitute `dv_assign_total_conversion_core.channel_id` for a missing fourth-level source field; the source dimension must come from the lead-side candidate such as `dv_clew_core`.
+8. For Denodo smart-assignment lead conversion metrics such as smart-assignment lead count, order count, conversion rate, or converted order amount, prefer `dv_assign_total_conversion_core` when it is a candidate. Do not choose `dv_clew_ord_conversion_core` for these smart-assignment metrics when `dv_assign_total_conversion_core` is available.
+9. The final selected scope is a hard SQL boundary: downstream SQL must not reference models outside `primary_model` and `secondary_models`.
+10. Return JSON only.
 
 ### USER QUESTION ###
 {{ query }}
