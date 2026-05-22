@@ -121,6 +121,12 @@ Preserve decisions unless obsolete. If superseded, move to `Archived Decisions` 
 - Reason: The old `forceFloatForCountRate` behavior conflicts with current Denodo/PostgreSQL pushdown requirements and can reintroduce `round(double precision, integer)` failures even when AI output and runtime formulas are correct.
 - Consequence: Future Denodo expression normalization may still convert numeric text and money to DECIMAL, but it must not add FLOAT/DOUBLE casts to rounded rates or conversion-rate expressions.
 
+### 2026-05-22 19:03 CST - Denodo scope selection is model-led
+
+- Decision: Denodo scope selection should be decided by the scope-resolution model using candidate metadata, canonical mappings, and optional metric-formula hints; code should not rewrite the model's `primaryModel` / `secondaryModels` for business-domain patterns.
+- Reason: Deterministic business overrides and formula-driven document reordering made wrong-table failures harder to reason about, especially ordinary full-order questions being pulled toward smart-assignment views.
+- Consequence: Metric formulas may guide scope-resolution prompts and final SQL generation after scope narrowing, but they must not force selected models. Retrieval order should be preserved, and selected models remain the hard SQL boundary.
+
 ## Archived Decisions
 
 None yet.

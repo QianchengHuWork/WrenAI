@@ -223,3 +223,17 @@ Use stable task titles. Move completed items to `Done` with date and verificatio
 - Add lightweight templates for benchmark result notes.
 - Add examples for SQL correction trace summaries.
 - Add a handoff checklist for PR reviews and CI failures.
+
+## 2026-05-22 19:03 CST - Denodo scope selection rollback/model-led rewrite
+
+- Status: Done in current worktree.
+- Scope: Rolled back uncommitted tracked changes to clean `55c98fd5` and removed the explicit untracked customer package script before re-implementing only AI-service scope-selection changes.
+- Changed:
+  - `prioritize_conversion_core_documents(...)` now preserves retrieval order instead of re-ranking candidates by business detectors or metric formulas.
+  - `_override_denodo_scope_for_known_patterns(...)` now returns the LLM-selected scope unchanged; it no longer forces Q20, smart-assignment, lead-overview, lead-source, or metric-formula primary models.
+  - Scope-resolution prompt now carries business-domain guidance for ordinary full-order questions (`dv_ord_core`), smart-assignment conversion, line-clue overview, option packages, and Q20-style city conversion decline.
+  - Runtime metric formulas are passed to scope resolution as optional hints and are injected into SQL generation only after selected-model narrowing.
+- Verification:
+  - `python3 -m py_compile` for changed AI-service files and focused tests.
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/services/test_ask_runtime_instructions.py tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q` passed: 41 tests.
+  - `git diff --check` passed.

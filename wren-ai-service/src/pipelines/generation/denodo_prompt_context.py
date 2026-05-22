@@ -469,83 +469,10 @@ def prioritize_conversion_core_documents(
     documents: list[dict],
     metric_formulas: Iterable[Any] | None = None,
 ) -> list[dict]:
-    if is_lead_source_conversion_query(query) or is_lead_overview_conversion_query(
-        query
-    ):
-        table_name_set = _normalize_table_names(
-            document.get("table_name") for document in documents
-        )
-        if {CLEW_CORE_TABLE, ORD_CORE_TABLE}.issubset(table_name_set):
-            return sorted(
-                documents,
-                key=_document_priority_for_lead_source_conversion,
-            )
-
-    formula_priority = _metric_formula_document_priority(
-        query,
-        [document.get("table_name") for document in documents],
-        metric_formulas,
-    )
-    if formula_priority:
-        return sorted(
-            documents,
-            key=lambda document: formula_priority.get(
-                _normalize_table_name(document.get("table_name")),
-                len(formula_priority) + 10,
-            ),
-        )
-
-    smart_assignment_metric = is_smart_assignment_conversion_metric_query(query)
-    if not (is_conversion_rate_query(query) or smart_assignment_metric):
-        return documents
-
-    q20_like = is_denodo_q20_city_conversion_decline_query(query)
-    if smart_assignment_metric:
-        priority = _document_priority_for_smart_assignment_conversion
-    elif q20_like:
-        priority = _document_priority_for_city_conversion_decline
-    else:
-        priority = _document_priority_for_conversion
-
-    return sorted(
-        documents,
-        key=priority,
-    )
-
-
-def _document_priority_for_conversion(document: dict) -> int:
-    return 0 if document.get("table_name") == CONVERSION_CORE_TABLE else 1
-
-
-def _document_priority_for_city_conversion_decline(document: dict) -> int:
-    table_name = document.get("table_name")
-    if table_name == CONVERSION_CORE_TABLE:
-        return 0
-    if table_name == ORDER_CITY_TABLE:
-        return 1
-    return 2
-
-
-def _document_priority_for_smart_assignment_conversion(document: dict) -> int:
-    table_name = document.get("table_name")
-    if table_name == ASSIGN_TOTAL_CONVERSION_TABLE:
-        return 0
-    if table_name in SMART_ASSIGNMENT_CONVERSION_TABLES:
-        return 1
-    if table_name == CONVERSION_CORE_TABLE:
-        return 2
-    return 3
-
-
-def _document_priority_for_lead_source_conversion(document: dict) -> int:
-    table_name = document.get("table_name")
-    if table_name == CLEW_CORE_TABLE:
-        return 0
-    if table_name == ORD_CORE_TABLE:
-        return 1
-    if table_name == ASSIGN_TOTAL_CONVERSION_TABLE:
-        return 3
-    return 2
+    # Preserve retrieval order. Scope selection is handled by the
+    # scope-resolution model using prompt guidance, not deterministic
+    # document re-ranking.
+    return documents
 
 
 def get_denodo_technical_rules() -> str:
@@ -753,53 +680,6 @@ def get_denodo_business_formula_instructions(
     )
 
 
-def get_denodo_metric_formula_scope_override(
-    query: str,
-    candidate_model_names: Iterable[str | None],
-    metric_formulas: Iterable[Any] | None,
-) -> dict[str, Any] | None:
-    available_model_names = [
-        model
-        for model in candidate_model_names
-        if isinstance(model, str) and model.strip()
-    ]
-    table_name_set = _normalize_table_names(candidate_model_names)
-    for formula in _iter_matching_metric_formulas(
-        query,
-        table_name_set,
-        metric_formulas,
-    ):
-        primary_model = _metric_formula_primary_model(formula)
-        if not primary_model:
-            continue
-
-        resolved_primary_model = _resolve_model_name(
-            primary_model,
-            available_model_names,
-        )
-        if not resolved_primary_model:
-            continue
-
-        required_models = [
-            resolved_model
-            for model in _metric_formula_required_models(formula)
-            if (
-                resolved_model := _resolve_model_name(
-                    model,
-                    available_model_names,
-                )
-            )
-        ]
-        return {
-            "id": _metric_formula_id(formula),
-            "name": _metric_formula_name(formula),
-            "primary_model": resolved_primary_model,
-            "required_models": required_models,
-        }
-
-    return None
-
-
 def get_denodo_metric_formula_instructions(
     query: str,
     table_names: Iterable[str | None],
@@ -875,6 +755,7 @@ def build_denodo_runtime_instructions(
     semantic_context: str | None,
     instructions: list[dict[str, Any]] | None = None,
     metric_formulas: Iterable[Any] | None = None,
+    include_scope_dependent_instructions: bool = True,
 ) -> list[dict[str, Any]]:
     runtime_instructions = list(instructions or [])
     if not is_denodo_context(semantic_context):
@@ -886,6 +767,9 @@ def build_denodo_runtime_instructions(
         instruction=get_denodo_technical_rules(),
         question=query,
     )
+
+    if not include_scope_dependent_instructions:
+        return runtime_instructions
 
     metric_formula_instructions = get_denodo_metric_formula_instructions(
         query,
@@ -964,28 +848,6 @@ def _normalize_table_name(table_name: str | None) -> str:
     return table_name.strip().lower() if isinstance(table_name, str) else ""
 
 
-def _metric_formula_document_priority(
-    query: str,
-    table_names: Iterable[str | None],
-    metric_formulas: Iterable[Any] | None,
-) -> dict[str, int]:
-    table_name_set = _normalize_table_names(table_names)
-    priority: dict[str, int] = {}
-    for formula in _iter_matching_metric_formulas(
-        query,
-        table_name_set,
-        metric_formulas,
-    ):
-        for model in [
-            _metric_formula_primary_model(formula),
-            *_metric_formula_required_models(formula),
-        ]:
-            for matched_name in _matching_table_names(model, table_name_set):
-                if matched_name and matched_name not in priority:
-                    priority[matched_name] = len(priority)
-    return priority
-
-
 def _iter_matching_metric_formulas(
     query: str,
     table_name_set: set[str],
@@ -1040,17 +902,6 @@ def _matching_table_names(model_name: str, table_name_set: set[str]) -> list[str
         for table_name in table_name_set
         if _model_names_match(normalized_model, table_name)
     ]
-
-
-def _resolve_model_name(
-    model_name: str,
-    available_model_names: Iterable[str],
-) -> str | None:
-    normalized_model = _normalize_table_name(model_name)
-    for available_model_name in available_model_names:
-        if _model_names_match(normalized_model, _normalize_table_name(available_model_name)):
-            return available_model_name
-    return None
 
 
 def _model_names_match(expected: str, actual: str) -> bool:

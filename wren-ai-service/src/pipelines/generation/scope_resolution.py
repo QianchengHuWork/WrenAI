@@ -49,12 +49,15 @@ Rules:
 2. Only return `secondary_models` when the question clearly needs a join.
 3. Prefer the smallest valid scope.
 4. Use canonical mappings only as evidence for scope selection, not as SQL.
-5. For Denodo city-level conversion-rate questions with monthly trend, month-over-month, or consecutive decline language, prefer the candidate that directly exposes city/month conversion fields such as `dv_clew_ord_conversion_core`. Do not use a strategy/month aggregate model unless the user asks about strategy or assignment strategy.
-6. For questions that first select Top-N cities by order amount and then analyze conversion behavior, include the city order monthly aggregate such as `dm_ord_month_city` as a secondary model and set `needs_join` to true.
-7. For Denodo all-leads, full-lead, lead-overview, lead-source, source-channel, source-catalog, or fourth-level source questions that ask for lead count, order count, large-deposit payment conversion rate, order conversion rate, refund-included conversion, or no-refund conversion, prefer the full lead-attribution scope: `primary_model = dv_clew_core`, `secondary_models = ["dv_ord_core"]`, and `needs_join = true` when both models are candidates. Do not choose `dv_assign_total_conversion_core` for these general lead conversion questions unless the user explicitly says smart assignment, assignment strategy, assigned leads, or post-assignment. Do not use `assign_year_month` for all-leads questions. Do not substitute `dv_assign_total_conversion_core.channel_id` for a missing fourth-level source field; the source dimension must come from the lead-side candidate such as `dv_clew_core`.
-8. For Denodo smart-assignment lead conversion metrics such as smart-assignment lead count, order count, conversion rate, or converted order amount, prefer `dv_assign_total_conversion_core` when it is a candidate. Do not choose `dv_clew_ord_conversion_core` for these smart-assignment metrics when `dv_assign_total_conversion_core` is available.
-9. The final selected scope is a hard SQL boundary: downstream SQL must not reference models outside `primary_model` and `secondary_models`.
-10. Return JSON only.
+5. Decide the business domain from the user's words, then choose the model whose declared purpose and fields fit that domain. Metric formulas and canonical mappings are evidence only; they must not override the business domain.
+6. For Denodo full-order questions about all orders, order date, order status, completed orders, order count, or order amount, prefer the full order fact scope: `primary_model = dv_ord_core`, `secondary_models = []`, and `needs_join = false` when `dv_ord_core` is a candidate. Do not choose `dv_assign_total_conversion_core` for ordinary all-order questions unless the user explicitly says smart assignment, assignment strategy, assigned leads, or post-assignment.
+7. For Denodo option-package questions such as package popularity, option package order count, average extra package price, or package revenue, prefer `dv_package_order_core` when it is a candidate.
+8. For Denodo city-level conversion-rate questions with monthly trend, month-over-month, or consecutive decline language, prefer the candidate that directly exposes city/month conversion fields such as `dv_clew_ord_conversion_core`. Do not use a strategy/month aggregate model unless the user asks about strategy or assignment strategy.
+9. For questions that first select Top-N cities by order amount and then analyze conversion behavior, include the city order monthly aggregate such as `dm_ord_month_city` as a secondary model and set `needs_join` to true.
+10. For Denodo all-leads, full-lead, lead-overview, lead-source, source-channel, source-catalog, or fourth-level source questions that ask for lead count, order count, large-deposit payment conversion rate, order conversion rate, refund-included conversion, or no-refund conversion, prefer the full lead-attribution scope: `primary_model = dv_clew_core`, `secondary_models = ["dv_ord_core"]`, and `needs_join = true` when both models are candidates. Do not choose `dv_assign_total_conversion_core` for these general lead conversion questions unless the user explicitly says smart assignment, assignment strategy, assigned leads, or post-assignment. Do not use `assign_year_month` for all-leads questions. Do not substitute `dv_assign_total_conversion_core.channel_id` for a missing fourth-level source field; the source dimension must come from the lead-side candidate such as `dv_clew_core`.
+11. For Denodo smart-assignment lead conversion metrics such as smart-assignment lead count, order count, conversion rate, or converted order amount, prefer `dv_assign_total_conversion_core` when it is a candidate. Do not choose `dv_clew_ord_conversion_core` for these smart-assignment metrics when `dv_assign_total_conversion_core` is available.
+12. The final selected scope is a hard SQL boundary: downstream SQL must not reference models outside `primary_model` and `secondary_models`.
+13. Return JSON only.
 
 ### USER QUESTION ###
 {{ query }}
@@ -81,7 +84,64 @@ Current Time: {{ current_time }}
   {% endfor %}
   {% endif %}
 {% endfor %}
+
+### CANDIDATE METRIC FORMULA HINTS ###
+These formulas are optional business-knowledge hints. Use them only as evidence
+when their scope and business domain match the user's request; do not let a
+formula override the candidate model whose declared purpose best fits the
+question.
+{% for formula in metric_formulas %}
+- name: {{ formula.name }}
+  primary_model: {{ formula.primary_model }}
+  {% if formula.required_models %}required_models: {{ formula.required_models | join(", ") }}{% endif %}
+  {% if formula.description %}description: {{ formula.description }}{% endif %}
+  {% if formula.trigger_phrases %}trigger_phrases: {{ formula.trigger_phrases | join(", ") }}{% endif %}
+  {% if formula.metric_names %}metrics: {{ formula.metric_names | join(", ") }}{% endif %}
+{% endfor %}
 """
+
+
+def _model_dump(value: Any) -> dict[str, Any]:
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _metric_formula_scope_hints(metric_formulas: list[Any] | None) -> list[dict]:
+    hints: list[dict] = []
+    for formula in metric_formulas or []:
+        data = _model_dump(formula)
+        enabled = data.get("enabled", True)
+        data_source = data.get("data_source") or data.get("dataSource")
+        if not enabled or str(data_source or "").lower() != "denodo":
+            continue
+
+        scope = _model_dump(data.get("scope"))
+        match = _model_dump(data.get("match"))
+        metrics = data.get("metrics") or []
+        hints.append(
+            {
+                "name": data.get("name") or data.get("id") or "metric_formula",
+                "description": data.get("description") or "",
+                "primary_model": scope.get("primary_model")
+                or scope.get("primaryModel")
+                or "",
+                "required_models": scope.get("required_models")
+                or scope.get("requiredModels")
+                or [],
+                "trigger_phrases": match.get("trigger_phrases")
+                or match.get("triggerPhrases")
+                or [],
+                "metric_names": [
+                    _model_dump(metric).get("name")
+                    for metric in metrics
+                    if _model_dump(metric).get("name")
+                ],
+            }
+        )
+    return hints
 
 
 @observe(capture_input=False)
@@ -90,10 +150,12 @@ def prompt(
     candidate_models: list[CandidateModelSummary],
     prompt_builder: PromptBuilder,
     configuration: Configuration | None = Configuration(),
+    metric_formulas: list[Any] | None = None,
 ) -> dict:
     prompt_result = prompt_builder.run(
         query=query,
         candidate_models=[candidate.model_dump() for candidate in candidate_models],
+        metric_formulas=_metric_formula_scope_hints(metric_formulas),
         language=configuration.language,
         current_time=configuration.show_current_time(),
     )
@@ -137,6 +199,7 @@ class ScopeResolution(BasicPipeline):
         query: str,
         candidate_models: list[CandidateModelSummary],
         configuration: Optional[Configuration] = Configuration(),
+        metric_formulas: Optional[list[Any]] = None,
     ):
         logger.info("Scope Resolution pipeline is running...")
         logger.info(
@@ -150,6 +213,7 @@ class ScopeResolution(BasicPipeline):
                 "query": query,
                 "candidate_models": candidate_models,
                 "configuration": configuration,
+                "metric_formulas": metric_formulas or [],
                 **self._components,
             },
         )

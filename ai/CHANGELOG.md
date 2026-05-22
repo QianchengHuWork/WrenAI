@@ -721,3 +721,17 @@ Record meaningful changes to shared AI memory and major agent-relevant repositor
   - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs test src/apollo/server/utils/tests/denodoMcp.test.ts src/apollo/server/services/tests/denodoSqlGuardService.test.ts --runInBand`
   - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types`
   - `git diff --check`
+
+## 2026-05-22 19:03 CST
+
+- Rolled the dirty worktree back to clean commit `55c98fd5 feat: add denodo metric formula guidance`, removed the explicitly requested untracked `scripts/customer-source-package.sh`, and then reworked Denodo scope selection to be model-led.
+- Changed:
+  - Removed deterministic selected-model rewrites from `_override_denodo_scope_for_known_patterns(...)`; it now preserves the LLM scope result.
+  - Changed `prioritize_conversion_core_documents(...)` to preserve retrieval order rather than pushing conversion/metric-formula views to the front.
+  - Added scope-resolution prompt guidance for full-order questions, option packages, city conversion decline, line-clue overview/source conversion, and smart-assignment conversion.
+  - Passed metric formulas into scope resolution as optional business hints, while keeping formula SQL instructions gated by selected-model narrowing.
+  - Prevented pre-scope runtime instruction construction from injecting business formulas based on the full retrieved top-N model set.
+- Verification:
+  - `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/scope_resolution.py wren-ai-service/src/web/v1/services/ask.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py`
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/services/test_ask_runtime_instructions.py tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q` (`41 passed`)
+  - `git diff --check`
