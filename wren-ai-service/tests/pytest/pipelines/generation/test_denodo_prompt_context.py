@@ -23,9 +23,9 @@ from src.pipelines.generation.denodo_prompt_context import (
 def test_denodo_technical_rules_are_not_business_formulas():
     rules = get_denodo_technical_rules()
 
-    assert "FLOAT" in rules
-    assert "DECIMAL(18, 6)" in rules
-    assert "round(double precision, integer)" in rules
+    assert "do not add casts" in rules
+    assert "DECIMAL(18, 6)" not in rules
+    assert "round(double precision, integer)" not in rules
     assert "NULLIF" in rules
     assert "LIMIT, FETCH, TOP" in rules
     assert "NULLS FIRST/LAST" in rules
@@ -74,7 +74,8 @@ def test_smart_assignment_conversion_metrics_use_assign_total_conversion_formula
         'COUNT(DISTINCT CASE WHEN "is_ord_fdpay" = 1 THEN "biz_order_no" END)'
         in formula
     )
-    assert 'CAST("actual_price" AS DECIMAL(18, 2))' in formula
+    assert 'COALESCE(SUM(CASE WHEN "is_ord_fdpay" = 1 THEN "actual_price" END), 0)' in formula
+    assert "CAST(" not in formula
     assert (
         "Do not calculate smart-assignment conversion rate as "
         "`converted_order_count / assigned_clew_count`"
@@ -121,10 +122,10 @@ def test_hidden_clew_overview_sql_exemplar_matches_original_question():
     assert "o.is_ord_fdpay" in context
     assert "gross_order_amount" in context
     assert "paid_flag" in context
-    assert "CAST(100 AS DECIMAL(18, 6))" in context
-    assert "* 100.0" not in context
-    assert "AS FLOAT" not in context
-    assert "AS DOUBLE" not in context
+    assert "* 100.0" in context
+    assert "CAST(100 AS DECIMAL(18, 6))" not in context
+    assert "CAST(" not in context
+    assert " AS DECIMAL" not in context
 
 
 def test_hidden_clew_overview_sql_exemplar_matches_month_variants():
@@ -276,7 +277,7 @@ def test_file_backed_metric_formula_suppresses_builtin_business_formula():
                         "name": "total_amount",
                         "expression": (
                             'COALESCE(SUM(CASE WHEN "is_conver_order" = 1 THEN '
-                            'CAST("actual_price" AS DECIMAL(18, 2)) END), 0)'
+                            '"actual_price" END), 0)'
                         ),
                     }
                 ],
@@ -318,8 +319,7 @@ def test_file_backed_package_order_metric_formula_is_injected_by_scope():
                     {
                         "name": "avg_package_price",
                         "expression": (
-                            'ROUND(AVG(CAST("package_price" AS '
-                            "DECIMAL(18, 2))), 2)"
+                            'ROUND(AVG("package_price"), 2)'
                         ),
                     },
                 ],
@@ -344,7 +344,8 @@ def test_file_backed_package_order_metric_formula_is_injected_by_scope():
     assert "dv_package_order_core" in formula
     assert "package_name" in formula
     assert 'COUNT(DISTINCT "biz_order_no")' in formula
-    assert 'CAST("package_price" AS DECIMAL(18, 2))' in formula
+    assert 'ROUND(AVG("package_price"), 2)' in formula
+    assert "CAST(" not in formula
     assert "dv_ord_core" in formula
     assert "city_name" in formula
     assert "option_amount" in formula
@@ -413,6 +414,50 @@ def test_file_backed_metric_formula_requires_required_models():
         == "denodo_metric_formula:denodo_clew_overview_conversion"
         for instruction in instructions
     )
+
+
+def test_file_backed_clew_overview_formula_preserves_niche_dimension_grain():
+    grain_instruction = (
+        "线索侧 CTE 必须 SELECT 并 GROUP BY niche_id + 所有展示/分组维度；"
+        "不要只按展示维度提前聚合后再 join 订单。"
+    )
+    instructions = build_denodo_runtime_instructions(
+        "1月不同等级的线索，各自的转化率和产出金额是多少？",
+        ["dv_clew_core", "dv_ord_core"],
+        DENODO_CONTEXT_MARKER,
+        [],
+        [
+            {
+                "id": "denodo_clew_overview_conversion",
+                "enabled": True,
+                "dataSource": "denodo",
+                "name": "线索大盘转化指标",
+                "scope": {
+                    "primaryModel": "dv_clew_core",
+                    "requiredModels": ["dv_ord_core"],
+                },
+                "metrics": [
+                    {
+                        "name": "conversion_rate",
+                        "expression": (
+                            'ROUND(COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 '
+                            'THEN "niche_id" END) * 100.0 / '
+                            'NULLIF(SUM("lead_count"), 0), 2)'
+                        ),
+                    }
+                ],
+                "extraInstruction": grain_instruction,
+            }
+        ],
+    )
+
+    formula = instructions[-1]["instruction"]
+    assert instructions[-1]["instruction_id"] == (
+        "denodo_metric_formula:denodo_clew_overview_conversion"
+    )
+    assert grain_instruction in formula
+    assert "dv_clew_core" in formula
+    assert "dv_ord_core" in formula
 
 
 def test_metric_formula_matches_schema_qualified_primary_model():

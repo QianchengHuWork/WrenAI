@@ -133,9 +133,8 @@ Normalized User Question: {{ normalized_query }}
 - For Denodo intermediate Top-N populations used by later joins or filters, ORDER BY alone is not a filter. Do not use LIMIT, FETCH, or TOP; use a correlated-count self filter with deterministic tie-break fields.
 - For Denodo consecutive month or month-over-month decline logic, do not use LAG or LEAD. Build a YYYYMM `month_index` with `CAST(SUBSTR(month_field, 1, 4) AS INTEGER) * 12 + CAST(SUBSTR(month_field, 5, 2) AS INTEGER)` and compare adjacent months with self joins.
 - Continuous two-month decline means three consecutive monthly rows with two decreases: `m2.month_index = m1.month_index + 1`, `m3.month_index = m2.month_index + 1`, `m2.metric < m1.metric`, and `m3.metric < m2.metric`.
-- For Denodo VQL, do not use CAST(... AS FLOAT) or DOUBLE inside ROUND(expr, scale) for rate, ratio, percentage, or conversion-rate expressions. Denodo/JDBC pushdown can reject `round(double precision, integer)`.
-- For rounded Denodo rates or percentages, cast numerator and denominator to DECIMAL(18, 6), use NULLIF on the denominator, and multiply by CAST(100 AS DECIMAL(18, 6)) when the metric is a percentage.
-- Keep DECIMAL for monetary amount calculations and numeric text conversions.
+- For Denodo VQL rounded rates or percentages, preserve the expression shape from runtime metric formulas when one is provided, use NULLIF on the denominator, and do not add casts unless the formula explicitly includes them.
+- Do not add casts to monetary amount calculations or numeric fields unless the retrieved schema or runtime metric formula explicitly requires them.
 
 Let's think step by step.
 """

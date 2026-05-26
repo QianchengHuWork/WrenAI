@@ -261,7 +261,7 @@ def test_build_runtime_sql_instructions_for_denodo_context():
 
     assert instructions[0]["instruction"] == "existing"
     assert instructions[1]["instruction_id"] == DENODO_TECHNICAL_RULES_INSTRUCTION_ID
-    assert "FLOAT" in instructions[1]["instruction"]
+    assert "do not add casts" in instructions[1]["instruction"]
     assert "NULLIF" in instructions[1]["instruction"]
     assert "converted_order_count" not in instructions[1]["instruction"]
     assert "assigned_clew_count" not in instructions[1]["instruction"]

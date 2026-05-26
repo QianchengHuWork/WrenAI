@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-05-22 16:35 CST
+Last updated: 2026-05-25 15:12 CST
 
 Preserve decisions unless obsolete. If superseded, move to `Archived Decisions` with reason and date.
 
@@ -109,11 +109,11 @@ Preserve decisions unless obsolete. If superseded, move to `Archived Decisions` 
 - Reason: The exemplar is a private benchmark scaffold that should influence final SQL generation/correction but must not appear in frontend reasoning, knowledge management, GraphQL fields, or user-visible SQL-pair content.
 - Consequence: Changing this exemplar requires code deployment and AI service restart. Runtime-editable business formulas should continue to live in `metric-formulas.json`; hidden exemplars should remain rare and narrowly matched.
 
-### 2026-05-22 16:48 CST - Hidden Denodo exemplars must use DECIMAL rate math
+### 2026-05-22 16:48 CST - Superseded: hidden Denodo exemplars must use casted percentage multiplier
 
 - Decision: The hidden full-lead conversion exemplar must keep `DECIMAL(18, 6)` / `CAST(100 AS DECIMAL(18, 6))` rate math and must not regress to `100.0` / `FLOAT`-shaped rounding.
 - Reason: Denodo/JDBC pushdown can turn `ROUND(... * FLOAT, 2)` into `round(double precision, integer)`, which fails at execution time. The exemplar is a strong prompt prior, so leaving `100.0` there can reintroduce the bad shape even when the generic rules already discourage it.
-- Consequence: Any future edit to the exemplar must preserve decimal-typed numerator/denominator math and should be covered by a regression test before shipment.
+- Consequence: Superseded on 2026-05-25. Future edits should preserve runtime formula shape and should not add metric-calculation casts unless the formula explicitly contains them.
 
 ### 2026-05-22 17:04 CST - Denodo SQL rewrite must not force count rates to FLOAT
 
@@ -126,6 +126,18 @@ Preserve decisions unless obsolete. If superseded, move to `Archived Decisions` 
 - Decision: Denodo scope selection should be decided by the scope-resolution model using candidate metadata, canonical mappings, and optional metric-formula hints; code should not rewrite the model's `primaryModel` / `secondaryModels` for business-domain patterns.
 - Reason: Deterministic business overrides and formula-driven document reordering made wrong-table failures harder to reason about, especially ordinary full-order questions being pulled toward smart-assignment views.
 - Consequence: Metric formulas may guide scope-resolution prompts and final SQL generation after scope narrowing, but they must not force selected models. Retrieval order should be preserved, and selected models remain the hard SQL boundary.
+
+### 2026-05-25 14:47 CST - Do not globally force metric-calculation casts
+
+- Decision: Denodo prompt rules, runtime formula injection, default formula seeds, and hidden SQL exemplars should preserve the customer-provided metric expression shape. They should not add `DECIMAL(18, 6)`, `DECIMAL(18, 2)`, or `FLOAT`/`DOUBLE` casts to rate/amount formulas unless the formula itself explicitly contains them.
+- Reason: Runtime metric formulas are intended to be user-controlled business guidance; global cast rules made hot-updated formulas look ignored and caused prompt/exemplar/formula layers to fight each other.
+- Consequence: SQL generation/correction should use formulas as written and only keep guardrails such as `NULLIF` and selected-model boundaries. UI Denodo SQL sanitization may still normalize already-generated `TO_NUMBER` or `FLOAT`/`DOUBLE` casts before MCP validation, but prompt/formula layers should not introduce them.
+
+### 2026-05-25 15:12 CST - Preserve join keys in dimensioned line-clue conversion CTEs
+
+- Decision: For line-clue overview conversion metrics, any intermediate lead CTE used for order attribution must keep `niche_id` plus every display/group dimension until after the order join. Final roll-up to dimensions such as `clew_level`, source, city, channel, or time happens only in the outer SELECT.
+- Reason: Grouping the lead CTE only by the display dimension drops `niche_id`; later order attribution then emits invalid SQL such as `l.niche_id` from a CTE that never selected it.
+- Consequence: Runtime/default metric formula instructions should state this grain rule explicitly. SQL correction timeouts for this pattern should be treated as avoidable initial-generation failures, not only as timeout tuning issues.
 
 ## Archived Decisions
 

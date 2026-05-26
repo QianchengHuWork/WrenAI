@@ -51,24 +51,21 @@ SELECT
     COALESCE(SUM(o.total_amt_pay), 0) AS amount_with_refund,
     COALESCE(SUM(o.total_amt_fdpay), 0) AS amount_no_refund,
     ROUND(
-        CAST(COUNT(DISTINCT CASE WHEN o.has_ord_pay = 1 THEN l.niche_id END) AS DECIMAL(18, 6))
-        * CAST(100 AS DECIMAL(18, 6))
-        / NULLIF(CAST(SUM(l.lead_count) AS DECIMAL(18, 6)), 0),
+        COUNT(DISTINCT CASE WHEN o.has_ord_pay = 1 THEN l.niche_id END) * 100.0
+        / NULLIF(SUM(l.lead_count), 0),
         2
     ) AS conversion_with_refund,
     ROUND(
-        CAST(COUNT(DISTINCT CASE WHEN o.has_ord_fdpay = 1 THEN l.niche_id END) AS DECIMAL(18, 6))
-        * CAST(100 AS DECIMAL(18, 6))
-        / NULLIF(CAST(SUM(l.lead_count) AS DECIMAL(18, 6)), 0),
+        COUNT(DISTINCT CASE WHEN o.has_ord_fdpay = 1 THEN l.niche_id END) * 100.0
+        / NULLIF(SUM(l.lead_count), 0),
         2
     ) AS conversion_no_refund,
     ROUND(
-        CAST(
+        (
             COUNT(DISTINCT CASE WHEN o.has_ord_pay = 1 THEN l.niche_id END)
             - COUNT(DISTINCT CASE WHEN o.has_ord_fdpay = 1 THEN l.niche_id END)
-            AS DECIMAL(18, 6)
-        ) * CAST(100 AS DECIMAL(18, 6))
-        / NULLIF(CAST(SUM(l.lead_count) AS DECIMAL(18, 6)), 0),
+        ) * 100.0
+        / NULLIF(SUM(l.lead_count), 0),
         2
     ) AS refund_impact_pct
 FROM leads_per_niche l
@@ -344,8 +341,8 @@ def get_denodo_hidden_sql_exemplar_context(
         "`order_date_key >= min_clue_date`.\n"
         "- Use `is_ord_pay` for refund-included paid orders and `is_ord_fdpay` "
         "for refund-excluded effective orders; do not use `paid_flag`.\n"
-        "- Preserve the exemplar rate shape unless Denodo validation requires "
-        "a type-only correction; never use FLOAT or DOUBLE inside ROUND.\n"
+        "- Preserve the exemplar rate shape and do not add casts that are not "
+        "shown in the exemplar.\n"
         "SQL exemplar:\n"
         f"{exemplar_sql}"
     )
@@ -491,13 +488,14 @@ def get_denodo_technical_rules() -> str:
         "5. Do not put aggregate expressions in WHERE. Use HAVING after "
         "aggregation, and when ordering by an aggregate use the selected alias "
         "where possible.\n"
-        "6. Do not use TO_NUMBER in Denodo VQL. For numeric text conversions, "
-        "especially monetary amount fields, use CAST(<expression> AS DECIMAL(18, 2)) "
-        "inside SUM/AVG or other aggregations.\n"
+        "6. Do not use TO_NUMBER in Denodo VQL. Use the numeric fields and "
+        "metric expressions exactly as provided by the retrieved schema or "
+        "runtime metric formulas; do not add casts just for numeric conversion.\n"
         "7. Do not introduce a CTE just to compute a casted field, rename fields, "
-        "or filter one table. For simple single-view aggregations, inline CAST "
-        "inside the aggregate expression. Use CTEs only when they are needed for "
-        "mixed grains, top-N per group, or multi-step joins.\n"
+        "or filter one table. For simple single-view aggregations, aggregate the "
+        "metric field directly unless the runtime metric formula explicitly "
+        "contains a cast. Use CTEs only when they are needed for mixed grains, "
+        "top-N per group, or multi-step joins.\n"
         "8. Partition fields are view-specific. Only add `ptstart` and `ptend` "
         "filters to a view when that exact view's retrieved schema includes both "
         "columns. Do not copy `ptstart` or `ptend` filters from one selected view "
@@ -530,11 +528,9 @@ def get_denodo_technical_rules() -> str:
         "single previous-month comparison is not sufficient.\n"
         "13. For rate, ratio, percentage, success-rate, coverage-rate, refund-rate, "
         "share, or numerator/denominator metrics that use ROUND(expr, scale), "
-        "cast numerator and denominator to DECIMAL(18, 6), multiply by "
-        "CAST(100 AS DECIMAL(18, 6)) for percentages, and wrap the denominator "
-        "with NULLIF(..., 0). Do not use CAST(... AS FLOAT) or DOUBLE inside "
-        "ROUND(expr, scale); Denodo/JDBC pushdown can reject "
-        "round(double precision, integer).\n"
+        "preserve the expression shape from runtime metric formulas when one is "
+        "provided and wrap the denominator with NULLIF(..., 0). Do not add casts "
+        "unless the runtime metric formula explicitly includes them.\n"
         "14. Do not default to DENSE_RANK or other window ranking functions for "
         "top/bottom questions. Only add ranking when the user explicitly asks "
         "for a rank column or same-rank tie semantics.\n"
@@ -622,15 +618,14 @@ def get_denodo_business_formula_instructions(
     if _is_assign_success_query(normalized_query):
         return (
             "Denodo business formula: for assignment success rate, calculate "
-            "`assigned_clew_count / assign_count` with DECIMAL(18, 6) casts and "
-            "NULLIF on the denominator."
+            "`assigned_clew_count / assign_count` with NULLIF on the denominator."
         )
 
     if _is_assignment_coverage_query(normalized_query):
         return (
             "Denodo business formula: for smart-assignment coverage rate, "
-            "calculate `assigned_clew_count / total_clew_count` with "
-            "DECIMAL(18, 6) casts and NULLIF on the denominator."
+            "calculate `assigned_clew_count / total_clew_count` with NULLIF on "
+            "the denominator."
         )
 
     if is_smart_assignment_conversion_metric_query(normalized_query):
@@ -644,12 +639,11 @@ def get_denodo_business_formula_instructions(
             '`COUNT(DISTINCT CASE WHEN "is_ord_fdpay" = 1 THEN "biz_order_no" '
             "END)`; calculate `conversion_rate` by expanding the full "
             "expression "
-            '`ROUND(CAST(COUNT(DISTINCT CASE WHEN "is_ord_fdpay" = 1 THEN '
-            '"biz_order_no" END) AS DECIMAL(18, 6)) * CAST(100 AS '
-            'DECIMAL(18, 6)) / NULLIF(CAST(COUNT(DISTINCT "clew_id") AS '
-            'DECIMAL(18, 6)), 0), 2)`; calculate `total_amount` as '
+            '`ROUND(COUNT(DISTINCT CASE WHEN "is_ord_fdpay" = 1 THEN '
+            '"biz_order_no" END) * 100.0 / NULLIF(COUNT(DISTINCT "clew_id"), '
+            '0), 2)`; calculate `total_amount` as '
             '`COALESCE(SUM(CASE WHEN "is_ord_fdpay" = 1 THEN '
-            'CAST("actual_price" AS DECIMAL(18, 2)) END), 0)`. Do not calculate '
+            '"actual_price" END), 0)`. Do not calculate '
             "smart-assignment conversion rate as "
             "`converted_order_count / assigned_clew_count`; do not use "
             f"`{CONVERSION_CORE_TABLE}` for smart-assignment lead conversion "
@@ -672,8 +666,8 @@ def get_denodo_business_formula_instructions(
     return (
         "Denodo business formula: for generic order conversion rate, lead-to-order "
         "conversion rate, or overall conversion rate, calculate "
-        "`converted_order_count / total_clew_count` with DECIMAL(18, 6) casts "
-        "and NULLIF on the denominator. Do not use `assigned_clew_count` as the generic "
+        "`converted_order_count / total_clew_count` with NULLIF on the "
+        "denominator. Do not use `assigned_clew_count` as the generic "
         "conversion-rate denominator. Smart-assignment conversion metrics have "
         "a separate rule and must not be inferred from this generic formula. "
         f"{total_table_note}"

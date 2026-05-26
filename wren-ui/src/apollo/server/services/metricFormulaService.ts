@@ -50,12 +50,12 @@ const DEFAULT_ASSIGN_CONVERSION_FORMULA: MetricFormula = {
     {
       name: 'conversion_rate',
       expression:
-        'ROUND(CAST(COUNT(DISTINCT CASE WHEN "is_ord_fdpay" = 1 THEN "biz_order_no" END) AS DECIMAL(18, 6)) * CAST(100 AS DECIMAL(18, 6)) / NULLIF(CAST(COUNT(DISTINCT "clew_id") AS DECIMAL(18, 6)), 0), 2)',
+        'ROUND(COUNT(DISTINCT CASE WHEN "is_ord_fdpay" = 1 THEN "biz_order_no" END) * 100.0 / NULLIF(COUNT(DISTINCT "clew_id"), 0), 2)',
     },
     {
       name: 'total_amount',
       expression:
-        'COALESCE(SUM(CASE WHEN "is_ord_fdpay" = 1 THEN CAST("actual_price" AS DECIMAL(18, 2)) END), 0)',
+        'COALESCE(SUM(CASE WHEN "is_ord_fdpay" = 1 THEN "actual_price" END), 0)',
     },
   ],
   forbiddenPatterns: [
@@ -63,8 +63,6 @@ const DEFAULT_ASSIGN_CONVERSION_FORMULA: MetricFormula = {
     'is_ord_pay',
     'SUM(CASE WHEN ... THEN 1 ELSE 0 END)',
     'converted_order_count / assigned_clew_count',
-    'CAST(... AS FLOAT)',
-    'ROUND(CAST(... AS FLOAT)',
   ],
   extraInstruction:
     '智能分配转化率不要使用 converted_order_count / assigned_clew_count，也不要改用 dv_clew_ord_conversion_core。',
@@ -117,27 +115,27 @@ const DEFAULT_CLEW_OVERVIEW_CONVERSION_FORMULA: MetricFormula = {
     {
       name: 'conversion_rate_with_refund',
       expression:
-        'ROUND(CAST(COUNT(DISTINCT CASE WHEN "has_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END) AS DECIMAL(18, 6)) * CAST(100 AS DECIMAL(18, 6)) / NULLIF(CAST(SUM("lead_count") AS DECIMAL(18, 6)), 0), 2)',
+        'ROUND(COUNT(DISTINCT CASE WHEN "has_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END) * 100.0 / NULLIF(SUM("lead_count"), 0), 2)',
     },
     {
       name: 'conversion_rate',
       expression:
-        'ROUND(CAST(COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END) AS DECIMAL(18, 6)) * CAST(100 AS DECIMAL(18, 6)) / NULLIF(CAST(SUM("lead_count") AS DECIMAL(18, 6)), 0), 2)',
+        'ROUND(COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END) * 100.0 / NULLIF(SUM("lead_count"), 0), 2)',
     },
     {
       name: 'total_amount_with_refund',
       expression:
-        'COALESCE(SUM(CASE WHEN "is_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN CAST("actual_price" AS DECIMAL(18, 2)) END), 0)',
+        'COALESCE(SUM(CASE WHEN "is_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN "actual_price" END), 0)',
     },
     {
       name: 'total_amount',
       expression:
-        'COALESCE(SUM(CASE WHEN "is_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN CAST("actual_price" AS DECIMAL(18, 2)) END), 0)',
+        'COALESCE(SUM(CASE WHEN "is_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "actual_price" END), 0)',
     },
     {
       name: 'refund_impact_pct',
       expression:
-        'ROUND(CAST((COUNT(DISTINCT CASE WHEN "has_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END) - COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)) AS DECIMAL(18, 6)) * CAST(100 AS DECIMAL(18, 6)) / NULLIF(CAST(SUM("lead_count") AS DECIMAL(18, 6)), 0), 2)',
+        'ROUND((COUNT(DISTINCT CASE WHEN "has_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END) - COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)) * 100.0 / NULLIF(SUM("lead_count"), 0), 2)',
     },
   ],
   forbiddenPatterns: [
@@ -148,11 +146,9 @@ const DEFAULT_CLEW_OVERVIEW_CONVERSION_FORMULA: MetricFormula = {
     'mobile_md5 = phone_no_md5',
     'paid_flag',
     'INNER JOIN "dv_ord_core"',
-    'CAST(... AS FLOAT)',
-    'ROUND(CAST(... AS FLOAT)',
   ],
   extraInstruction:
-    '线索大盘转化指标必须使用商机级归因，并固定使用条件聚合结构：第一段 leads_per_niche，以 dv_clew_core 为线索主视图，先按 niche_id 聚合线索，统计 COUNT(DISTINCT "clew_id") AS "lead_count"，并取每个商机最早线索创建日期。最终查询必须从 leads_per_niche 出发 LEFT JOIN dv_ord_core，以保留无订单线索分母；不要使用 INNER JOIN 作为线索到订单的主关联。订单归因不要做成先 WHERE 过滤再 JOIN，也不要把订单创建时间归因条件只放在 JOIN ON 中；必须在订单数、转化率和金额的 CASE WHEN 条件里同时判断订单状态和订单创建时间，例如 COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)，生成 SQL 时按实际别名展开为类似 COUNT(DISTINCT CASE WHEN "o"."is_ord_fdpay" = 1 AND "o"."order_date" >= "l"."min_clew_date" THEN "l"."niche_id" END)。转化率、退款影响率等 ROUND(..., 2) 比率表达式必须把分子和分母 CAST 为 DECIMAL(18, 6)，不要使用 CAST(... AS FLOAT) 或 DOUBLE，否则 Denodo 下推到 PostgreSQL 会触发 round(double precision, integer) 错误。默认订单数、订单转化率和转化订单金额使用 "is_ord_fdpay" = 1 的不含退订真实有效口径；只有当用户明确要求含退订、含退款或大定支付含退订时，才使用 "is_ord_pay" = 1；不要用 paid_flag 替代 "is_ord_pay"。最终汇总时线索量使用 SUM("lead_count")，含退订订单量使用 COUNT(DISTINCT CASE WHEN "has_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)，不含退订订单量使用 COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)。如果按城市、来源、时间、渠道等维度分析，保持同样的商机级归因结构，并把维度带入线索侧聚合与最终 GROUP BY。用户询问线索四级来源目录、来源渠道转化率或来源维度排名时，必须在 dv_clew_core 的检索字段中选择表示四级来源目录/来源渠道的字段作为 GROUP BY 维度；不要因为智能分配表中存在 channel_id 就改用 dv_assign_total_conversion_core。',
+    '线索大盘转化指标必须使用商机级归因，并固定使用条件聚合结构：第一段 leads_per_niche，以 dv_clew_core 为线索主视图，先按 niche_id 聚合线索，统计 COUNT(DISTINCT "clew_id") AS "lead_count"，并取每个商机最早线索创建日期。最终查询必须从 leads_per_niche 出发 LEFT JOIN dv_ord_core，以保留无订单线索分母；不要使用 INNER JOIN 作为线索到订单的主关联。订单归因不要做成先 WHERE 过滤再 JOIN，也不要把订单创建时间归因条件只放在 JOIN ON 中；必须在订单数、转化率和金额的 CASE WHEN 条件里同时判断订单状态和订单创建时间，例如 COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)，生成 SQL 时按实际别名展开为类似 COUNT(DISTINCT CASE WHEN "o"."is_ord_fdpay" = 1 AND "o"."order_date" >= "l"."min_clew_date" THEN "l"."niche_id" END)。默认订单数、订单转化率和转化订单金额使用 "is_ord_fdpay" = 1 的不含退订真实有效口径；只有当用户明确要求含退订、含退款或大定支付含退订时，才使用 "is_ord_pay" = 1；不要用 paid_flag 替代 "is_ord_pay"。最终汇总时线索量使用 SUM("lead_count")，含退订订单量使用 COUNT(DISTINCT CASE WHEN "has_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)，不含退订订单量使用 COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)。如果按城市、来源、时间、渠道、线索等级等维度分析，线索侧 CTE 必须 SELECT 并 GROUP BY niche_id + 所有展示/分组维度；不要只按展示维度先聚合后再 join 订单，否则后续 l.niche_id 不存在。订单侧聚合也必须保留同样的 niche_id + 维度键，最终 LEFT JOIN 按这些键连接，最后 SELECT 才按展示维度汇总。用户询问线索四级来源目录、来源渠道转化率或来源维度排名时，必须在 dv_clew_core 的检索字段中选择表示四级来源目录/来源渠道的字段作为 GROUP BY 维度；不要因为智能分配表中存在 channel_id 就改用 dv_assign_total_conversion_core。',
 };
 
 const DEFAULT_NICHE_DRIVE_CONVERSION_FORMULA: MetricFormula = {
@@ -195,12 +191,12 @@ const DEFAULT_NICHE_DRIVE_CONVERSION_FORMULA: MetricFormula = {
     {
       name: 'drive_conversion_rate',
       expression:
-        'ROUND(CAST(COUNT(DISTINCT CASE WHEN "ai_assign_drive_cnt" > 0 AND "is_ord_fdpay" = 1 THEN "biz_order_no" END) AS DECIMAL(18, 6)) * CAST(100 AS DECIMAL(18, 6)) / NULLIF(CAST(COUNT(DISTINCT CASE WHEN "ai_assign_drive_cnt" > 0 THEN "clew_id" END) AS DECIMAL(18, 6)), 0), 2)',
+        'ROUND(COUNT(DISTINCT CASE WHEN "ai_assign_drive_cnt" > 0 AND "is_ord_fdpay" = 1 THEN "biz_order_no" END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN "ai_assign_drive_cnt" > 0 THEN "clew_id" END), 0), 2)',
     },
     {
       name: 'total_amount',
       expression:
-        'COALESCE(SUM(CASE WHEN "ai_assign_drive_cnt" > 0 AND "is_ord_fdpay" = 1 THEN CAST("actual_price" AS DECIMAL(18, 2)) END), 0)',
+        'COALESCE(SUM(CASE WHEN "ai_assign_drive_cnt" > 0 AND "is_ord_fdpay" = 1 THEN "actual_price" END), 0)',
     },
   ],
   forbiddenPatterns: [
@@ -246,11 +242,11 @@ const DEFAULT_PACKAGE_ORDER_FORMULA: MetricFormula = {
     },
     {
       name: 'avg_package_price',
-      expression: 'ROUND(AVG(CAST("package_price" AS DECIMAL(18, 2))), 2)',
+      expression: 'ROUND(AVG("package_price"), 2)',
     },
     {
       name: 'total_package_revenue',
-      expression: 'ROUND(SUM(CAST("package_price" AS DECIMAL(18, 2))), 2)',
+      expression: 'ROUND(SUM("package_price"), 2)',
     },
   ],
   forbiddenPatterns: [
@@ -259,10 +255,9 @@ const DEFAULT_PACKAGE_ORDER_FORMULA: MetricFormula = {
     'option_amount',
     'SUM("order_count")',
     'COUNT("biz_order_no") AS "order_count"',
-    'CAST("package_price" AS DOUBLE)',
   ],
   extraInstruction:
-    '选装包热度、最受欢迎选装包、选装包销量/订单数排名、平均额外车价增幅必须使用 dv_package_order_core。按 "package_name" 分组，不要按城市、车系或订单主表维度替代。订单数量使用 COUNT(DISTINCT "biz_order_no")，不要使用 SUM("order_count") 或普通 COUNT("biz_order_no")。平均额外车价增幅使用 package_price 的 DECIMAL(18, 2) 金额口径；如用户要求收入贡献，可同时给出 SUM(CAST("package_price" AS DECIMAL(18, 2)))。时间过滤优先使用该视图的 "order_year_month"。Top N 选装包按 order_count 降序、package_name 升序稳定排序；如果 Top N 结果还要继续参与下游 join/filter，使用 Denodo correlated-count 过滤，不要改查 dv_ord_core。',
+    '选装包热度、最受欢迎选装包、选装包销量/订单数排名、平均额外车价增幅必须使用 dv_package_order_core。按 "package_name" 分组，不要按城市、车系或订单主表维度替代。订单数量使用 COUNT(DISTINCT "biz_order_no")，不要使用 SUM("order_count") 或普通 COUNT("biz_order_no")。平均额外车价增幅直接使用 package_price 金额口径；如用户要求收入贡献，可同时给出 SUM("package_price")。时间过滤优先使用该视图的 "order_year_month"。Top N 选装包按 order_count 降序、package_name 升序稳定排序；如果 Top N 结果还要继续参与下游 join/filter，使用 Denodo correlated-count 过滤，不要改查 dv_ord_core。',
 };
 
 const DEFAULT_STORE: MetricFormulaStore = {

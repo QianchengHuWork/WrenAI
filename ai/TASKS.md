@@ -237,3 +237,47 @@ Use stable task titles. Move completed items to `Done` with date and verificatio
   - `python3 -m py_compile` for changed AI-service files and focused tests.
   - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/services/test_ask_runtime_instructions.py tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q` passed: 41 tests.
   - `git diff --check` passed.
+
+## 2026-05-25 14:18 CST - Remove global casted percentage multiplier rule
+
+- Status: Done in current worktree.
+- Scope: Superseded by the broader 14:47 cast cleanup below.
+- Changed:
+  - Removed the global prompt requirement to multiply percentages by a casted DECIMAL constant.
+  - SQL generation, follow-up generation, correction, Denodo technical rules, and default SQL rules now preserve the percentage multiplier shape from runtime metric formulas when one is provided.
+  - Updated the hidden full-lead conversion exemplar to use `100.0`; this was later superseded by the 14:47 cleanup that removed metric-calculation casts from the exemplar entirely.
+- Verification:
+  - `python3 -m py_compile` for changed AI-service generation files and prompt tests.
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/services/test_ask_runtime_instructions.py -q` passed: 41 tests.
+  - `git diff --check` passed.
+
+## 2026-05-25 14:47 CST - Clean Denodo prompt/formula/hidden-exemplar casts
+
+- Status: Done in current worktree.
+- Scope: AI-service Denodo prompt rules/tests plus UI metric-formula default seeds and the local runtime `wren-ui/data/metric-formulas.json`.
+- Changed:
+  - Removed metric-calculation `DECIMAL(18, 6)` / `DECIMAL(18, 2)` cast guidance from Denodo technical rules, final SQL generation, follow-up SQL generation, SQL correction, and default SQL rules.
+  - Updated the hidden full-lead conversion/refund-comparison exemplar to match the user-provided formula style without numerator/denominator/multiplier casts.
+  - Cleaned default metric-formula seeds for smart assignment, line-clue overview, smart-assignment test-drive, and package metrics so they do not tell the model to add casts.
+  - Cleaned the active runtime formula file `wren-ui/data/metric-formulas.json` to remove old forbidden patterns around `CAST(... AS FLOAT)` and package-price casts.
+- Verification:
+  - `node -e "JSON.parse(require('fs').readFileSync('wren-ui/data/metric-formulas.json','utf8')); console.log('json ok')"`
+  - `python3 -m py_compile` for modified AI-service prompt/test files.
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/services/test_ask_runtime_instructions.py -q` passed: 41 tests.
+  - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types` passed.
+  - `git diff --check` passed.
+
+## 2026-05-25 15:12 CST - Fix dimensioned line-clue conversion grain
+
+- Status: Done in current worktree.
+- Root cause: correction timeout `e1c40897-03cb-4140-b6b0-fff2ad1bca38` came after Denodo validate rejected SQL where `leads_per_level` grouped only by `clew_level` but downstream CTEs joined on `l.niche_id`.
+- Changed:
+  - Updated default `denodo_clew_overview_conversion` extra instruction in `wren-ui/src/apollo/server/services/metricFormulaService.ts`.
+  - Updated active runtime `wren-ui/data/metric-formulas.json`.
+  - Added focused AI-service test coverage that verifies file-backed line-clue formulas preserve the `niche_id + display dimension` grain instruction.
+- Verification:
+  - `node -e "JSON.parse(require('fs').readFileSync('wren-ui/data/metric-formulas.json','utf8')); console.log('json ok')"`
+  - `python3 -m py_compile wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py`
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q` passed: 20 tests.
+  - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types` passed.
+  - `git diff --check` passed.

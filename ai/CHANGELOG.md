@@ -735,3 +735,47 @@ Record meaningful changes to shared AI memory and major agent-relevant repositor
   - `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/scope_resolution.py wren-ai-service/src/web/v1/services/ask.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py`
   - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/services/test_ask_runtime_instructions.py tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q` (`41 passed`)
   - `git diff --check`
+
+## 2026-05-25 14:18 CST
+
+- Removed the global Denodo prompt rule that forced percentage multipliers to a casted DECIMAL constant.
+- Changed:
+  - Denodo technical rules, final SQL generation, follow-up SQL generation, SQL correction, and default SQL rules now preserve the percentage multiplier shape from runtime metric formulas when one is provided.
+  - The private full-lead conversion/refund-comparison hidden exemplar now uses `100.0` as the multiplier while still casting numerator and denominator to `DECIMAL(18, 6)`.
+  - Updated the hidden exemplar regression test accordingly.
+- Verification:
+  - `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/sql_generation.py wren-ai-service/src/pipelines/generation/followup_sql_generation.py wren-ai-service/src/pipelines/generation/sql_correction.py wren-ai-service/src/pipelines/generation/utils/sql.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py`
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/services/test_ask_runtime_instructions.py -q` (`41 passed`)
+  - `git diff --check`
+
+## 2026-05-25 14:47 CST
+
+- Cleaned Denodo prompt / metric-formula / hidden-exemplar cast guidance.
+- Changed:
+  - Removed metric-calculation `DECIMAL(18, 6)` / `DECIMAL(18, 2)` cast requirements from Denodo technical rules, final SQL generation, follow-up SQL generation, SQL correction, and default SQL rules.
+  - Updated the private full-lead conversion/refund-comparison hidden exemplar so rates and refund impact use the user-provided direct `COUNT(...) * 100.0 / NULLIF(...)` shape with no added casts.
+  - Updated default metric-formula seeds and the active `wren-ui/data/metric-formulas.json` formulas to avoid instructing the model to cast rates, amounts, or package prices.
+  - Kept UI Denodo SQL sanitizer behavior separate: it may still normalize already-generated `TO_NUMBER` or `FLOAT`/`DOUBLE` casts before validation, but prompt/formula layers should not introduce those casts.
+- Verification:
+  - `node -e "JSON.parse(require('fs').readFileSync('wren-ui/data/metric-formulas.json','utf8')); console.log('json ok')"`
+  - `python3 -m py_compile wren-ai-service/src/pipelines/generation/denodo_prompt_context.py wren-ai-service/src/pipelines/generation/sql_generation.py wren-ai-service/src/pipelines/generation/followup_sql_generation.py wren-ai-service/src/pipelines/generation/sql_correction.py wren-ai-service/src/pipelines/generation/utils/sql.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/services/test_ask_runtime_instructions.py -q` (`41 passed`)
+  - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types`
+  - `git diff --check`
+
+## 2026-05-25 15:12 CST
+
+- Fixed line-clue overview conversion formula guidance for dimensioned questions.
+- Root cause:
+  - Ask `226068d9-5000-4865-b29d-412122cd12ec` failed because generated SQL built `leads_per_level` grouped only by `clew_level`, then tried to reference `l.niche_id` in `orders_per_level`.
+  - Denodo validate failed quickly with `Field not found 'l.niche_id' in view 'l'`; AI correction query `e1c40897-03cb-4140-b6b0-fff2ad1bca38` later finished, but UI had already hit its 60s correction polling timeout.
+- Changed:
+  - Default and active line-clue metric formulas now explicitly require lead CTEs for dimensioned analysis to select and group by `niche_id + all display/group dimensions`.
+  - Order-side aggregation and final joins must preserve the same keys; final SELECT then rolls up to the display dimensions.
+  - Added AI-service regression coverage that the file-backed metric formula instruction is injected.
+- Verification:
+  - `node -e "JSON.parse(require('fs').readFileSync('wren-ui/data/metric-formulas.json','utf8')); console.log('json ok')"`
+  - `python3 -m py_compile wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py`
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q` (`20 passed`)
+  - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types`
+  - `git diff --check`
