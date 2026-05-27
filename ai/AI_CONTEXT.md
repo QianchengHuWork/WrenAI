@@ -1,6 +1,6 @@
 # AI Context
 
-Last updated: 2026-05-25 15:12 CST
+Last updated: 2026-05-26 13:51 CST
 
 Long-term technical context for WrenAI AI agents. Keep this file stable and deduplicated.
 
@@ -79,6 +79,7 @@ User -> Wren UI / Apollo -> AI Service -> Wren Engine / Ibis
 - Denodo prompts should not use `TO_NUMBER`; they should use available numeric fields and the scoped metric formula expression directly rather than adding casts just for numeric conversion. The UI Denodo sanitizer may still normalize already-generated `TO_NUMBER(x)` or `FLOAT`/`DOUBLE` casts before MCP validation.
 - Denodo prompts should avoid unnecessary CTEs for simple single-view aggregation. In particular, do not add a CTE only to compute a casted field, rename fields, or filter one table. Use CTEs only when needed for mixed grains, top-N per group, or multi-step joins.
 - Denodo line-clue-overview conversion formulas must keep `niche_id` in intermediate grains. For dimensioned questions such as lead level, source, city, channel, or time, the lead CTE must select and group by `niche_id + all display/group dimensions`; the order CTE and final join must keep the same keys; only the final SELECT should roll up to the display dimensions.
+- Denodo lead-level conversion questions follow the business chain `线索等级 -> 智能分配 -> dv_assign_total_conversion_core`. Questions such as "不同等级的线索，各自的转化率和产出金额" should route to `dv_assign_total_conversion_core`, not the full-lead attribution pair `dv_clew_core` + `dv_ord_core`, unless the user explicitly says line-clue overview/full-lead/source attribution.
 - UI Denodo guard treats MCP validation tool exceptions as invalid SQL attempts and routes them through the existing correction loop. This was added after a CTE-style package aggregation surfaced `Cannot read properties of null (reading 'id')` during validate.
 - Denodo scope normalization must preserve the full Denodo semantic context marker and native VQL schema context. If selected-model scoping narrows dictionary entries, replace only the `Semantic dictionary entries:` section; do not replace the entire semantic context with the scoped dictionary summary. Losing `[[WREN_DENODO_CONTEXT]]` makes AI service SQL generation/correction fall back to generic Wren-engine dry-run, which can surface misleading errors like `Cannot read properties of null (reading 'id')` even when the SQL is executable in Denodo.
 - Previous SQL-first behavior caused CTE aliases, derived table aliases, and generated alias references to fail VQL rules because they were outside manifest-backed table/column mapping. Direct VQL mode is intended to reduce that failure class, but live benchmark impact is not verified yet.
@@ -192,6 +193,7 @@ Track experiment status in `/ai/ACTIVE_STATE.md`; promote durable conclusions to
 
 - Large schema context can dilute retrieval and increase wrong-table risk.
 - Business status words often require explicit dictionary mapping.
+- Denodo assigned-store cross-region purchase questions belong to smart-assignment conversion: use `dv_assign_total_conversion_core`, store dimension `fac_name`, converted-order flag `is_conver_order = 1`, cross-region flag `is_cross_order = 1`, and amount field `actual_price`; do not route to `dv_clew_assign_core`.
 - Cross-model relationships are useful but less mature than selected-view and field-level semantics.
 - Latency needs tracing across UI GraphQL, AI service, retrieval, LLM, engine validation, and correction.
 - Denodo benchmark failures can come from model/schema drift; in this session several hard questions generated SQL against missing view `dv_clew_ord_conversion_core_new`, which needs semantic-layer or environment confirmation before treating generated SQL as valid.

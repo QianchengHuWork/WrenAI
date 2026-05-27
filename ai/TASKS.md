@@ -281,3 +281,34 @@ Use stable task titles. Move completed items to `Done` with date and verificatio
   - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q` passed: 20 tests.
   - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types` passed.
   - `git diff --check` passed.
+
+## 2026-05-26 13:51 CST - Route lead-level conversion to smart assignment
+
+- Status: Done in current worktree.
+- Root cause: current scope prompt and line-clue metric formula treated `线索等级 + 转化率/产出金额` as a general line-clue overview question, which routed to `dv_clew_core` + `dv_ord_core`.
+- Changed:
+  - Updated `wren-ai-service/src/pipelines/generation/scope_resolution.py` so lead-level conversion/order/output amount questions prefer `dv_assign_total_conversion_core`.
+  - Updated default and active `denodo_assign_total_conversion` formulas to include lead-level trigger phrases and instruction text.
+  - Removed lead-level wording from line-clue overview formula applicability and added an explicit note that lead-level conversion/amount belongs to smart assignment.
+  - Added focused tests for scope prompt wording and assignment formula injection.
+- Verification:
+  - `node -e "JSON.parse(require('fs').readFileSync('wren-ui/data/metric-formulas.json','utf8')); console.log('json ok')"`
+  - `python3 -m py_compile wren-ai-service/src/pipelines/generation/scope_resolution.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/services/test_ask_runtime_instructions.py -q` passed: 43 tests.
+  - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types` passed.
+  - `git diff --check` passed.
+
+## 2026-05-26 14:20 CST - Route assigned-store cross-region purchase to smart assignment
+
+- Status: Done in current worktree.
+- Root cause: questions like "上个月线索分配给哪些门店后，这些门店的成交订单中有多少是跨区购车" were selecting `dv_clew_assign_core`, but the required cross-region conversion fields live on `dv_assign_total_conversion_core`.
+- Changed:
+  - Updated `wren-ai-service/src/pipelines/generation/scope_resolution.py` so assigned-store cross-region purchase questions prefer `dv_assign_total_conversion_core`, use `fac_name`, and avoid `dv_clew_assign_core`.
+  - Updated default and active `denodo_assign_total_conversion` formulas with cross-region trigger phrases and metric expressions for cross-region order count, rate, and amount.
+  - Added focused tests for scope prompt wording and formula injection of `fac_name`, `is_cross_order = 1`, `is_conver_order`, and `actual_price`.
+- Verification:
+  - `node -e "JSON.parse(require('fs').readFileSync('wren-ui/data/metric-formulas.json','utf8')); console.log('json ok')"`
+  - `python3 -m py_compile wren-ai-service/src/pipelines/generation/scope_resolution.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/services/test_ask_runtime_instructions.py -q` passed: 44 tests.
+  - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types` passed.
+  - `git diff --check` passed.

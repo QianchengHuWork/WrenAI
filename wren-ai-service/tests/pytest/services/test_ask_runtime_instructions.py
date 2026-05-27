@@ -77,6 +77,17 @@ def test_scope_resolution_prompt_distinguishes_general_lead_from_smart_assignmen
     )
     assert "assign_year_month" in scope_resolution_user_prompt_template
     assert "channel_id" in scope_resolution_user_prompt_template
+    assert "lead-level questions" in scope_resolution_user_prompt_template
+    assert "线索等级" in scope_resolution_user_prompt_template
+    assert "Business chain: lead level -> smart assignment" in (
+        scope_resolution_user_prompt_template
+    )
+    assert "Assigned-store cross-region purchase questions" in (
+        scope_resolution_user_prompt_template
+    )
+    assert "is_cross_order = 1" in scope_resolution_user_prompt_template
+    assert "fac_name" in scope_resolution_user_prompt_template
+    assert "dv_clew_assign_core" in scope_resolution_user_prompt_template
 
 
 def test_prioritize_conversion_core_documents():

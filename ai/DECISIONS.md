@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-05-25 15:12 CST
+Last updated: 2026-05-26 13:51 CST
 
 Preserve decisions unless obsolete. If superseded, move to `Archived Decisions` with reason and date.
 
@@ -138,6 +138,18 @@ Preserve decisions unless obsolete. If superseded, move to `Archived Decisions` 
 - Decision: For line-clue overview conversion metrics, any intermediate lead CTE used for order attribution must keep `niche_id` plus every display/group dimension until after the order join. Final roll-up to dimensions such as `clew_level`, source, city, channel, or time happens only in the outer SELECT.
 - Reason: Grouping the lead CTE only by the display dimension drops `niche_id`; later order attribution then emits invalid SQL such as `l.niche_id` from a CTE that never selected it.
 - Consequence: Runtime/default metric formula instructions should state this grain rule explicitly. SQL correction timeouts for this pattern should be treated as avoidable initial-generation failures, not only as timeout tuning issues.
+
+### 2026-05-26 13:51 CST - Lead-level conversion belongs to smart assignment
+
+- Decision: Denodo questions about `线索等级`, `不同等级线索`, high/H/A/B/C lead levels, or `clew_level` with conversion rate, order count, output amount, or converted amount belong to the smart-assignment domain and should prefer `dv_assign_total_conversion_core`.
+- Reason: Business alignment confirmed the semantic chain as `线索等级 -> 智能分配 -> dv_assign_total_conversion_core`; treating lead level as line-clue overview incorrectly routes to `dv_clew_core` + `dv_ord_core`.
+- Consequence: Scope-resolution prompts and metric formula hints should route lead-level conversion/amount questions to `dv_assign_total_conversion_core` unless the user explicitly says line-clue overview, full-lead overview, source attribution, or fourth-level source.
+
+### 2026-05-26 14:20 CST - Assigned-store cross-region purchase belongs to smart assignment
+
+- Decision: Denodo questions about leads assigned to stores and cross-region purchases (`跨区购车`, `上牌城市≠交付城市`, `is_cross_order`) belong to `dv_assign_total_conversion_core`, not `dv_clew_assign_core`.
+- Reason: Business alignment says the view already exposes the required store and cross-region semantics through `fac_name` and `is_cross_order`; selecting the assignment-only view loses conversion/order amount fields and causes wrong SQL.
+- Consequence: Scope-resolution prompts and metric formula hints should steer these questions to `dv_assign_total_conversion_core`, group by `fac_name`, use `is_conver_order = 1 AND is_cross_order = 1` for cross-region converted orders, and use `actual_price` for amount.
 
 ## Archived Decisions
 

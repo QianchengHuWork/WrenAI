@@ -34,7 +34,24 @@ const DEFAULT_ASSIGN_CONVERSION_FORMULA: MetricFormula = {
     requiredModels: [],
   },
   match: {
-    triggerPhrases: ['智能分配', '分配策略', '智能分配转化', '转化订单金额'],
+    triggerPhrases: [
+      '智能分配',
+      '分配策略',
+      '智能分配转化',
+      '转化订单金额',
+      '线索等级',
+      '不同等级线索',
+      '高等级线索',
+      '产出金额',
+      '分配给门店',
+      '门店',
+      '跨区购车',
+      '跨区订单',
+      '跨区比例',
+      '上牌城市',
+      '交付城市',
+      '上牌城市≠交付城市',
+    ],
     exampleQuestions: [],
   },
   metrics: [
@@ -57,15 +74,32 @@ const DEFAULT_ASSIGN_CONVERSION_FORMULA: MetricFormula = {
       expression:
         'COALESCE(SUM(CASE WHEN "is_ord_fdpay" = 1 THEN "actual_price" END), 0)',
     },
+    {
+      name: 'cross_order_count',
+      expression:
+        'COUNT(DISTINCT CASE WHEN "is_conver_order" = 1 AND "is_cross_order" = 1 THEN "biz_order_no" END)',
+    },
+    {
+      name: 'cross_order_rate',
+      expression:
+        'ROUND(COUNT(DISTINCT CASE WHEN "is_conver_order" = 1 AND "is_cross_order" = 1 THEN "biz_order_no" END) * 100.0 / NULLIF(COUNT(DISTINCT "clew_id"), 0), 2)',
+    },
+    {
+      name: 'cross_order_amount',
+      expression:
+        'COALESCE(SUM(CASE WHEN "is_conver_order" = 1 AND "is_cross_order" = 1 THEN "actual_price" END), 0)',
+    },
   ],
   forbiddenPatterns: [
     'COUNT(*)',
     'is_ord_pay',
     'SUM(CASE WHEN ... THEN 1 ELSE 0 END)',
     'converted_order_count / assigned_clew_count',
+    'dv_clew_assign_core',
+    'city_name <> delivery_city_name',
   ],
   extraInstruction:
-    '智能分配转化率不要使用 converted_order_count / assigned_clew_count，也不要改用 dv_clew_ord_conversion_core。',
+    '智能分配转化率不要使用 converted_order_count / assigned_clew_count，也不要改用 dv_clew_ord_conversion_core。线索等级、不同等级线索、高等级线索等问题属于智能分配业务链，默认使用 dv_assign_total_conversion_core 按线索等级维度统计转化率、订单数和产出金额；不要回退到 dv_clew_core + dv_ord_core，除非用户明确说线索大盘、全量线索、来源归因或四级来源目录。线索分配给门店后产生的跨区购车、跨区订单、跨区比例问题也属于智能分配转化域，必须使用 dv_assign_total_conversion_core，不要使用 dv_clew_assign_core。门店维度使用 "fac_name"。跨区购车判断直接使用 "is_cross_order" = 1，不要手工比较上牌城市和交付城市文本。成交订单限定 "is_conver_order" = 1。跨区订单数使用 COUNT(DISTINCT CASE WHEN "is_conver_order" = 1 AND "is_cross_order" = 1 THEN "biz_order_no" END)，跨区金额使用 COALESCE(SUM(CASE WHEN "is_conver_order" = 1 AND "is_cross_order" = 1 THEN "actual_price" END), 0)。按门店找跨区比例 Top 3 时按跨区比例降序、fac_name 升序稳定排序；如果只做最终展示 Top 3，可最终 ORDER BY 后依赖调用方限制结果数。时间过滤优先使用该视图的 assign_year、assign_month，并且 ptstart / ptend 必须使用等值边界。',
 };
 
 const DEFAULT_CLEW_OVERVIEW_CONVERSION_FORMULA: MetricFormula = {
@@ -148,7 +182,7 @@ const DEFAULT_CLEW_OVERVIEW_CONVERSION_FORMULA: MetricFormula = {
     'INNER JOIN "dv_ord_core"',
   ],
   extraInstruction:
-    '线索大盘转化指标必须使用商机级归因，并固定使用条件聚合结构：第一段 leads_per_niche，以 dv_clew_core 为线索主视图，先按 niche_id 聚合线索，统计 COUNT(DISTINCT "clew_id") AS "lead_count"，并取每个商机最早线索创建日期。最终查询必须从 leads_per_niche 出发 LEFT JOIN dv_ord_core，以保留无订单线索分母；不要使用 INNER JOIN 作为线索到订单的主关联。订单归因不要做成先 WHERE 过滤再 JOIN，也不要把订单创建时间归因条件只放在 JOIN ON 中；必须在订单数、转化率和金额的 CASE WHEN 条件里同时判断订单状态和订单创建时间，例如 COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)，生成 SQL 时按实际别名展开为类似 COUNT(DISTINCT CASE WHEN "o"."is_ord_fdpay" = 1 AND "o"."order_date" >= "l"."min_clew_date" THEN "l"."niche_id" END)。默认订单数、订单转化率和转化订单金额使用 "is_ord_fdpay" = 1 的不含退订真实有效口径；只有当用户明确要求含退订、含退款或大定支付含退订时，才使用 "is_ord_pay" = 1；不要用 paid_flag 替代 "is_ord_pay"。最终汇总时线索量使用 SUM("lead_count")，含退订订单量使用 COUNT(DISTINCT CASE WHEN "has_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)，不含退订订单量使用 COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)。如果按城市、来源、时间、渠道、线索等级等维度分析，线索侧 CTE 必须 SELECT 并 GROUP BY niche_id + 所有展示/分组维度；不要只按展示维度先聚合后再 join 订单，否则后续 l.niche_id 不存在。订单侧聚合也必须保留同样的 niche_id + 维度键，最终 LEFT JOIN 按这些键连接，最后 SELECT 才按展示维度汇总。用户询问线索四级来源目录、来源渠道转化率或来源维度排名时，必须在 dv_clew_core 的检索字段中选择表示四级来源目录/来源渠道的字段作为 GROUP BY 维度；不要因为智能分配表中存在 channel_id 就改用 dv_assign_total_conversion_core。',
+    '线索大盘转化指标必须使用商机级归因，并固定使用条件聚合结构：第一段 leads_per_niche，以 dv_clew_core 为线索主视图，先按 niche_id 聚合线索，统计 COUNT(DISTINCT "clew_id") AS "lead_count"，并取每个商机最早线索创建日期。最终查询必须从 leads_per_niche 出发 LEFT JOIN dv_ord_core，以保留无订单线索分母；不要使用 INNER JOIN 作为线索到订单的主关联。订单归因不要做成先 WHERE 过滤再 JOIN，也不要把订单创建时间归因条件只放在 JOIN ON 中；必须在订单数、转化率和金额的 CASE WHEN 条件里同时判断订单状态和订单创建时间，例如 COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)，生成 SQL 时按实际别名展开为类似 COUNT(DISTINCT CASE WHEN "o"."is_ord_fdpay" = 1 AND "o"."order_date" >= "l"."min_clew_date" THEN "l"."niche_id" END)。默认订单数、订单转化率和转化订单金额使用 "is_ord_fdpay" = 1 的不含退订真实有效口径；只有当用户明确要求含退订、含退款或大定支付含退订时，才使用 "is_ord_pay" = 1；不要用 paid_flag 替代 "is_ord_pay"。最终汇总时线索量使用 SUM("lead_count")，含退订订单量使用 COUNT(DISTINCT CASE WHEN "has_ord_pay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)，不含退订订单量使用 COUNT(DISTINCT CASE WHEN "has_ord_fdpay" = 1 AND "order_date" >= "min_clew_date" THEN "niche_id" END)。如果按城市、来源、时间、渠道等维度分析，线索侧 CTE 必须 SELECT 并 GROUP BY niche_id + 所有展示/分组维度；不要只按展示维度先聚合后再 join 订单，否则后续 l.niche_id 不存在。订单侧聚合也必须保留同样的 niche_id + 维度键，最终 LEFT JOIN 按这些键连接，最后 SELECT 才按展示维度汇总。用户询问线索四级来源目录、来源渠道转化率或来源维度排名时，必须在 dv_clew_core 的检索字段中选择表示四级来源目录/来源渠道的字段作为 GROUP BY 维度；不要因为智能分配表中存在 channel_id 就改用 dv_assign_total_conversion_core。线索等级、不同等级线索、高等级线索的转化率或产出金额属于智能分配业务链，不属于线索大盘口径，应使用 dv_assign_total_conversion_core。',
 };
 
 const DEFAULT_NICHE_DRIVE_CONVERSION_FORMULA: MetricFormula = {

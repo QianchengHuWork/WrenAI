@@ -16,7 +16,19 @@
           "智能分配",
           "分配策略",
           "智能分配转化",
-          "转化订单金额"
+          "转化订单金额",
+          "线索等级",
+          "不同等级线索",
+          "高等级线索",
+          "产出金额",
+          "分配给门店",
+          "门店",
+          "跨区购车",
+          "跨区订单",
+          "跨区比例",
+          "上牌城市",
+          "交付城市",
+          "上牌城市≠交付城市"
         ],
         "exampleQuestions": []
       },
@@ -36,16 +48,30 @@
         {
           "name": "total_amount",
           "expression": "COALESCE(SUM(CASE WHEN is_conver_order = 1 THEN actual_price END), 0)"
+        },
+        {
+          "name": "cross_order_count",
+          "expression": "COUNT(DISTINCT CASE WHEN \"is_conver_order\" = 1 AND \"is_cross_order\" = 1 THEN \"biz_order_no\" END)"
+        },
+        {
+          "name": "cross_order_rate",
+          "expression": "ROUND(COUNT(DISTINCT CASE WHEN \"is_conver_order\" = 1 AND \"is_cross_order\" = 1 THEN \"biz_order_no\" END) * 100.0 / NULLIF(COUNT(DISTINCT \"clew_id\"), 0), 2)"
+        },
+        {
+          "name": "cross_order_amount",
+          "expression": "COALESCE(SUM(CASE WHEN \"is_conver_order\" = 1 AND \"is_cross_order\" = 1 THEN \"actual_price\" END), 0)"
         }
       ],
       "forbiddenPatterns": [
         "COUNT(*)",
         "is_ord_pay",
         "SUM(CASE WHEN ... THEN 1 ELSE 0 END)",
-        "converted_order_count / assigned_clew_count"
+        "converted_order_count / assigned_clew_count",
+        "dv_clew_assign_core",
+        "city_name <> delivery_city_name"
       ],
-      "extraInstruction": "智能分配转化率不要使用 converted_order_count / assigned_clew_count，也不要改用 dv_clew_ord_conversion_core。",
-      "updatedAt": "2026-05-25T05:27:16.999Z"
+      "extraInstruction": "智能分配转化率不要使用 converted_order_count / assigned_clew_count，也不要改用 dv_clew_ord_conversion_core。线索等级、不同等级线索、高等级线索等问题属于智能分配业务链，默认使用 dv_assign_total_conversion_core 按线索等级维度统计转化率、订单数和产出金额；不要回退到 dv_clew_core + dv_ord_core，除非用户明确说线索大盘、全量线索、来源归因或四级来源目录。线索分配给门店后产生的跨区购车、跨区订单、跨区比例问题也属于智能分配转化域，必须使用 dv_assign_total_conversion_core，不要使用 dv_clew_assign_core。门店维度使用 \"fac_name\"。跨区购车判断直接使用 \"is_cross_order\" = 1，不要手工比较上牌城市和交付城市文本。成交订单限定 \"is_conver_order\" = 1。跨区订单数使用 COUNT(DISTINCT CASE WHEN \"is_conver_order\" = 1 AND \"is_cross_order\" = 1 THEN \"biz_order_no\" END)，跨区金额使用 COALESCE(SUM(CASE WHEN \"is_conver_order\" = 1 AND \"is_cross_order\" = 1 THEN \"actual_price\" END), 0)。按门店找跨区比例 Top 3 时按跨区比例降序、fac_name 升序稳定排序；如果只做最终展示 Top 3，可最终 ORDER BY 后依赖调用方限制结果数。时间过滤优先使用该视图的 assign_year、assign_month，并且 ptstart / ptend 必须使用等值边界。",
+      "updatedAt": "2026-05-26T06:30:12.000Z"
     },
     {
       "id": "denodo_clew_overview_conversion",
@@ -120,8 +146,8 @@
         "paid_flag",
         "INNER JOIN \"dv_ord_core\""
       ],
-      "extraInstruction": "线索大盘转化指标计算步骤指南\n当用户查询涉及“四级线索来源、线索等级、城市、渠道、转化率、退款影响、成交金额”等复合指标时，必须采用 CTE（公用表表达式）分层解耦架构动态编排以下三个步骤：\n\n步骤一：线索层原子级聚合（建立线索基准 CTE: leads_per_niche）\n目标：锁定基准线索包，计算每个商机的最早留资时间。\n\n数据源：使用线索核心视图 dv_clew_core。\n\n核心过滤：显式卡死时间边界（如 create_date >= '20260101'），并且必须剔除 niche_id IS NOT NULL 的物理脏数据。\n\n聚合粒度：必须保留商机 ID（niche_id）。如果用户按线索等级、四级来源、城市、渠道、时间等维度分析，线索侧 CTE 必须 SELECT 并 GROUP BY niche_id + 所有展示/分组维度；不要只按展示维度提前聚合后再 join 订单，否则后续 l.niche_id 不存在。无展示维度时至少按 niche_id 分组。\n\n输出字段：\n\nlead_count: 利用 COUNT(DISTINCT clew_id) 计算线索总量。\n\nmin_clue_date: 利用 MIN(create_date) 锁定该商机在当前维度的最早留资日期（作为后续时序归因的基准桩）。\n\n步骤二：订单层状态坍塌与时序归因（建立订单过滤 CTE: orders_per_niche）\n目标：挂载订单数据，利用“强时序校验”过滤无效单，并将行级流水坍塌为商机级的支付状态。\n\n数据源：订单核心视图 dv_ord_core。\n\n关联与时序校验：将订单表与步骤一的线索基准表进行 INNER JOIN，关联键为 niche_id。必须在 WHERE 子句中强控时序条件：订单日期必须大于等于线索最早留资日期（order_date_key >= l.min_clue_date）。订单侧聚合必须继续保留 niche_id + 同一组展示/分组维度。\n\n状态二值化坍塌（MAX+CASE WHEN）：\n\nhas_ord_pay: 利用 MAX(CASE WHEN o.is_ord_pay = 1 THEN 1 ELSE 0 END) 判定该商机后续是否产生过支付。\n\nhas_ord_fdpay: 利用 MAX(CASE WHEN o.is_ord_fdpay = 1 THEN 1 ELSE 0 END) 判定该商机后续是否产生过大定未退款支付。\n\n金额聚合：利用 COALESCE(SUM(CASE WHEN... END), 0) 分别计算包含退款和剔除退款的订单总额 total_amt_pay 和 total_amt_fdpay。\n\n步骤三：主视图多维拼装与公式计算（最终 SELECT 漏斗输出）\n目标：以线索基准为主表进行 LEFT JOIN 拼接，计算多口径漏斗转化率。\n\n多维关联：FROM leads_per_niche l LEFT JOIN orders_per_niche o，必须按 niche_id + 同一组展示/分组维度做等值关联，例如线索等级场景用 ON l.niche_id = o.niche_id AND l.clew_level = o.clew_level。最终 SELECT 才按展示维度 GROUP BY 汇总。\n\n最终指标公式计算规范（拒绝过度强转）：\n\n总量指标：SUM(l.lead_count)、COALESCE(SUM(o.total_amt_xxx), 0)。\n\n漏斗转化计数：利用条件计数锁定转化商机数，如 COUNT(DISTINCT CASE WHEN o.has_ord_fdpay = 1 THEN l.niche_id END)。\n\n柔性转化率公式：不允许使用多层冗余的 CAST。分子乘以 100.0 引入隐式浮点提升，分母必须包裹 NULLIF(..., 0) 以防除零错误。外层统一使用 ROUND(..., 2) 保留两位小数。\n\n退款影响率公式：分子的两个转化计数直接相减，乘以 100.0 后除以 NULLIF(分母, 0)。",
-      "updatedAt": "2026-05-25T06:38:00.952Z"
+      "extraInstruction": "线索大盘转化指标计算步骤指南\n当用户查询涉及“四级线索来源、城市、渠道、转化率、退款影响、成交金额”等复合指标时，必须采用 CTE（公用表表达式）分层解耦架构动态编排以下三个步骤：\n\n步骤一：线索层原子级聚合（建立线索基准 CTE: leads_per_niche）\n目标：锁定基准线索包，计算每个商机的最早留资时间。\n\n数据源：使用线索核心视图 dv_clew_core。\n\n核心过滤：显式卡死时间边界（如 create_date >= '20260101'），并且必须剔除 niche_id IS NOT NULL 的物理脏数据。\n\n聚合粒度：必须保留商机 ID（niche_id）。如果用户按四级来源、城市、渠道、时间等维度分析，线索侧 CTE 必须 SELECT 并 GROUP BY niche_id + 所有展示/分组维度；不要只按展示维度提前聚合后再 join 订单，否则后续 l.niche_id 不存在。无展示维度时至少按 niche_id 分组。\n\n输出字段：\n\nlead_count: 利用 COUNT(DISTINCT clew_id) 计算线索总量。\n\nmin_clue_date: 利用 MIN(create_date) 锁定该商机在当前维度的最早留资日期（作为后续时序归因的基准桩）。\n\n步骤二：订单层状态坍塌与时序归因（建立订单过滤 CTE: orders_per_niche）\n目标：挂载订单数据，利用“强时序校验”过滤无效单，并将行级流水坍塌为商机级的支付状态。\n\n数据源：订单核心视图 dv_ord_core。\n\n关联与时序校验：将订单表与步骤一的线索基准表进行 INNER JOIN，关联键为 niche_id。必须在 WHERE 子句中强控时序条件：订单日期必须大于等于线索最早留资日期（order_date_key >= l.min_clue_date）。订单侧聚合必须继续保留 niche_id + 同一组展示/分组维度。\n\n状态二值化坍塌（MAX+CASE WHEN）：\n\nhas_ord_pay: 利用 MAX(CASE WHEN o.is_ord_pay = 1 THEN 1 ELSE 0 END) 判定该商机后续是否产生过支付。\n\nhas_ord_fdpay: 利用 MAX(CASE WHEN o.is_ord_fdpay = 1 THEN 1 ELSE 0 END) 判定该商机后续是否产生过大定未退款支付。\n\n金额聚合：利用 COALESCE(SUM(CASE WHEN... END), 0) 分别计算包含退款和剔除退款的订单总额 total_amt_pay 和 total_amt_fdpay。\n\n步骤三：主视图多维拼装与公式计算（最终 SELECT 漏斗输出）\n目标：以线索基准为主表进行 LEFT JOIN 拼接，计算多口径漏斗转化率。\n\n多维关联：FROM leads_per_niche l LEFT JOIN orders_per_niche o，必须按 niche_id + 同一组展示/分组维度做等值关联。最终 SELECT 才按展示维度 GROUP BY 汇总。\n\n最终指标公式计算规范（拒绝过度强转）：\n\n总量指标：SUM(l.lead_count)、COALESCE(SUM(o.total_amt_xxx), 0)。\n\n漏斗转化计数：利用条件计数锁定转化商机数，如 COUNT(DISTINCT CASE WHEN o.has_ord_fdpay = 1 THEN l.niche_id END)。\n\n柔性转化率公式：不允许使用多层冗余的 CAST。分子乘以 100.0 引入隐式浮点提升，分母必须包裹 NULLIF(..., 0) 以防除零错误。外层统一使用 ROUND(..., 2) 保留两位小数。\n\n退款影响率公式：分子的两个转化计数直接相减，乘以 100.0 后除以 NULLIF(分母, 0)。\n\n注意：线索等级、不同等级线索、高等级线索的转化率或产出金额属于智能分配业务链，不属于线索大盘口径，应使用 dv_assign_total_conversion_core。",
+      "updatedAt": "2026-05-26T06:06:50.511Z"
     },
     {
       "id": "denodo_niche_drive_conversion",
@@ -173,8 +199,8 @@
         "COUNT(*) AS drive_clew_count",
         "COUNT(*) AS order_count"
       ],
-      "extraInstruction": "智能分配试驾相关转化率必须使用 admin.dv_niche_ord_conversion_core（或检索上下文中同名不带 schema 的 dv_niche_ord_conversion_core）作为权威视图。该视图是在明细视图基础上加入试驾相关信息的 niche 转化辅助分析视图，适合统计智能分配线索后的试驾情况，以及相关转化订单数、转化金额和转化率。试驾样本必须限定 \"ai_assign_drive_cnt\" > 0。默认转化订单数、转化率和转化金额使用 \"is_ord_fdpay\" = 1 的不含退订有效订单口径。不要回退到 dv_assign_total_conversion_core，也不要重新拼接 dv_clew_core / dv_ord_core 或使用 mobile_md5 = phone_no_md5 自行归因。如果按城市、门店、时间、策略等维度分析，直接在该视图中按对应维度 GROUP BY，并保持同一试驾样本和有效订单口径。",
-      "updatedAt": "2026-05-25T05:27:26.865Z"
+      "extraInstruction": "智能分配试驾相关转化率必须使用 admin.dv_niche_ord_conversion_core（或检索上下文中同名不带 schema 的 dv_niche_ord_conversion_core）作为权威视图。该视图是在明细视图基础上加入试驾相关信息的 niche 转化辅助分析视图，适合统计智能分配线索后的试驾情况，以及相关转化订单数、转化金额和转化率。试驾样本必须限定 \"ai_assign_drive_cnt\" > 0。默认转化订单数、转化率和转化金额使用 \"is_ord_fdpay\" = 1 的不含退订有效订单口径。不要回退到 dv_assign_total_conversion_core，也不要重新拼接 dv_clew_core / dv_ord_core 或使用 mobile_md5 = phone_no_md5 自行归因。如果按城市、门店、时间、策略等维度分析，直接在该视图中按对应维度 GROUP BY，并保持同一试驾样本和有效订单口径。时间字段依赖clew_date_key, clew_year, clew_month, cleart_year_month.",
+      "updatedAt": "2026-05-26T06:07:40.938Z"
     },
     {
       "id": "denodo_package_order_metrics",

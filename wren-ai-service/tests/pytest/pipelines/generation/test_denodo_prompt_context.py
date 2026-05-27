@@ -422,7 +422,7 @@ def test_file_backed_clew_overview_formula_preserves_niche_dimension_grain():
         "不要只按展示维度提前聚合后再 join 订单。"
     )
     instructions = build_denodo_runtime_instructions(
-        "1月不同等级的线索，各自的转化率和产出金额是多少？",
+        "按线索四级来源目录统计今年累计的线索量和对应的订单转化率。",
         ["dv_clew_core", "dv_ord_core"],
         DENODO_CONTEXT_MARKER,
         [],
@@ -458,6 +458,104 @@ def test_file_backed_clew_overview_formula_preserves_niche_dimension_grain():
     assert grain_instruction in formula
     assert "dv_clew_core" in formula
     assert "dv_ord_core" in formula
+
+
+def test_file_backed_assign_formula_covers_lead_level_conversion():
+    instructions = build_denodo_runtime_instructions(
+        "2月不同等级的线索，各自的转化率和产出金额是多少？",
+        [ASSIGN_TOTAL_CONVERSION_TABLE],
+        DENODO_CONTEXT_MARKER,
+        [],
+        [
+            {
+                "id": "denodo_assign_total_conversion",
+                "enabled": True,
+                "dataSource": "denodo",
+                "name": "智能分配转化指标",
+                "scope": {"primaryModel": ASSIGN_TOTAL_CONVERSION_TABLE},
+                "metrics": [
+                    {
+                        "name": "conversion_rate",
+                        "expression": (
+                            'ROUND(COUNT(DISTINCT CASE WHEN "is_conver_order" = 1 '
+                            'THEN "biz_order_no" END) * 100.0 / '
+                            'NULLIF(COUNT(DISTINCT "clew_id"), 0), 2)'
+                        ),
+                    },
+                    {
+                        "name": "total_amount",
+                        "expression": (
+                            'COALESCE(SUM(CASE WHEN "is_conver_order" = 1 '
+                            'THEN "actual_price" END), 0)'
+                        ),
+                    },
+                ],
+                "extraInstruction": (
+                    "线索等级、不同等级线索、高等级线索等问题属于智能分配业务链，"
+                    "默认使用 dv_assign_total_conversion_core。"
+                ),
+            }
+        ],
+    )
+
+    formula = instructions[-1]["instruction"]
+    assert instructions[-1]["instruction_id"] == (
+        "denodo_metric_formula:denodo_assign_total_conversion"
+    )
+    assert ASSIGN_TOTAL_CONVERSION_TABLE in formula
+    assert "线索等级、不同等级线索、高等级线索" in formula
+    assert "dv_clew_core + dv_ord_core" not in formula
+
+
+def test_file_backed_assign_formula_covers_store_cross_region_purchase():
+    instructions = build_denodo_runtime_instructions(
+        "今天是2026.3.18日，上个月线索分配给哪些门店后，这些门店的成交订单中有多少是跨区购车？找出跨区比例最高的 3 个门店。",
+        [ASSIGN_TOTAL_CONVERSION_TABLE],
+        DENODO_CONTEXT_MARKER,
+        [],
+        [
+            {
+                "id": "denodo_assign_total_conversion",
+                "enabled": True,
+                "dataSource": "denodo",
+                "name": "智能分配转化指标",
+                "scope": {"primaryModel": ASSIGN_TOTAL_CONVERSION_TABLE},
+                "metrics": [
+                    {
+                        "name": "cross_order_count",
+                        "expression": (
+                            'COUNT(DISTINCT CASE WHEN "is_conver_order" = 1 '
+                            'AND "is_cross_order" = 1 THEN "biz_order_no" END)'
+                        ),
+                    },
+                    {
+                        "name": "cross_order_amount",
+                        "expression": (
+                            'COALESCE(SUM(CASE WHEN "is_conver_order" = 1 '
+                            'AND "is_cross_order" = 1 THEN "actual_price" END), 0)'
+                        ),
+                    },
+                ],
+                "forbiddenPatterns": ["dv_clew_assign_core"],
+                "extraInstruction": (
+                    "线索分配给门店后产生的跨区购车、跨区订单、跨区比例问题"
+                    "必须使用 dv_assign_total_conversion_core。门店维度使用 "
+                    "fac_name，跨区购车判断直接使用 is_cross_order = 1。"
+                ),
+            }
+        ],
+    )
+
+    formula = instructions[-1]["instruction"]
+    assert instructions[-1]["instruction_id"] == (
+        "denodo_metric_formula:denodo_assign_total_conversion"
+    )
+    assert ASSIGN_TOTAL_CONVERSION_TABLE in formula
+    assert "fac_name" in formula
+    assert "is_cross_order = 1" in formula
+    assert "is_conver_order" in formula
+    assert "actual_price" in formula
+    assert "dv_clew_assign_core" in formula
 
 
 def test_metric_formula_matches_schema_qualified_primary_model():

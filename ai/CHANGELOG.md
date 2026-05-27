@@ -779,3 +779,92 @@ Record meaningful changes to shared AI memory and major agent-relevant repositor
   - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py -q` (`20 passed`)
   - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types`
   - `git diff --check`
+
+## 2026-05-26 13:51 CST
+
+- Corrected Denodo scope guidance for lead-level conversion questions.
+- Changed:
+  - `scope_resolution.py` now states that lead-level questions such as `线索等级`, `不同等级线索`, H/A/B/C lead levels, or `clew_level` with conversion rate/order count/output amount should prefer `dv_assign_total_conversion_core`.
+  - The default and active `denodo_assign_total_conversion` formula now includes lead-level trigger phrases and an instruction that lead-level conversion/output amount belongs to the smart-assignment business chain.
+  - The line-clue overview formula no longer lists lead level as a general line-clue overview dimension and explicitly defers lead-level conversion/amount to `dv_assign_total_conversion_core`.
+  - Added focused tests for the scope prompt and file-backed formula injection.
+- Verification:
+  - `node -e "JSON.parse(require('fs').readFileSync('wren-ui/data/metric-formulas.json','utf8')); console.log('json ok')"`
+  - `python3 -m py_compile wren-ai-service/src/pipelines/generation/scope_resolution.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/services/test_ask_runtime_instructions.py -q` (`43 passed`)
+  - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types`
+  - `git diff --check`
+
+## 2026-05-26 14:20 CST
+
+- Corrected Denodo scope/formula guidance for assigned-store cross-region purchase questions.
+- Changed:
+  - Scope resolution now says assigned-store cross-region purchase terms such as `分配给门店`, `fac_name`, `跨区购车`, `上牌城市≠交付城市`, and `is_cross_order` belong to `dv_assign_total_conversion_core`, not `dv_clew_assign_core`.
+  - Default and active `denodo_assign_total_conversion` formulas now include cross-region trigger phrases and expressions for cross-region order count, cross-region rate, and cross-region amount.
+  - Formula guidance tells SQL generation to group stores by `fac_name`, use `is_cross_order = 1` rather than manual city comparison, require `is_conver_order = 1` for converted orders, use `actual_price`, and apply equality-only `ptstart` / `ptend` boundaries.
+  - Added focused tests for the scope prompt and file-backed formula injection.
+- Verification:
+  - `node -e "JSON.parse(require('fs').readFileSync('wren-ui/data/metric-formulas.json','utf8')); console.log('json ok')"`
+  - `python3 -m py_compile wren-ai-service/src/pipelines/generation/scope_resolution.py wren-ai-service/tests/pytest/pipelines/generation/test_denodo_prompt_context.py wren-ai-service/tests/pytest/services/test_ask_runtime_instructions.py`
+  - `/Users/qianchenghu/.local/bin/poetry run pytest tests/pytest/pipelines/generation/test_denodo_prompt_context.py tests/pytest/services/test_ask_runtime_instructions.py -q` (`44 passed`)
+  - `cd wren-ui && /Applications/Codex.app/Contents/Resources/node .yarn/releases/yarn-4.5.3.cjs check-types`
+  - `git diff --check`
+
+## 2026-05-26 15:05 CST
+
+- Added a prompt-injection inventory for the repository.
+- Changed:
+  - Created `docs/customer-facing/denodo-prompts/PROMPT_INJECTION_MAP.md` to list direct LLM prompt files, indirect context sources, and editing boundaries.
+  - Documented the central LiteLLM boundary, SQL/Denodo prompt paths, answer/chart/assistance prompts, semantic modeling helper prompts, UI-forwarded prompt context, and config files that only select providers.
+- Verification:
+  - Static source inspection with `rg` and targeted file reads; no service tests were run because this is documentation-only.
+
+## 2026-05-26 15:40 CST
+
+- Added a Chinese Denodo prompt-layer inventory focused on actual injected prompt content.
+- Changed:
+  - Created `docs/customer-facing/denodo-prompts/DENODO_PROMPT_LAYERS.zh-CN.md` with Denodo SQL rule, business context, semantic context, SQL generation input, internal planning/hidden, and user/history instruction layers.
+  - Redacted code source locations, SQL pair contents, and hidden SQL exemplar details; examples use placeholders instead of real SQL pairs or internal exemplar SQL.
+  - Updated the document for customer-facing review by removing direct internal product/system naming and replacing SQL-pair terminology with neutral historical-example placeholders.
+- Verification:
+  - Static document review only; confirmed no `Wren`, `SQL pair`, `MCP`, or `AI service` wording remains in the customer-facing prompt-layer document. No service tests were run because this is documentation-only.
+
+## 2026-05-26 16:05 CST
+
+- Expanded the customer-facing Denodo prompt-layer inventory for metric calculation platform rules.
+- Changed:
+  - Added how enabled metric rules influence view selection through pre-generation summaries.
+  - Documented how matched metric rules optimize SQL generation through authoritative expressions, forbidden patterns, required views, and correction-stage reinjection.
+  - Clarified the two-stage injection timing: lightweight rule summaries before scope selection, full matched rule instructions after the selected view boundary is known.
+- Verification:
+  - Static document review only; no business logic or tests were changed for this documentation update.
+
+## 2026-05-27 14:03 CST
+
+- Added an independent customer-facing Denodo prompt reference document.
+- Changed:
+  - Created `docs/customer-facing/denodo-prompts/DENODO_PROMPT_REFERENCE.zh-CN.md` with system, Denodo technical rules, metric platform rules, business context, semantic context, scope/SQL input, complex planning, user/history instruction, and final injection-order layers.
+  - Included implementation-source references with service-relative paths, function/class names where useful, and line numbers for traceability.
+  - Kept historical reference examples as placeholders and avoided internal product naming or private mechanism terminology in the customer-facing document.
+- Verification:
+  - Static document review only; no business logic or service tests were changed for this documentation update.
+
+## 2026-05-27 15:44 CST
+
+- Moved prompt explanation documents out of the `/ai` memory directory into a dedicated documentation path.
+- Changed:
+  - Created `docs/customer-facing/denodo-prompts/` as the home for customer-facing Denodo prompt documents.
+  - Moved `DENODO_PROMPT_LAYERS.zh-CN.md`, `DENODO_PROMPT_REFERENCE.zh-CN.md`, and `PROMPT_INJECTION_MAP.md` from `/ai` into that directory.
+  - Updated active memory references to point at the new documentation path.
+- Verification:
+  - Static path/status review only; no business logic or service tests were changed for this documentation move.
+
+## 2026-05-27 15:47 CST
+
+- Expanded the customer-facing Denodo prompt reference with all current metric calculation prompt rules.
+- Changed:
+  - Added the full enabled Denodo metric-rule catalog to `docs/customer-facing/denodo-prompts/DENODO_PROMPT_REFERENCE.zh-CN.md`.
+  - Covered smart-assignment conversion, lead-overview conversion, smart-assignment test-drive conversion, and package-order metrics.
+  - Included each rule's scope, trigger phrases, metric expressions, forbidden SQL patterns, and extra business instructions as injected prompt content.
+- Verification:
+  - Static document review only; no business logic or service tests were changed for this documentation update.
